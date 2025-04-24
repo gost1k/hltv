@@ -34,9 +34,7 @@ def main():
         print("\nНачинаем сбор данных из HTML файлов...")
         collector = MatchesCollector()
         collector.collect()
-    collector = MatchesCollector()
-    collector.collect()
-    print("Сбор данных завершен")
+        print("Сбор данных завершен")
 
 if __name__ == "__main__":
     main()

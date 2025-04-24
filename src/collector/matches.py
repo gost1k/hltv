@@ -68,8 +68,13 @@ class MatchesCollector:
                 
         return matches
         
-    def _save_to_db(self, matches: list):
-        """Сохраняет матчи в базу данных"""
+    def _check_existing_match(self, cursor, match_id: int) -> bool:
+        """Проверяет существование матча в базе данных"""
+        cursor.execute('SELECT 1 FROM matches WHERE id = ?', (match_id,))
+        return cursor.fetchone() is not None  # Возвращает True если матч существует
+
+    def _save_to_db(self, matches: list) -> int:
+        """Сохраняет новые матчи в базу данных"""
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
         
@@ -83,15 +88,19 @@ class MatchesCollector:
             )
         ''')
         
-        # Вставляем или обновляем данные
+        new_matches = 0
+        # Вставляем только новые матчи или те, которые ещё не обработаны
         for match in matches:
-            cursor.execute('''
-                INSERT OR REPLACE INTO matches (id, url, date, toParse)
-                VALUES (?, ?, ?, ?)
-            ''', (match['id'], match['url'], match['date'], match['toParse']))
+            if not self._check_existing_match(cursor, match['id']):
+                cursor.execute('''
+                    INSERT OR REPLACE INTO matches (id, url, date, toParse)
+                    VALUES (?, ?, ?, ?)
+                ''', (match['id'], match['url'], match['date'], match['toParse']))
+                new_matches += 1
             
         conn.commit()
         conn.close()
+        return new_matches
         
     def collect(self):
         """Собирает данные из всех HTML файлов в папке"""
@@ -111,8 +120,12 @@ class MatchesCollector:
                 
                 # Сохраняем в базу
                 if matches:
-                    self._save_to_db(matches)
-                    print(f"Матчи сохранены в базу данных")
+                    new_matches = self._save_to_db(matches)
+                    print(f"Добавлено новых матчей в базу данных: {new_matches}")
+                    
+                # Удаляем обработанный файл
+                os.remove(file_path)
+                print(f"Файл {file_name} удален")
 
 if __name__ == "__main__":
     collector = MatchesCollector()

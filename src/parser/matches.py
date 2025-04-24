@@ -37,12 +37,19 @@ class MatchesParser(BaseParser):
                     continue
             
             if sort_button:
-                # Кликаем по кнопке
-                sort_button.click()
-                print("Выполнен клик по кнопке сортировки")
-                
-                # Ждем 5 секунд после клика
-                sleep(5)
+                try:
+                    # Прокручиваем к кнопке
+                    self.browser.execute_script("arguments[0].scrollIntoView(true);", sort_button)
+                    sleep(1)
+                    
+                    # Кликаем по кнопке через JavaScript
+                    self.browser.execute_script("arguments[0].click();", sort_button)
+                    print("Выполнен клик по кнопке сортировки")
+                    
+                    # Ждем 5 секунд после клика
+                    sleep(5)
+                except Exception as e:
+                    print(f"Ошибка при клике на кнопку сортировки: {str(e)}")
             else:
                 print("Не удалось найти кнопку сортировки")
             
