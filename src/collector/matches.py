@@ -16,17 +16,13 @@ class MatchesCollector:
             return int(match.group(1))
         return None
         
-    def _parse_html_file(self, file_path: str) -> list:
-        """Парсит HTML файл и возвращает список матчей"""
+    def _parse_matches_file(self, soup) -> list:
+        """Парсит страницу предстоящих матчей"""
         matches = []
         
-        with open(file_path, 'r', encoding='utf-8') as f:
-            soup = BeautifulSoup(f.read(), 'html.parser')
-            
         # Находим основной контент
         main_content = soup.select_one('.mainContent')
         if not main_content:
-            print(f"Не найден .mainContent в {file_path}")
             return matches
             
         # Находим все матчи
@@ -65,6 +61,59 @@ class MatchesCollector:
             except Exception as e:
                 print(f"Ошибка при парсинге матча: {str(e)}")
                 continue
+                
+        return matches
+
+    def _parse_results_file(self, soup) -> list:
+        """Парсит страницу результатов"""
+        matches = []
+        
+        # Находим основной контент
+        results_content = soup.select_one('.results')
+        if not results_content:
+            return matches
+            
+        # Находим все матчи
+        result_elements = results_content.select('.result-con')
+        for result in result_elements:
+            try:
+                # Получаем ссылку на матч
+                match_link = result.select_one('a.a-reset')
+                if not match_link:
+                    continue
+                    
+                url = match_link.get('href', '')
+                match_id = self._get_match_id(url)
+                
+                if not match_id:
+                    continue
+                
+                # Формируем данные матча
+                match_data = {
+                    'id': match_id,
+                    'url': url,
+                    'date': 0,  # Для результатов ставим 0
+                    'toParse': 1
+                }
+                matches.append(match_data)
+                
+            except Exception as e:
+                print(f"Ошибка при парсинге результата: {str(e)}")
+                continue
+                
+        return matches
+
+    def _parse_html_file(self, file_path: str) -> list:
+        """Парсит HTML файл и возвращает список матчей"""
+        with open(file_path, 'r', encoding='utf-8') as f:
+            soup = BeautifulSoup(f.read(), 'html.parser')
+
+        # Определяем тип страницы по имени файла
+        if 'matches_' in file_path.lower():
+            return self._parse_matches_file(soup)
+        elif 'results_' in file_path.lower():
+            return self._parse_results_file(soup)
+        return []
                 
         return matches
         
@@ -108,11 +157,13 @@ class MatchesCollector:
             print(f"Папка {self.html_dir} не найдена")
             return
             
-        # Собираем все HTML файлы с matches в названии
+        # Собираем все HTML файлы matches и results
         for file_name in os.listdir(self.html_dir):
-            if 'matches_' in file_name.lower() and file_name.endswith('.html'):
+            if (('matches_' in file_name.lower() or 'results_' in file_name.lower()) and 
+                file_name.endswith('.html')):
                 file_path = os.path.join(self.html_dir, file_name)
-                print(f"Обработка файла: {file_name}")
+                file_type = 'matches' if 'matches_' in file_name.lower() else 'results'
+                print(f"Обработка файла {file_type}: {file_name}")
                 
                 # Парсим файл
                 matches = self._parse_html_file(file_path)
