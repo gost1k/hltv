@@ -7,8 +7,9 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import TimeoutException, ElementClickInterceptedException
 from src.parser.base import BaseParser
-from src.config import MATCHES_URL, MATCHES_HTML_FILE
+from src.config import MATCHES_URL, MATCHES_HTML_FILE, SCREENSHOTS_DIR
 from src.config.selectors import MATCHES, COMMON
+import os
 
 class MatchesParser(BaseParser):
     def parse(self):
@@ -63,6 +64,24 @@ class MatchesParser(BaseParser):
                 html = self.driver.page_source
                 self.logger.info(f"HTML length: {len(html)}")
                 self.logger.info(f"HTML preview: {html[:500].replace(chr(10), ' ').replace(chr(13), ' ')}")
+                
+                # Если HTML слишком маленький или пустой, считаем сбор неудачным и создаем скриншот
+                if html is None or len(html) < 50000:
+                    self.logger.warning("HTML content is too small or empty, creating debug screenshot")
+                    # Создаем директорию для скриншотов, если её нет
+                    os.makedirs(SCREENSHOTS_DIR, exist_ok=True)
+                    
+                    # Создаем имя файла с типом парсинга и датой
+                    current_date = datetime.now().strftime("%Y-%m-%d")
+                    screenshot_filename = f"matches_failure_{current_date}.png"
+                    screenshot_path = os.path.join(os.path.abspath(SCREENSHOTS_DIR), screenshot_filename)
+                    
+                    try:
+                        self.driver.save_screenshot(screenshot_path)
+                        self.logger.info(f'Debug screenshot saved: {screenshot_path}')
+                    except Exception as e:
+                        self.logger.error(f'Failed to save debug screenshot: {e}')
+                
                 return html
                 
             except Exception as e:
@@ -76,10 +95,12 @@ class MatchesParser(BaseParser):
             self.logger.warning("No HTML content was retrieved, saving empty file.")
             content = ''
         
-        # Сохраняем в файл
-        self._ensure_storage_dir(MATCHES_HTML_FILE)
+        # Удаляем старый файл, если он есть
+        if os.path.exists(MATCHES_HTML_FILE):
+            os.remove(MATCHES_HTML_FILE)
+            self.logger.info(f"Удалён старый файл: {MATCHES_HTML_FILE}")
+        # Теперь сохраняем новый файл
         with open(MATCHES_HTML_FILE, "w", encoding="utf-8") as f:
             f.write(content)
-            
         self.logger.info(f"Matches page saved to: {MATCHES_HTML_FILE}")
         return MATCHES_HTML_FILE

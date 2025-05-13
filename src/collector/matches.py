@@ -5,7 +5,7 @@ from datetime import datetime
 import re
 
 class MatchesCollector:
-    def __init__(self, html_dir: str = "html", db_path: str = "hltv.db"):
+    def __init__(self, html_dir: str = "storage/html", db_path: str = "hltv.db"):
         self.html_dir = html_dir
         self.db_path = db_path
         
@@ -175,8 +175,8 @@ class MatchesCollector:
                     print(f"Добавлено новых матчей в базу данных: {new_matches}")
                     
                 # Удаляем обработанный файл
-                os.remove(file_path)
-                print(f"Файл {file_name} удален")
+                # os.remove(file_path)
+                # print(f"Файл {file_name} удален")
 
 if __name__ == "__main__":
     collector = MatchesCollector()

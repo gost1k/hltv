@@ -57,6 +57,7 @@ CLOUDFLARE_INDICATORS = [
 
 # File paths
 HTML_STORAGE_DIR = "storage/html"
+SCREENSHOTS_DIR = "storage/screenshots"  # Директория для скриншотов
 MATCHES_HTML_FILE = f"{HTML_STORAGE_DIR}/matches.html"
 RESULTS_HTML_FILE = f"{HTML_STORAGE_DIR}/results.html"
 

@@ -1,0 +1,38 @@
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Virtual Environment
+venv/
+env/
+ENV/
+.env
+
+# IDE files
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# Log files
+*.log
+
+# Storage directories with parsed content
+storage/html/
+storage/screenshots/
+
+# Cookies and session data
+storage/cookies.json
+
+# Temporary files
+*.tmp
+*.bak
+.DS_Store 

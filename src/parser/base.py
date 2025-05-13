@@ -25,20 +25,14 @@ from src.config import (
     SELENIUM_IMPLICIT_WAIT,
     PARSER_DELAY,
     MAX_RETRIES,
-    CLOUDFLARE_WAIT_TIME,
     MIN_PAGE_SIZE,
-    CLOUDFLARE_INDICATORS,
-    HUMAN_DELAY_MIN,
-    HUMAN_DELAY_MAX,
-    MOUSE_MOVEMENT_STEPS,
-    SCROLL_STEPS,
-    SCROLL_DELAY,
     COOKIES_FILE,
     COOKIES_EXPIRY_DAYS,
     LOG_LEVEL,
     LOG_FORMAT,
     LOG_FILE
 )
+from src.parser.cloudflare import CloudflareHandler
 
 class BaseParser(ABC):
     def __init__(self):
@@ -46,6 +40,7 @@ class BaseParser(ABC):
         self.driver = None
         self._setup_driver()
         self._ensure_storage_dir(COOKIES_FILE)
+        self.cloudflare = CloudflareHandler(self.driver, self.logger)
 
     def _setup_logging(self):
         """Настройка логирования"""
@@ -71,7 +66,7 @@ class BaseParser(ABC):
             options.add_argument('--disable-dev-shm-usage')
             options.add_argument('--disable-blink-features=AutomationControlled')
             options.add_argument('--disable-infobars')
-            options.add_argument('--start-maximized')
+            # options.add_argument('--start-maximized')  # Удалено для избежания конфликта с set_window_size
             options.add_argument('--disable-notifications')
             options.add_argument('--disable-popup-blocking')
             
@@ -127,61 +122,6 @@ class BaseParser(ABC):
         except Exception as e:
             self.logger.error(f"Failed to initialize Chrome driver: {str(e)}")
             raise
-
-    def _human_delay(self, min_delay: float = HUMAN_DELAY_MIN, max_delay: float = HUMAN_DELAY_MAX):
-        """Случайная задержка для эмуляции человеческого поведения"""
-        delay = random.uniform(min_delay, max_delay)
-        time.sleep(delay)
-
-    def _move_mouse_randomly(self):
-        """Случайное движение мышью"""
-        try:
-            # Получаем размер окна
-            viewport_width = self.driver.execute_script("return window.innerWidth;")
-            viewport_height = self.driver.execute_script("return window.innerHeight;")
-            
-            # Вычисляем безопасные границы (80% от размера окна)
-            safe_width = int(viewport_width * 0.8)
-            safe_height = int(viewport_height * 0.8)
-            
-            # Генерируем случайные координаты в пределах безопасных границ
-            x = random.randint(0, safe_width)
-            y = random.randint(0, safe_height)
-            
-            # Создаем цепочку действий
-            action = ActionChains(self.driver)
-            
-            # Перемещаемся в случайное положение
-            action.move_by_offset(x, y)
-            action.perform()
-            
-            # Сбрасываем положение мыши
-            action.move_by_offset(-x, -y)
-            action.perform()
-            
-        except Exception as e:
-            self.logger.warning(f"Mouse movement failed: {str(e)}")
-
-    def _scroll_page(self):
-        """Плавная прокрутка страницы"""
-        try:
-            # Получаем высоту страницы
-            page_height = self.driver.execute_script("return document.body.scrollHeight")
-            viewport_height = self.driver.execute_script("return window.innerHeight")
-            
-            # Вычисляем шаг прокрутки
-            scroll_step = page_height / SCROLL_STEPS
-            
-            # Выполняем плавную прокрутку
-            for i in range(SCROLL_STEPS):
-                self.driver.execute_script(f"window.scrollTo(0, {scroll_step * i});")
-                time.sleep(SCROLL_DELAY)
-            
-            # Прокручиваем обратно вверх
-            self.driver.execute_script("window.scrollTo(0, 0);")
-            
-        except Exception as e:
-            self.logger.warning(f"Page scroll failed: {str(e)}")
 
     def _save_cookies(self):
         """Сохранение cookies в файл"""
@@ -240,10 +180,6 @@ class BaseParser(ABC):
         """Создание директории для сохранения файлов если она не существует"""
         os.makedirs(os.path.dirname(filepath), exist_ok=True)
 
-    def _is_cloudflare_page(self, html):
-        # Отключено: всегда возвращаем False, чтобы не мешать сохранению HTML
-        return False
-
     def _is_valid_page(self, content):
         """Проверка валидности страницы"""
         # Проверяем размер страницы
@@ -251,10 +187,10 @@ class BaseParser(ABC):
             self.logger.warning(f"Page size too small: {len(content)} bytes")
             return False
             
-        # Проверяем на наличие Cloudflare
-        if self._is_cloudflare_page(content):
-            self.logger.warning("Cloudflare protection detected")
-            return False
+        # Временно отключаем проверку Cloudflare
+        # if self.cloudflare.is_cloudflare_page(content):
+        #     self.logger.warning("Cloudflare protection detected")
+        #     return False
             
         return True
 
@@ -265,24 +201,13 @@ class BaseParser(ABC):
                 lambda driver: driver.execute_script('return document.readyState') == 'complete'
             )
             
-            # Эмулируем человеческое поведение
-            self._human_delay()
-            self._move_mouse_randomly()
-            self._scroll_page()
-            
-            # Проверяем на наличие Cloudflare
-            content = self.driver.page_source
-            if self._is_cloudflare_page(content):
-                self.logger.warning("Cloudflare protection detected")
-                # Ждем немного дольше для Cloudflare
-                self._human_delay(CLOUDFLARE_WAIT_TIME, CLOUDFLARE_WAIT_TIME * 2)
-                
-                # Проверяем еще раз после ожидания
-                content = self.driver.page_source
-                if self._is_cloudflare_page(content):
-                    raise TimeoutException("Cloudflare protection still present after waiting")
+            # Временно отключаем проверку Cloudflare
+            # content = self.driver.page_source
+            # if not self.cloudflare.handle_cloudflare(content):
+            #     raise TimeoutException("Cloudflare protection still present after waiting")
             
             # Проверяем валидность страницы
+            content = self.driver.page_source
             if not self._is_valid_page(content):
                 raise TimeoutException("Invalid page content")
                 
@@ -316,7 +241,7 @@ class BaseParser(ABC):
                 self.logger.warning(f"Attempt {attempt + 1} failed: {str(e)}")
                 
                 if attempt < MAX_RETRIES - 1:
-                    self._human_delay(PARSER_DELAY, PARSER_DELAY * 2)
+                    time.sleep(PARSER_DELAY)
                     
                     # Очищаем cookies и кэш при повторной попытке
                     self.driver.delete_all_cookies()
