@@ -7,8 +7,9 @@ import os
 import sqlite3
 import time
 import logging
+import re
 from pathlib import Path
-from urllib.parse import urljoin
+from urllib.parse import urljoin, urlparse
 
 from src.parser.base import BaseParser
 from src.config import HLTV_BASE_URL, HTML_STORAGE_DIR
@@ -84,6 +85,50 @@ class MatchDetailsParser(BaseParser):
         except Exception as e:
             self.logger.error(f"Ошибка при обновлении статуса матча {match_id}: {str(e)}")
     
+    def _get_filename_from_url(self, match_id, url):
+        """
+        Формирует имя файла из URL матча
+        
+        Args:
+            match_id (int): ID матча
+            url (str): URL матча
+            
+        Returns:
+            str: Имя файла
+        """
+        try:
+            # Парсим URL
+            parsed_url = urlparse(url)
+            path = parsed_url.path
+            
+            # Проверяем, что URL соответствует формату /matches/ID/команда1-vs-команда2-турнир
+            if '/matches/' in path:
+                # Убираем начальный "/matches/" и ID
+                match_info = path.split('/matches/')[1]
+                
+                # Удаляем ID (если он есть) и получаем строку с командами и турниром
+                if match_info.split('/')[0].isdigit():
+                    match_info = '/'.join(match_info.split('/')[1:])
+                
+                # Если такая информация есть в URL
+                if match_info:
+                    # Заменяем все специальные символы на дефисы
+                    match_info = re.sub(r'[^\w-]', '-', match_info).lower()
+                    # Удаляем лишние дефисы
+                    match_info = re.sub(r'-+', '-', match_info)
+                    # Удаляем дефисы в начале и конце
+                    match_info = match_info.strip('-')
+                    
+                    # Формируем имя файла
+                    return f"match_{match_id}-{match_info}.html"
+            
+            # Если не удалось извлечь информацию из URL, используем старый формат
+            return f"match_{match_id}.html"
+            
+        except Exception as e:
+            self.logger.warning(f"Ошибка при формировании имени файла из URL: {str(e)}")
+            return f"match_{match_id}.html"
+    
     def _parse_match_page(self, match):
         """
         Парсит страницу отдельного матча
@@ -118,7 +163,7 @@ class MatchDetailsParser(BaseParser):
                 return False
                 
             # Формируем имя файла и путь
-            file_name = f"match_{match_id}.html"
+            file_name = self._get_filename_from_url(match_id, full_url)
             file_path = os.path.join(HTML_STORAGE_DIR, file_name)
             
             # Создаем директорию, если её нет

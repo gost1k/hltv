@@ -72,5 +72,5 @@ def main():
         logger.error(f"Error in main process: {e}")
         raise
 
-if __name__ == "__main__" or __name__ == "src.main":
+if __name__ == "__main__":
     main()
