@@ -109,9 +109,9 @@ class MatchesCollector:
             soup = BeautifulSoup(f.read(), 'html.parser')
 
         # Определяем тип страницы по имени файла
-        if 'matches_' in file_path.lower():
+        if 'matches' in file_path.lower():
             return self._parse_matches_file(soup)
-        elif 'results_' in file_path.lower():
+        elif 'results' in file_path.lower():
             return self._parse_results_file(soup)
         return []
                 
@@ -159,10 +159,9 @@ class MatchesCollector:
             
         # Собираем все HTML файлы matches и results
         for file_name in os.listdir(self.html_dir):
-            if (('matches_' in file_name.lower() or 'results_' in file_name.lower()) and 
-                file_name.endswith('.html')):
+            if file_name.endswith('.html') and ('matches' in file_name.lower() or 'results' in file_name.lower()):
                 file_path = os.path.join(self.html_dir, file_name)
-                file_type = 'matches' if 'matches_' in file_name.lower() else 'results'
+                file_type = 'matches' if 'matches' in file_name.lower() else 'results'
                 print(f"Обработка файла {file_type}: {file_name}")
                 
                 # Парсим файл
