@@ -125,7 +125,7 @@ class MatchesCollector:
             
             # Создаем таблицу для предстоящих матчей
             cursor.execute('''
-                CREATE TABLE IF NOT EXISTS upcoming_matches (
+                CREATE TABLE IF NOT EXISTS url_upcoming (
                     id INTEGER PRIMARY KEY,
                     url TEXT NOT NULL,
                     date INTEGER NOT NULL,
@@ -135,7 +135,7 @@ class MatchesCollector:
             
             # Создаем таблицу для результатов матчей
             cursor.execute('''
-                CREATE TABLE IF NOT EXISTS past_matches (
+                CREATE TABLE IF NOT EXISTS url_result (
                     id INTEGER PRIMARY KEY,
                     url TEXT NOT NULL,
                     toParse INTEGER NOT NULL DEFAULT 1
@@ -162,13 +162,13 @@ class MatchesCollector:
         
         for match in matches:
             # Проверяем, существует ли матч в таблице предстоящих матчей
-            cursor.execute('SELECT 1 FROM upcoming_matches WHERE id = ?', (match['id'],))
+            cursor.execute('SELECT 1 FROM url_upcoming WHERE id = ?', (match['id'],))
             exists = cursor.fetchone() is not None
             
             if exists:
                 # Обновляем существующий матч
                 cursor.execute('''
-                    UPDATE upcoming_matches 
+                    UPDATE url_upcoming 
                     SET date = ?, toParse = ?
                     WHERE id = ?
                 ''', (match['date'], match['toParse'], match['id']))
@@ -176,13 +176,13 @@ class MatchesCollector:
             else:
                 # Добавляем новый матч
                 cursor.execute('''
-                    INSERT INTO upcoming_matches (id, url, date, toParse)
+                    INSERT INTO url_upcoming (id, url, date, toParse)
                     VALUES (?, ?, ?, ?)
                 ''', (match['id'], match['url'], match['date'], match['toParse']))
                 new_matches += 1
                 
             # Проверяем, не переместился ли матч из результатов в предстоящие (очень маловероятно, но возможно)
-            cursor.execute('DELETE FROM past_matches WHERE id = ?', (match['id'],))
+            cursor.execute('DELETE FROM url_result WHERE id = ?', (match['id'],))
         
         conn.commit()
         conn.close()
@@ -202,13 +202,13 @@ class MatchesCollector:
         
         for match in matches:
             # Проверяем, существует ли матч в таблице результатов
-            cursor.execute('SELECT 1 FROM past_matches WHERE id = ?', (match['id'],))
+            cursor.execute('SELECT 1 FROM url_result WHERE id = ?', (match['id'],))
             exists = cursor.fetchone() is not None
             
             if exists:
                 # Обновляем существующий матч
                 cursor.execute('''
-                    UPDATE past_matches 
+                    UPDATE url_result 
                     SET toParse = ?
                     WHERE id = ?
                 ''', (match['toParse'], match['id']))
@@ -216,13 +216,13 @@ class MatchesCollector:
             else:
                 # Добавляем новый матч
                 cursor.execute('''
-                    INSERT INTO past_matches (id, url, toParse)
+                    INSERT INTO url_result (id, url, toParse)
                     VALUES (?, ?, ?)
                 ''', (match['id'], match['url'], match['toParse']))
                 new_matches += 1
                 
             # Удаляем матч из предстоящих, если он перешел в результаты
-            cursor.execute('DELETE FROM upcoming_matches WHERE id = ?', (match['id'],))
+            cursor.execute('DELETE FROM url_upcoming WHERE id = ?', (match['id'],))
         
         conn.commit()
         conn.close()

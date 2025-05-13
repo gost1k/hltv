@@ -32,32 +32,32 @@ def init_db():
         with get_connection() as conn:
             cursor = conn.cursor()
             
-            # Создаем таблицу матчей
-            cursor.execute('''
-                CREATE TABLE IF NOT EXISTS matches (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    team1 TEXT NOT NULL,
-                    team2 TEXT NOT NULL,
-                    match_time DATETIME,
-                    event TEXT,
-                    status TEXT,
-                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-                )
-            ''')
+            # Проверяем существование таблиц
+            cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
+            tables = [row[0] for row in cursor.fetchall()]
             
-            # Создаем таблицу результатов
-            cursor.execute('''
-                CREATE TABLE IF NOT EXISTS results (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    team1 TEXT NOT NULL,
-                    team2 TEXT NOT NULL,
-                    score1 INTEGER,
-                    score2 INTEGER,
-                    event TEXT,
-                    match_date DATETIME,
-                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-                )
-            ''')
+            # Создаем таблицы только если они не существуют
+            if "url_upcoming" not in tables or "url_result" not in tables:
+                logger.info("Необходимые таблицы не найдены, создаем новые")
+                
+                # Создаем таблицу для предстоящих матчей
+                cursor.execute('''
+                    CREATE TABLE IF NOT EXISTS url_upcoming (
+                        id INTEGER PRIMARY KEY,
+                        url TEXT NOT NULL,
+                        date INTEGER NOT NULL,
+                        toParse INTEGER NOT NULL DEFAULT 1
+                    )
+                ''')
+                
+                # Создаем таблицу для результатов матчей
+                cursor.execute('''
+                    CREATE TABLE IF NOT EXISTS url_result (
+                        id INTEGER PRIMARY KEY,
+                        url TEXT NOT NULL,
+                        toParse INTEGER NOT NULL DEFAULT 1
+                    )
+                ''')
             
             conn.commit()
             logger.info("Database initialized successfully")

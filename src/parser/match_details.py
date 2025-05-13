@@ -55,7 +55,7 @@ class MatchDetailsParser(BaseParser):
             # Получаем прошедшие матчи для парсинга
             if self.parse_past and remaining_limit > 0:
                 cursor.execute('''
-                    SELECT id, url FROM past_matches 
+                    SELECT id, url FROM url_result 
                     WHERE toParse = 1
                     LIMIT ?
                 ''', (remaining_limit,))
@@ -68,7 +68,7 @@ class MatchDetailsParser(BaseParser):
             # Получаем предстоящие матчи для парсинга
             if self.parse_upcoming and remaining_limit > 0:
                 cursor.execute('''
-                    SELECT id, url FROM upcoming_matches 
+                    SELECT id, url FROM url_upcoming 
                     WHERE toParse = 1
                     LIMIT ?
                 ''', (remaining_limit,))
@@ -98,7 +98,7 @@ class MatchDetailsParser(BaseParser):
             conn = sqlite3.connect(self.db_path)
             cursor = conn.cursor()
             
-            table_name = "past_matches" if is_past else "upcoming_matches"
+            table_name = "url_result" if is_past else "url_upcoming"
             
             cursor.execute(f'''
                 UPDATE {table_name} SET toParse = ? WHERE id = ?
