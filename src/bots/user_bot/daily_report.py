@@ -187,43 +187,36 @@ class DailyReportSender:
         if not events:
             return "Нет данных о матчах за указанный период."
         
-        # Начинаем pre-форматированный блок
-        message = "<pre>\n"
+        message = ""
         
         for event_id, event_data in events.items():
             event_name = event_data['name'] or "Без названия"
             matches = event_data['matches']
             
             # Добавляем название события
-            message += f"🏆 {event_name}\n\n"
+            message += f"🏆 <b>{event_name}</b>\n\n"
             
             for match in matches:
-                # Форматируем результат
-                team1_name = match['team1_name']
-                team2_name = match['team2_name']
+                # Получаем короткие имена команд (никнеймы)
+                team1_name = match['team1_name'].split()[0]  # Берем первое слово как никнейм
+                team2_name = match['team2_name'].split()[0]  # Берем первое слово как никнейм
                 team1_score = match['team1_score']
                 team2_score = match['team2_score']
+                match_id = match['match_id']
                 
-                # Определяем победителя
-                team1_marker = "*" if team1_score > team2_score else " "
-                team2_marker = "*" if team2_score > team1_score else " "
+                # Выделяем победителя
+                if team1_score > team2_score:
+                    team1_name = f"<b>{team1_name}</b>"
+                elif team2_score > team1_score:
+                    team2_name = f"<b>{team2_name}</b>"
                 
-                # Создаем строку с выравниванием
-                # Ограничиваем длину имен команд для единого форматирования
-                max_team_length = 15  # Максимальная длина имени команды
-                if len(team1_name) > max_team_length:
-                    team1_name = team1_name[:max_team_length-3] + "..."
-                if len(team2_name) > max_team_length:
-                    team2_name = team2_name[:max_team_length-3] + "..."
-                
-                # Форматируем строку с табуляцией
-                message += f"{team1_marker} {team1_name.ljust(max_team_length)} {team1_score} : {team2_score} {team2_name.ljust(max_team_length)} {team2_marker}\n"
+                # Формируем строку результата
+                message += f"• <code>{team1_name}</code> {team1_score} : {team2_score} <code>{team2_name}</code> <code>({match_id})</code>\n"
             
             # Добавляем разделитель между событиями
             message += "\n"
         
-        # Закрываем pre-форматированный блок
-        message += "</pre>"
+        message += "Скопируйте и отправьте <code>(ID)</code>, чтобы увидеть подробную статистику игроков.\n"
         
         return message
     

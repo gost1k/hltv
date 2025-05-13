@@ -160,6 +160,18 @@ class HLTVStatsBot:
             # Если текст сообщения совпадает с названием события в нашем словаре
             event_id = context.user_data['event_mapping'][message_text]
             await self.show_matches_for_event(update, context, event_id)
+        elif "(" in message_text and ")" in message_text:
+            # Обработка запроса статистики с ID в скобках
+            try:
+                # Извлекаем ID матча из скобок
+                match_id_text = message_text.split("(")[-1].split(")")[0].strip()
+                match_id = int(''.join(filter(str.isdigit, match_id_text)))
+                await self.show_match_details(update, context, match_id)
+            except (ValueError, IndexError):
+                await update.message.reply_text(
+                    "Не удалось определить ID матча. Пожалуйста, скопируйте и отправьте код (ID) рядом с нужным матчем.",
+                    reply_markup=self.markup
+                )
         else:
             await update.message.reply_text(
                 "Используйте кнопки меню или команды для взаимодействия с ботом.\n"
@@ -349,43 +361,38 @@ class HLTVStatsBot:
         if not events:
             return "Нет данных о матчах за указанный период."
         
-        # Начинаем pre-форматированный блок
-        message = "<pre>\n"
+        message = ""
         
         for event_id, event_data in events.items():
             event_name = event_data['name'] or "Без названия"
             matches = event_data['matches']
             
             # Добавляем название события
-            message += f"🏆 {event_name}\n\n"
+            message += f"🏆 <b>{event_name}</b>\n\n"
             
             for match in matches:
-                # Форматируем результат
-                team1_name = match['team1_name']
-                team2_name = match['team2_name']
+                # Получаем короткие имена команд (никнеймы)
+                team1_name = match['team1_name'].split()[0]  # Берем первое слово как никнейм
+                team2_name = match['team2_name'].split()[0]  # Берем первое слово как никнейм
                 team1_score = match['team1_score']
                 team2_score = match['team2_score']
+                match_id = match['match_id']
                 
-                # Определяем победителя
-                team1_marker = "*" if team1_score > team2_score else " "
-                team2_marker = "*" if team2_score > team1_score else " "
+                # Выделяем победителя
+                if team1_score > team2_score:
+                    team1_name = f"<b>{team1_name}</b>"
+                    team2_name = f"{team2_name}"
+                elif team2_score > team1_score:
+                    team1_name = f"{team1_name}"
+                    team2_name = f"<b>{team2_name}</b>"
                 
-                # Создаем строку с выравниванием
-                # Ограничиваем длину имен команд для единого форматирования
-                max_team_length = 15  # Максимальная длина имени команды
-                if len(team1_name) > max_team_length:
-                    team1_name = team1_name[:max_team_length-3] + "..."
-                if len(team2_name) > max_team_length:
-                    team2_name = team2_name[:max_team_length-3] + "..."
-                
-                # Форматируем строку с табуляцией
-                message += f"{team1_marker} {team1_name.ljust(max_team_length)} {team1_score} : {team2_score} {team2_name.ljust(max_team_length)} {team2_marker}\n"
+                # Формируем строку результата
+                message += f"• <code>{team1_name}</code> {team1_score} : {team2_score} <code>{team2_name}</code> <code>({match_id})</code>\n"
             
             # Добавляем разделитель между событиями
             message += "\n"
         
-        # Закрываем pre-форматированный блок
-        message += "</pre>"
+        message += "Скопируйте и отправьте <code>(ID)</code>, чтобы увидеть подробную статистику игроков.\n"
         
         return message
     
@@ -581,6 +588,143 @@ class HLTVStatsBot:
             logger.error(f"Ошибка при получении матчей события {event_id}: {str(e)}")
             await update.message.reply_text(
                 "Произошла ошибка при получении данных о матчах.",
+                reply_markup=self.markup
+            )
+    
+    async def show_match_details(self, update: Update, context: ContextTypes.DEFAULT_TYPE, match_id):
+        """
+        Показывает подробную информацию о матче и статистику игроков
+        
+        Args:
+            update: Объект обновления Telegram
+            context: Контекст обработчика
+            match_id (int): ID матча
+        """
+        try:
+            conn = sqlite3.connect(self.db_path)
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            
+            # Получаем информацию о матче
+            cursor.execute('''
+                SELECT 
+                    m.match_id, m.datetime, 
+                    m.team1_id, m.team1_name, m.team1_score, m.team1_rank,
+                    m.team2_id, m.team2_name, m.team2_score, m.team2_rank,
+                    m.event_id, m.event_name
+                FROM match_details m
+                WHERE m.match_id = ?
+            ''', (match_id,))
+            
+            match = cursor.fetchone()
+            
+            if not match:
+                await update.message.reply_text(
+                    f"Матч с ID {match_id} не найден.",
+                    reply_markup=self.markup
+                )
+                conn.close()
+                return
+                
+            # Получаем статистику игроков для этого матча
+            cursor.execute('''
+                SELECT 
+                    p.nickname, p.team_id, p.kills, p.deaths, 
+                    p.kd_ratio, p.adr, p.kast, p.rating
+                FROM player_stats p
+                WHERE p.match_id = ?
+                ORDER BY p.team_id, p.rating DESC
+            ''', (match_id,))
+            
+            player_stats = cursor.fetchall()
+            conn.close()
+            
+            # Форматируем информацию о матче
+            match_time = datetime.fromtimestamp(match['datetime']).strftime('%d.%m.%Y %H:%M')
+            
+            # Получаем короткие имена команд (никнеймы)
+            team1_name = match['team1_name'].split()[0]  # Берем первое слово как никнейм
+            team2_name = match['team2_name'].split()[0]  # Берем первое слово как никнейм
+            team1_score = match['team1_score']
+            team2_score = match['team2_score']
+            
+            message = f"<b>⏰ {match_time}</b>\n"
+            message += f"<b>🏆 {match['event_name']}</b>\n\n"
+            
+            # Выделяем победителя
+            if team1_score > team2_score:
+                team1_name = f"🏆 <b>{team1_name}</b>"
+                team2_name = f"{team2_name} ❌"
+            elif team2_score > team1_score:
+                team1_name = f"❌ {team1_name}"
+                team2_name = f"<b>{team2_name}</b> 🏆"
+                
+            message += f"<b>{team1_name} {team1_score} : {team2_score} {team2_name}</b>\n\n"
+            
+            # Если есть информация о рейтинге команд
+            if match['team1_rank'] or match['team2_rank']:
+                team1_rank = f"#{match['team1_rank']}" if match['team1_rank'] else "нет данных"
+                team2_rank = f"#{match['team2_rank']}" if match['team2_rank'] else "нет данных"
+                message += f"Рейтинг команд:\n{team1_rank} - {match['team1_name']}\n{team2_rank} - {match['team2_name']}\n\n"
+            
+            # Группируем статистику по командам
+            team1_players = [p for p in player_stats if p['team_id'] == match['team1_id']]
+            team2_players = [p for p in player_stats if p['team_id'] == match['team2_id']]
+            
+            if team1_players or team2_players:
+                message += "<b>📈 Статистика игроков:</b>\n\n"
+                
+                if team1_players:
+                    message += f"<b>{match['team1_name']}:</b>\n"
+                    message += "<pre>\n"
+                    message += "Игрок        K-D   K/D  ADR KAST Rating\n"
+                    message += "----------------------------------------\n"
+                    
+                    for player in team1_players:
+                        nick = player['nickname']
+                        if len(nick) > 12:
+                            nick = nick[:9] + "..."
+                            
+                        kd = f"{player['kills'] or 0}-{player['deaths'] or 0}"
+                        kd_ratio = f"{player['kd_ratio']:.2f}" if player['kd_ratio'] else "0.00"
+                        adr = f"{player['adr']:.1f}" if player['adr'] else "0.0"
+                        kast = f"{player['kast']*100:.0f}%" if player['kast'] else "0%"
+                        rating = f"{player['rating']:.2f}" if player['rating'] else "0.00"
+                        
+                        message += f"{nick.ljust(12)} {kd.ljust(5)} {kd_ratio.ljust(4)} {adr.ljust(3)} {kast.ljust(4)} {rating}\n"
+                    
+                    message += "</pre>\n\n"
+                
+                if team2_players:
+                    message += f"<b>{match['team2_name']}:</b>\n"
+                    message += "<pre>\n"
+                    message += "Игрок        K-D   K/D  ADR KAST Rating\n"
+                    message += "----------------------------------------\n"
+                    
+                    for player in team2_players:
+                        nick = player['nickname']
+                        if len(nick) > 12:
+                            nick = nick[:9] + "..."
+                            
+                        kd = f"{player['kills'] or 0}-{player['deaths'] or 0}"
+                        kd_ratio = f"{player['kd_ratio']:.2f}" if player['kd_ratio'] else "0.00"
+                        adr = f"{player['adr']:.1f}" if player['adr'] else "0.0"
+                        kast = f"{player['kast']*100:.0f}%" if player['kast'] else "0%"
+                        rating = f"{player['rating']:.2f}" if player['rating'] else "0.00"
+                        
+                        message += f"{nick.ljust(12)} {kd.ljust(5)} {kd_ratio.ljust(4)} {adr.ljust(3)} {kast.ljust(4)} {rating}\n"
+                    
+                    message += "</pre>\n"
+            else:
+                message += "<i>Нет данных о статистике игроков для этого матча.</i>"
+            
+            # Отправляем сообщение
+            await update.message.reply_text(message, parse_mode="HTML", reply_markup=self.markup)
+            
+        except Exception as e:
+            logger.error(f"Ошибка при получении данных о матче {match_id}: {str(e)}")
+            await update.message.reply_text(
+                "Произошла ошибка при получении данных о матче.",
                 reply_markup=self.markup
             )
     
