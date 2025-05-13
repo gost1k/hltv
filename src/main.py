@@ -8,6 +8,7 @@ from src.parser.matches import MatchesParser
 from src.parser.results import ResultsParser
 from src.parser.match_details import MatchDetailsParser
 from src.collector.matches import MatchesCollector
+from src.collector.match_details import MatchDetailsCollector
 from src.config import LOG_LEVEL, LOG_FORMAT, LOG_FILE
 
 # Настройка логирования
@@ -32,7 +33,9 @@ def parse_arguments():
     parser.add_argument('--test', action='store_true', help='Test mode: parse only 3 matches')
     parser.add_argument('--parse-past', action='store_true', help='Parse past matches (from past_matches table)')
     parser.add_argument('--parse-upcoming', action='store_true', help='Parse upcoming matches (from upcoming_matches table)')
-    parser.add_argument('--collect', action='store_true', help='Collect data from HTML files')
+    parser.add_argument('--collect', action='store_true', help='Collect data from all HTML files (both lists and details)')
+    parser.add_argument('--collect-lists', action='store_true', help='Collect data only from list HTML files (results.html)')
+    parser.add_argument('--collect-details', action='store_true', help='Collect data only from match details HTML files in /storage/html/result/')
     parser.add_argument('--all', action='store_true', help='Run all operations')
     return parser.parse_args()
 
@@ -57,10 +60,22 @@ def main():
                 results_file = results_parser.parse()
                 logger.info(f"Results page saved to: {results_file}")
         
-        if args.all or args.collect:
-            logger.info("Starting data collection from HTML files...")
-            collector = MatchesCollector()
-            collector.collect()
+        if args.all or args.collect or args.collect_lists:
+            if args.collect or args.collect_lists:
+                logger.info("Starting data collection from list HTML files...")
+                # Собираем данные из списков матчей
+                collector = MatchesCollector()
+                collector.collect()
+            
+        if args.all or args.collect or args.collect_details:
+            if args.collect or args.collect_details:
+                # Собираем данные из деталей матчей
+                logger.info("Starting match details collection from HTML files...")
+                match_details_collector = MatchDetailsCollector()
+                stats = match_details_collector.collect()
+                logger.info(f"Match details collection completed. Stats: {stats['successful_match_details']} matches processed, {stats['successful_player_stats']} player stats saved")
+            
+        if args.all or args.collect or args.collect_lists or args.collect_details:
             logger.info("Data collection completed")
         
         if args.all or args.parse_details:
