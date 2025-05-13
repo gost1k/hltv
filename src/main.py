@@ -29,6 +29,8 @@ def parse_arguments():
     parser.add_argument('--parse-details', action='store_true', help='Parse match details pages from DB')
     parser.add_argument('--details-limit', type=int, default=10, help='Limit of match details to parse (default: 10)')
     parser.add_argument('--test', action='store_true', help='Test mode: parse only 3 matches')
+    parser.add_argument('--parse-past', action='store_true', help='Parse past matches (from past_matches table)')
+    parser.add_argument('--parse-upcoming', action='store_true', help='Parse upcoming matches (from upcoming_matches table)')
     parser.add_argument('--collect', action='store_true', help='Collect data from HTML files')
     parser.add_argument('--all', action='store_true', help='Run all operations')
     return parser.parse_args()
@@ -54,19 +56,36 @@ def main():
                 results_file = results_parser.parse()
                 logger.info(f"Results page saved to: {results_file}")
         
-        if args.all or args.parse_details:
-            # Если указан тестовый режим, используем лимит 3, иначе используем указанный лимит
-            details_limit = 3 if args.test else args.details_limit
-            logger.info(f"Starting match details parsing (limit: {details_limit})...")
-            details_parser = MatchDetailsParser(limit=details_limit)
-            successful = details_parser.parse()
-            logger.info(f"Match details parsing completed. Successful: {successful}")
-        
         if args.all or args.collect:
             logger.info("Starting data collection from HTML files...")
             collector = MatchesCollector()
             collector.collect()
             logger.info("Data collection completed")
+        
+        if args.all or args.parse_details:
+            # Если указан тестовый режим, используем лимит 3, иначе используем указанный лимит
+            details_limit = 3 if args.test else args.details_limit
+            
+            # Определяем, какие типы матчей нужно парсить
+            parse_past = args.parse_past or not args.parse_upcoming  # По умолчанию парсим прошедшие
+            parse_upcoming = args.parse_upcoming
+            
+            # Выводим информацию о том, что будем парсить
+            match_types = []
+            if parse_past:
+                match_types.append("прошедших")
+            if parse_upcoming:
+                match_types.append("предстоящих")
+            
+            logger.info(f"Starting match details parsing ({', '.join(match_types)} матчей, лимит: {details_limit})...")
+            
+            details_parser = MatchDetailsParser(
+                limit=details_limit,
+                parse_past=parse_past,
+                parse_upcoming=parse_upcoming
+            )
+            successful = details_parser.parse()
+            logger.info(f"Match details parsing completed. Successful: {successful}")
             
     except Exception as e:
         logger.error(f"Error in main process: {e}")

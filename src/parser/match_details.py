@@ -21,17 +21,21 @@ class MatchDetailsParser(BaseParser):
     Использует список URL-адресов из базы данных
     """
     
-    def __init__(self, db_path="hltv.db", limit=10):
+    def __init__(self, db_path="hltv.db", limit=10, parse_past=True, parse_upcoming=False):
         """
         Инициализация парсера деталей матчей
         
         Args:
             db_path (str): Путь к файлу базы данных
             limit (int): Максимальное количество матчей для обработки за один запуск
+            parse_past (bool): Парсить прошедшие матчи
+            parse_upcoming (bool): Парсить предстоящие матчи
         """
         super().__init__()
         self.db_path = db_path
         self.limit = limit
+        self.parse_past = parse_past
+        self.parse_upcoming = parse_upcoming
         self.logger.info(f"MatchDetailsParser инициализирован, лимит: {limit} матчей")
         
     def _get_matches_to_parse(self):
@@ -45,42 +49,64 @@ class MatchDetailsParser(BaseParser):
             conn = sqlite3.connect(self.db_path)
             cursor = conn.cursor()
             
-            # Получаем матчи с date = 0 и toParse = 1 (требуется скачать)
-            cursor.execute('''
-                SELECT id, url FROM matches 
-                WHERE date = 0 AND toParse = 1
-                LIMIT ?
-            ''', (self.limit,))
+            matches = []
+            remaining_limit = self.limit
             
-            matches = [{"id": row[0], "url": row[1]} for row in cursor.fetchall()]
-            self.logger.info(f"Найдено {len(matches)} матчей для скачивания")
+            # Получаем прошедшие матчи для парсинга
+            if self.parse_past and remaining_limit > 0:
+                cursor.execute('''
+                    SELECT id, url FROM past_matches 
+                    WHERE toParse = 1
+                    LIMIT ?
+                ''', (remaining_limit,))
+                
+                past_matches = [{"id": row[0], "url": row[1], "is_past": True} for row in cursor.fetchall()]
+                matches.extend(past_matches)
+                remaining_limit -= len(past_matches)
+                self.logger.info(f"Найдено {len(past_matches)} прошедших матчей для скачивания")
+            
+            # Получаем предстоящие матчи для парсинга
+            if self.parse_upcoming and remaining_limit > 0:
+                cursor.execute('''
+                    SELECT id, url FROM upcoming_matches 
+                    WHERE toParse = 1
+                    LIMIT ?
+                ''', (remaining_limit,))
+                
+                upcoming_matches = [{"id": row[0], "url": row[1], "is_past": False} for row in cursor.fetchall()]
+                matches.extend(upcoming_matches)
+                self.logger.info(f"Найдено {len(upcoming_matches)} предстоящих матчей для скачивания")
             
             conn.close()
+            self.logger.info(f"Всего найдено {len(matches)} матчей для скачивания")
             return matches
             
         except Exception as e:
             self.logger.error(f"Ошибка при получении списка матчей: {str(e)}")
             return []
     
-    def _update_match_status(self, match_id, status=0):
+    def _update_match_status(self, match_id, is_past, status=0):
         """
         Обновляет статус матча в базе данных
         
         Args:
             match_id (int): ID матча
+            is_past (bool): Является ли матч прошедшим
             status (int): Новый статус (0 - обработан, 1 - требует обработки)
         """
         try:
             conn = sqlite3.connect(self.db_path)
             cursor = conn.cursor()
             
-            cursor.execute('''
-                UPDATE matches SET toParse = ? WHERE id = ?
+            table_name = "past_matches" if is_past else "upcoming_matches"
+            
+            cursor.execute(f'''
+                UPDATE {table_name} SET toParse = ? WHERE id = ?
             ''', (status, match_id))
             
             conn.commit()
             conn.close()
-            self.logger.info(f"Обновлен статус матча ID {match_id} на {status}")
+            self.logger.info(f"Обновлен статус матча ID {match_id} в таблице {table_name} на {status}")
             
         except Exception as e:
             self.logger.error(f"Ошибка при обновлении статуса матча {match_id}: {str(e)}")
@@ -134,13 +160,14 @@ class MatchDetailsParser(BaseParser):
         Парсит страницу отдельного матча
         
         Args:
-            match (dict): Информация о матче (id, url)
+            match (dict): Информация о матче (id, url, is_past)
             
         Returns:
             bool: True если успешно, False если ошибка
         """
         match_id = match["id"]
         url = match["url"]
+        is_past = match.get("is_past", True)  # По умолчанию считаем матч прошедшим
         
         # Формируем полный URL, если это относительный путь
         if not url.startswith('http'):
@@ -208,7 +235,7 @@ class MatchDetailsParser(BaseParser):
                 # Парсим страницу
                 if self._parse_match_page(match):
                     # Если успешно, обновляем статус
-                    self._update_match_status(match["id"], 0)
+                    self._update_match_status(match["id"], match.get("is_past", True), 0)
                     successful += 1
                 
                 # Закрываем браузер

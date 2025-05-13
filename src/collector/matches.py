@@ -3,6 +3,9 @@ from bs4 import BeautifulSoup
 import sqlite3
 from datetime import datetime
 import re
+import logging
+
+logger = logging.getLogger(__name__)
 
 class MatchesCollector:
     def __init__(self, html_dir: str = "storage/html", db_path: str = "hltv.db"):
@@ -59,7 +62,7 @@ class MatchesCollector:
                 matches.append(match_data)
                 
             except Exception as e:
-                print(f"Ошибка при парсинге матча: {str(e)}")
+                logger.error(f"Ошибка при парсинге матча: {str(e)}")
                 continue
                 
         return matches
@@ -92,13 +95,12 @@ class MatchesCollector:
                 match_data = {
                     'id': match_id,
                     'url': url,
-                    'date': 0,  # Для результатов ставим 0
-                    'toParse': 1
+                    'toParse': 1  # Для результатов ставим флаг необходимости парсинга
                 }
                 matches.append(match_data)
                 
             except Exception as e:
-                print(f"Ошибка при парсинге результата: {str(e)}")
+                logger.error(f"Ошибка при парсинге результата: {str(e)}")
                 continue
                 
         return matches
@@ -114,70 +116,163 @@ class MatchesCollector:
         elif 'results' in file_path.lower():
             return self._parse_results_file(soup)
         return []
-                
-        return matches
         
-    def _check_existing_match(self, cursor, match_id: int) -> bool:
-        """Проверяет существование матча в базе данных"""
-        cursor.execute('SELECT 1 FROM matches WHERE id = ?', (match_id,))
-        return cursor.fetchone() is not None  # Возвращает True если матч существует
-
-    def _save_to_db(self, matches: list) -> int:
-        """Сохраняет новые матчи в базу данных"""
+    def _create_tables(self):
+        """Создает необходимые таблицы в базе данных"""
+        try:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            
+            # Создаем таблицу для предстоящих матчей
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS upcoming_matches (
+                    id INTEGER PRIMARY KEY,
+                    url TEXT NOT NULL,
+                    date INTEGER NOT NULL,
+                    toParse INTEGER NOT NULL DEFAULT 1
+                )
+            ''')
+            
+            # Создаем таблицу для результатов матчей
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS past_matches (
+                    id INTEGER PRIMARY KEY,
+                    url TEXT NOT NULL,
+                    toParse INTEGER NOT NULL DEFAULT 1
+                )
+            ''')
+            
+            conn.commit()
+            conn.close()
+            logger.info("Таблицы успешно созданы")
+            
+        except Exception as e:
+            logger.error(f"Ошибка при создании таблиц: {str(e)}")
+    
+    def _save_upcoming_matches(self, matches: list) -> int:
+        """Сохраняет предстоящие матчи в базу данных"""
+        if not matches:
+            return 0
+            
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
         
-        # Создаем таблицу, если её нет
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS matches (
-                id INTEGER PRIMARY KEY,
-                url TEXT,
-                date INTEGER,
-                toParse INTEGER
-            )
-        ''')
-        
         new_matches = 0
-        # Вставляем только новые матчи или те, которые ещё не обработаны
+        updated_matches = 0
+        
         for match in matches:
-            if not self._check_existing_match(cursor, match['id']):
+            # Проверяем, существует ли матч в таблице предстоящих матчей
+            cursor.execute('SELECT 1 FROM upcoming_matches WHERE id = ?', (match['id'],))
+            exists = cursor.fetchone() is not None
+            
+            if exists:
+                # Обновляем существующий матч
                 cursor.execute('''
-                    INSERT OR REPLACE INTO matches (id, url, date, toParse)
+                    UPDATE upcoming_matches 
+                    SET date = ?, toParse = ?
+                    WHERE id = ?
+                ''', (match['date'], match['toParse'], match['id']))
+                updated_matches += 1
+            else:
+                # Добавляем новый матч
+                cursor.execute('''
+                    INSERT INTO upcoming_matches (id, url, date, toParse)
                     VALUES (?, ?, ?, ?)
                 ''', (match['id'], match['url'], match['date'], match['toParse']))
                 new_matches += 1
-            
+                
+            # Проверяем, не переместился ли матч из результатов в предстоящие (очень маловероятно, но возможно)
+            cursor.execute('DELETE FROM past_matches WHERE id = ?', (match['id'],))
+        
         conn.commit()
         conn.close()
+        logger.info(f"Добавлено новых предстоящих матчей: {new_matches}, обновлено: {updated_matches}")
+        return new_matches
+        
+    def _save_past_matches(self, matches: list) -> int:
+        """Сохраняет результаты матчей в базу данных"""
+        if not matches:
+            return 0
+            
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        
+        new_matches = 0
+        updated_matches = 0
+        
+        for match in matches:
+            # Проверяем, существует ли матч в таблице результатов
+            cursor.execute('SELECT 1 FROM past_matches WHERE id = ?', (match['id'],))
+            exists = cursor.fetchone() is not None
+            
+            if exists:
+                # Обновляем существующий матч
+                cursor.execute('''
+                    UPDATE past_matches 
+                    SET toParse = ?
+                    WHERE id = ?
+                ''', (match['toParse'], match['id']))
+                updated_matches += 1
+            else:
+                # Добавляем новый матч
+                cursor.execute('''
+                    INSERT INTO past_matches (id, url, toParse)
+                    VALUES (?, ?, ?)
+                ''', (match['id'], match['url'], match['toParse']))
+                new_matches += 1
+                
+            # Удаляем матч из предстоящих, если он перешел в результаты
+            cursor.execute('DELETE FROM upcoming_matches WHERE id = ?', (match['id'],))
+        
+        conn.commit()
+        conn.close()
+        logger.info(f"Добавлено новых прошедших матчей: {new_matches}, обновлено: {updated_matches}")
         return new_matches
         
     def collect(self):
         """Собирает данные из всех HTML файлов в папке"""
         if not os.path.exists(self.html_dir):
-            print(f"Папка {self.html_dir} не найдена")
+            logger.error(f"Папка {self.html_dir} не найдена")
             return
+            
+        # Создаем таблицы, если их нет
+        self._create_tables()
             
         # Собираем все HTML файлы matches и results
         for file_name in os.listdir(self.html_dir):
-            if file_name.endswith('.html') and ('matches' in file_name.lower() or 'results' in file_name.lower()):
-                file_path = os.path.join(self.html_dir, file_name)
-                file_type = 'matches' if 'matches' in file_name.lower() else 'results'
-                print(f"Обработка файла {file_type}: {file_name}")
+            if file_name.endswith('.html'):
+                is_matches = 'matches' in file_name.lower()
+                is_results = 'results' in file_name.lower()
                 
-                # Парсим файл
-                matches = self._parse_html_file(file_path)
-                print(f"Найдено матчей: {len(matches)}")
-                
-                # Сохраняем в базу
-                if matches:
-                    new_matches = self._save_to_db(matches)
-                    print(f"Добавлено новых матчей в базу данных: {new_matches}")
+                if is_matches or is_results:
+                    file_path = os.path.join(self.html_dir, file_name)
+                    file_type = 'matches' if is_matches else 'results'
+                    logger.info(f"Обработка файла {file_type}: {file_name}")
                     
-                # Удаляем обработанный файл
-                # os.remove(file_path)
-                # print(f"Файл {file_name} удален")
+                    # Парсим файл
+                    matches = self._parse_html_file(file_path)
+                    logger.info(f"Найдено матчей: {len(matches)}")
+                    
+                    # Сохраняем в соответствующую таблицу
+                    if matches:
+                        if is_matches:
+                            new_matches = self._save_upcoming_matches(matches)
+                            logger.info(f"Обработано предстоящих матчей: {new_matches}")
+                        else:
+                            new_matches = self._save_past_matches(matches)
+                            logger.info(f"Обработано прошедших матчей: {new_matches}")
+                    
+                    # Можно раскомментировать, если нужно удалять обработанные файлы
+                    # os.remove(file_path)
+                    # logger.info(f"Файл {file_name} удален")
 
 if __name__ == "__main__":
+    # Настройка логирования
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+    )
+    
     collector = MatchesCollector()
     collector.collect()
-    print("Collection completed")
+    logger.info("Collection completed")

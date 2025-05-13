@@ -36,6 +36,24 @@ python src/main.py --parse-details
 python src/main.py --parse-details --test
 ```
 
+# Запустить парсер только для прошедших матчей:
+
+```bash
+python src/main.py --parse-details --parse-past
+```
+
+# Запустить парсер только для предстоящих матчей:
+
+```bash
+python src/main.py --parse-details --parse-upcoming
+```
+
+# Запустить парсер для обоих типов матчей:
+
+```bash
+python src/main.py --parse-details --parse-past --parse-upcoming
+```
+
 # Запустить все операции:
 
 ```bash
