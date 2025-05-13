@@ -17,16 +17,6 @@ pip install -r requirements.txt
 python src/check/migrate_db.py
 ```
 
-## Управление данными
-
-# Обновить статус проанализированных матчей:
-
-```bash
-python src/check/update_parsed_matches.py
-```
-
-Скрипт находит все скачанные HTML-файлы матчей в директории storage/html и устанавливает флаг toParse = 0 для них в таблице url_result.
-
 ## Использование
 
 # Запустить только парсер матчей:
@@ -38,14 +28,13 @@ python src/main.py --parse-matches
 # Запустить только парсер результатов:
 
 ```bash
-python src/main.py --parse-results
+python -m src.main --parse-results
 ```
 
 # Запустить только сборщик данных:
 
 ```bash
-python src/main.py --collect
-```
+python -m src.main --collect
 
 # Запустить парсер деталей матчей:
 

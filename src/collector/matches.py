@@ -95,7 +95,7 @@ class MatchesCollector:
                 match_data = {
                     'id': match_id,
                     'url': url,
-                    'toParse': 1  # Для результатов ставим флаг необходимости парсинга
+                    'toParse': 1  # Для новых записей ставим флаг необходимости парсинга
                 }
                 matches.append(match_data)
                 
@@ -206,12 +206,7 @@ class MatchesCollector:
             exists = cursor.fetchone() is not None
             
             if exists:
-                # Обновляем существующий матч
-                cursor.execute('''
-                    UPDATE url_result 
-                    SET toParse = ?
-                    WHERE id = ?
-                ''', (match['toParse'], match['id']))
+                # Считаем как обновленный, но не меняем в базе
                 updated_matches += 1
             else:
                 # Добавляем новый матч
@@ -221,8 +216,8 @@ class MatchesCollector:
                 ''', (match['id'], match['url'], match['toParse']))
                 new_matches += 1
                 
-            # Удаляем матч из предстоящих, если он перешел в результаты
-            cursor.execute('DELETE FROM url_upcoming WHERE id = ?', (match['id'],))
+                # Удаляем матч из предстоящих, если он перешел в результаты
+                cursor.execute('DELETE FROM url_upcoming WHERE id = ?', (match['id'],))
         
         conn.commit()
         conn.close()
