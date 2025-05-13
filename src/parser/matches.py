@@ -10,6 +10,8 @@ from src.parser.base import BaseParser
 from src.config import MATCHES_URL, MATCHES_HTML_FILE, SCREENSHOTS_DIR
 from src.config.selectors import MATCHES, COMMON
 import os
+import time
+import random
 
 class MatchesParser(BaseParser):
     def parse(self):
@@ -48,7 +50,9 @@ class MatchesParser(BaseParser):
                 
                 # Прокручиваем к элементу и кликаем
                 self.driver.execute_script("arguments[0].scrollIntoView(true);", sort_button)
-                self._human_delay(0.5, 1)  # Минимальная задержка
+                
+                # Добавляем задержку между действиями
+                time.sleep(random.uniform(0.5, 1))
                 
                 try:
                     sort_button.click()
@@ -58,7 +62,7 @@ class MatchesParser(BaseParser):
                 self.logger.info("Sort button clicked")
                 
                 # Даем время на обновление страницы
-                self._human_delay(2, 3)
+                time.sleep(random.uniform(2, 3))
                 
                 # Получаем HTML
                 html = self.driver.page_source
