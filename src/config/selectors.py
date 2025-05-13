@@ -35,6 +35,22 @@ TOTAL_STATS_ROW = '.totalstats'
 PLAYER_STATS_CELLS = 'td'
 PLAYER_LINK = 'a'
 
+# Уточненные селекторы для игроков
+PLAYER_CELL = 'td.player-cell'  # Ячейка с именем игрока
+PLAYER_PROFILE_LINK = '.flagAlign a'  # Ссылка на профиль игрока внутри ячейки
+
+# Селекторы для новой структуры таблицы статистики
+STATS_PLAYER_ROW = '.stats-content tr:not(:first-child)'  # Строки с данными игроков (кроме заголовка)
+STATS_TEAM_HEADER = '.stats-content tr:first-child td'    # Строка с названием команды
+STATS_TABLE_COLUMNS = {
+    'player': 0,    # Индекс колонки с игроком
+    'kd': 1,        # Индекс колонки с K-D (убийства-смерти)
+    'plus_minus': 2, # Индекс колонки с +/-
+    'adr': 3,       # Индекс колонки с ADR
+    'kast': 4,      # Индекс колонки с KAST
+    'rating': 5     # Индекс колонки с рейтингом
+}
+
 # Текстовые метки
 MATCH_OVER_TEXT = "Match over"
 

@@ -252,57 +252,259 @@ class MatchDetailsCollector:
             if team2_element:
                 team2_id = self._extract_id_from_url(team2_element.get('href'))
             
-            # Получаем таблицу статистики
-            stats_table = soup.select_one(STATS_TABLE)
-            if not stats_table:
-                logger.warning(f"Таблица статистики не найдена для матча {match_id}")
+            # Ищем контейнер stats-content, содержащий таблицы статистики
+            stats_content = soup.select_one('.stats-content')
+            if not stats_content:
+                logger.warning(f"Контейнер .stats-content не найден для матча {match_id}")
+                
+                # Пробуем найти хотя бы одну таблицу статистики (старый метод)
+                stats_table = soup.select_one(STATS_TABLE)
+                if not stats_table:
+                    logger.warning(f"Таблица статистики не найдена для матча {match_id}")
+                    return players_data
+                
+                # Проверяем, есть ли заголовки в таблице
+                headers = stats_table.select('th')
+                
+                if headers:
+                    # Стандартная таблица с заголовками - используем стандартный метод
+                    return self._parse_player_stats_with_headers(soup, match_id, stats_table, team1_id, team2_id)
+                else:
+                    # Новая структура таблицы без заголовков - используем новый метод
+                    return self._parse_player_stats_without_headers(soup, match_id, stats_table, team1_id, team2_id)
+            
+            # Находим таблицы внутри .stats-content
+            stats_tables = stats_content.select('.table.totalstats, table.totalstats')
+            
+            if not stats_tables:
+                # Если таблицы с классом totalstats не найдены, ищем любые таблицы
+                stats_tables = stats_content.select('table')
+                
+            if not stats_tables:
+                logger.warning(f"Таблицы статистики не найдены в .stats-content для матча {match_id}")
                 return players_data
             
-            # Определяем строки для каждой команды
-            team1_rows = []
-            team2_rows = []
+            logger.info(f"Найдено {len(stats_tables)} таблиц статистики")
             
-            # Флаг для определения, читаем ли мы строки первой или второй команды
-            current_team = 1
-            
-            # Проходим по строкам таблицы
-            for row in stats_table.select('tr'):
-                # Если нашли разделитель команд (строку с .totalstats), меняем текущую команду
-                if row.select_one(TOTAL_STATS_ROW):
-                    current_team = 2
-                    continue
+            # Если найдено несколько таблиц (обычно две - по одной на команду)
+            if len(stats_tables) >= 2:
+                # Получаем названия команд
+                team1_name = None
+                team2_name = None
                 
-                # Пропускаем заголовки
-                if row.select_one('th'):
-                    continue
+                team1_element = soup.select_one(f"{TEAM1_GRADIENT} .teamName")
+                if team1_element:
+                    team1_name = team1_element.text.strip()
+                    logger.info(f"Название первой команды: {team1_name}")
                 
-                # Добавляем строку в соответствующий список
-                if current_team == 1:
-                    team1_rows.append(row)
-                else:
-                    team2_rows.append(row)
+                team2_element = soup.select_one(f"{TEAM2_GRADIENT} .teamName")
+                if team2_element:
+                    team2_name = team2_element.text.strip()
+                    logger.info(f"Название второй команды: {team2_name}")
+                
+                # Обрабатываем первую таблицу (первая команда)
+                team1_rows = stats_tables[0].select('tbody tr')
+                for row in team1_rows:
+                    player_data = self._extract_player_stats_from_new_format(row, match_id, team1_id)
+                    if player_data:
+                        players_data.append(player_data)
+                
+                # Обрабатываем вторую таблицу (вторая команда)
+                team2_rows = stats_tables[1].select('tbody tr')
+                for row in team2_rows:
+                    player_data = self._extract_player_stats_from_new_format(row, match_id, team2_id)
+                    if player_data:
+                        players_data.append(player_data)
+                
+                logger.info(f"Извлечена статистика для {len(players_data)} игроков из обеих команд")
+                return players_data
             
-            # Обрабатываем статистику игроков первой команды
-            for row in team1_rows:
-                player_data = self._extract_player_stats(row, match_id, team1_id)
-                if player_data:
-                    players_data.append(player_data)
+            # Если найдена только одна таблица, используем старую логику
+            stats_table = stats_tables[0]
             
-            # Обрабатываем статистику игроков второй команды
-            for row in team2_rows:
-                player_data = self._extract_player_stats(row, match_id, team2_id)
-                if player_data:
-                    players_data.append(player_data)
+            # Проверяем, есть ли заголовки в таблице
+            headers = stats_table.select('th')
             
-            return players_data
+            if headers:
+                # Стандартная таблица с заголовками - используем стандартный метод
+                return self._parse_player_stats_with_headers(soup, match_id, stats_table, team1_id, team2_id)
+            else:
+                # Новая структура таблицы без заголовков - используем новый метод
+                return self._parse_player_stats_without_headers(soup, match_id, stats_table, team1_id, team2_id)
             
         except Exception as e:
             logger.error(f"Ошибка при парсинге статистики игроков матча {match_id}: {str(e)}")
             return []
     
-    def _extract_player_stats(self, row, match_id, team_id):
+    def _parse_player_stats_without_headers(self, soup, match_id, stats_table, team1_id, team2_id):
         """
-        Извлекает статистику одного игрока из строки таблицы
+        Извлекает статистику игроков из таблицы без заголовков (новый формат HLTV)
+        
+        Args:
+            soup (BeautifulSoup): HTML-документ
+            match_id (int): ID матча
+            stats_table (Tag): Таблица статистики
+            team1_id (int): ID первой команды
+            team2_id (int): ID второй команды
+            
+        Returns:
+            list: Список словарей с данными игроков
+        """
+        players_data = []
+        
+        try:
+            # Получаем названия команд
+            team1_name = None
+            team2_name = None
+            
+            team1_element = soup.select_one(f"{TEAM1_GRADIENT} .teamName")
+            if team1_element:
+                team1_name = team1_element.text.strip()
+                logger.info(f"Название первой команды: {team1_name}")
+            
+            team2_element = soup.select_one(f"{TEAM2_GRADIENT} .teamName")
+            if team2_element:
+                team2_name = team2_element.text.strip()
+                logger.info(f"Название второй команды: {team2_name}")
+            
+            # Получаем все строки таблицы
+            rows = stats_table.select('tr')
+            logger.info(f"Всего строк в таблице: {len(rows)}")
+            
+            # Определяем строки для каждой команды
+            team1_rows = []
+            team2_rows = []
+            
+            # Переменная для отслеживания текущей команды
+            current_team_id = None
+            current_team_name = None
+            
+            # Проходим по строкам таблицы и группируем их по командам
+            for row in rows:
+                # Получаем классы строки
+                row_classes = row.get('class', [])
+                
+                # Получаем ячейки
+                cells = row.select('td')
+                if not cells:
+                    continue
+                    
+                # Если это строка заголовка команды (имеет класс 'header-row')
+                if 'header-row' in row_classes:
+                    # Получаем ссылку на команду в первой ячейке
+                    team_link = cells[0].select_one('a')
+                    if team_link and '/team/' in team_link.get('href', ''):
+                        team_href = team_link.get('href', '')
+                        team_id = self._extract_id_from_url(team_href)
+                        
+                        team_name = team_link.text.strip()
+                        logger.info(f"Найдена строка заголовка команды: {team_name} (ID: {team_id})")
+                        
+                        # Запоминаем текущую команду
+                        current_team_id = team_id
+                        current_team_name = team_name
+                        
+                        if team_id == team1_id:
+                            logger.info(f"Эта таблица содержит статистику первой команды: {team_name}")
+                        elif team_id == team2_id:
+                            logger.info(f"Эта таблица содержит статистику второй команды: {team_name}")
+                        else:
+                            logger.warning(f"Найдена ссылка на неизвестную команду: {team_name} (ID: {team_id})")
+                    
+                    # Эту строку не добавляем в список игроков
+                    continue
+                
+                # Проверяем, содержит ли строка статистику игрока
+                player_link = cells[0].select_one('a')
+                if player_link and ('/player/' in player_link.get('href', '') or '/players/' in player_link.get('href', '')):
+                    # Это строка с игроком
+                    if current_team_id == team1_id:
+                        team1_rows.append(row)
+                    elif current_team_id == team2_id:
+                        team2_rows.append(row)
+                    else:
+                        # Если ID команды не совпадает ни с одной из известных
+                        if current_team_name and team1_name and current_team_name == team1_name:
+                            team1_rows.append(row)
+                        elif current_team_name and team2_name and current_team_name == team2_name:
+                            team2_rows.append(row)
+                        else:
+                            # Если не смогли определить, добавляем в соответствующую команду по порядку
+                            if not team1_rows:
+                                team1_rows.append(row)
+                            else:
+                                team2_rows.append(row)
+            
+            # Логируем результаты
+            logger.info(f"Найдено игроков в первой команде: {len(team1_rows)}")
+            logger.info(f"Найдено игроков во второй команде: {len(team2_rows)}")
+            
+            # На данный момент, похоже, что страница матча содержит статистику только для одной команды
+            # Если мы не нашли данные второй команды, отобразим предупреждение
+            if team1_rows and not team2_rows:
+                logger.info(f"Найдена статистика только для первой команды: {team1_name}")
+            elif team2_rows and not team1_rows:
+                logger.info(f"Найдена статистика только для второй команды: {team2_name}")
+            elif not team1_rows and not team2_rows:
+                logger.warning("Не найдена статистика ни для одной команды")
+            
+            # Обрабатываем статистику игроков первой команды
+            if team1_rows:
+                for row in team1_rows:
+                    player_data = self._extract_player_stats_from_new_format(row, match_id, team1_id)
+                    if player_data:
+                        players_data.append(player_data)
+            
+            # Обрабатываем статистику игроков второй команды
+            if team2_rows:
+                for row in team2_rows:
+                    player_data = self._extract_player_stats_from_new_format(row, match_id, team2_id)
+                    if player_data:
+                        players_data.append(player_data)
+            
+            return players_data
+            
+        except Exception as e:
+            logger.error(f"Ошибка при парсинге статистики игроков (новый формат) матча {match_id}: {str(e)}")
+            return []
+    
+    def _extract_name_and_nickname(self, player_text):
+        """
+        Извлекает полное имя и ник игрока из текста вида "Henrique 'rikz' Waku rikz"
+        
+        Args:
+            player_text (str): Текст с именем и ником игрока
+            
+        Returns:
+            tuple: (full_name, nickname) - полное имя и ник игрока
+        """
+        if not player_text:
+            return None, None
+            
+        # Убираем лишние пробелы
+        player_text = re.sub(r'\s+', ' ', player_text.strip())
+        
+        # Ищем ник в одинарных кавычках
+        nickname_match = re.search(r"'([^']+)'", player_text)
+        
+        if nickname_match:
+            nickname = nickname_match.group(1)
+            # Полное имя - это весь текст до повторения ника в конце (если такое есть)
+            full_name = player_text
+            
+            # Проверяем, повторяется ли ник в конце строки
+            if player_text.endswith(nickname):
+                # Обрезаем повторяющийся ник в конце
+                full_name = player_text[:player_text.rfind(nickname)].strip()
+            
+            return full_name, nickname
+        else:
+            # Если ник не найден в кавычках, возвращаем весь текст как ник
+            return player_text, player_text
+    
+    def _extract_player_stats_from_new_format(self, row, match_id, team_id):
+        """
+        Извлекает статистику одного игрока из строки таблицы нового формата
         
         Args:
             row (Tag): Строка таблицы
@@ -318,6 +520,8 @@ class MatchDetailsCollector:
                 'team_id': team_id,
                 'player_id': None,
                 'player_nickname': None,
+                'fullName': None,
+                'nickName': None,
                 'kills': None,
                 'deaths': None,
                 'kd_ratio': None,
@@ -331,93 +535,386 @@ class MatchDetailsCollector:
             cells = row.select(PLAYER_STATS_CELLS)
             
             # Проверяем количество ячеек
-            if len(cells) < 8:
-                # Проверяем, есть ли хотя бы информация об игроке
-                if len(cells) > 0 and cells[0].select_one(PLAYER_LINK):
-                    # Если есть имя игрока, сохраняем хотя бы его
-                    player_link = cells[0].select_one(PLAYER_LINK)
-                    player_data['player_id'] = self._extract_id_from_url(player_link.get('href'))
-                    # Очищаем имя игрока от переносов строк
-                    player_data['player_nickname'] = re.sub(r'\s+', ' ', player_link.text.strip().replace('\n', ' ')).strip()
-                    
-                    logger.warning(f"Недостаточно данных для полной статистики игрока {player_data['player_nickname']} (матч {match_id})")
-                    
-                    # Заполняем доступные данные
-                    for i, cell in enumerate(cells[1:], 1):
-                        try:
-                            if i == 1 and cell.text.strip():  # kills
-                                player_data['kills'] = int(cell.text.strip())
-                            elif i == 2 and cell.text.strip():  # deaths
-                                player_data['deaths'] = int(cell.text.strip())
-                        except (ValueError, TypeError):
-                            pass
-                    
-                    return player_data
-                else:
-                    logger.warning(f"Недостаточно ячеек в строке статистики игрока для матча {match_id} ({len(cells)} вместо 8)")
-                    return None
+            if len(cells) < 2:
+                logger.warning(f"Недостаточно ячеек в строке ({len(cells)})")
+                return None
             
-            # Имя и ID игрока
-            player_link = cells[0].select_one(PLAYER_LINK)
-            if player_link:
-                player_data['player_id'] = self._extract_id_from_url(player_link.get('href'))
-                # Очищаем имя игрока от переносов строк
-                player_data['player_nickname'] = re.sub(r'\s+', ' ', player_link.text.strip().replace('\n', ' ')).strip()
+            # Индексы колонок по умолчанию
+            column_map = STATS_TABLE_COLUMNS
+            
+            # Имя и ID игрока - из первой ячейки
+            player_cell = cells[column_map['player']]
+            
+            # Пытаемся найти ссылку на профиль игрока с более точным селектором
+            player_profile = player_cell.select_one(PLAYER_PROFILE_LINK)
+            if player_profile:
+                href = player_profile.get('href', '')
+                # Проверяем, что это ссылка на игрока, а не на команду
+                if '/player/' in href or '/players/' in href:
+                    player_data['player_id'] = self._extract_id_from_url(href)
+                    player_nickname_text = re.sub(r'\s+', ' ', player_profile.text.strip().replace('\n', ' ')).strip()
+                    player_data['player_nickname'] = player_nickname_text
+                    
+                    # Извлекаем полное имя и ник игрока
+                    full_name, nickname = self._extract_name_and_nickname(player_nickname_text)
+                    player_data['fullName'] = full_name
+                    player_data['nickName'] = nickname
+                    
+                    logger.debug(f"Найден игрок: {player_data['player_nickname']} (ID: {player_data['player_id']})")
+                else:
+                    logger.warning(f"Найдена ссылка не на игрока: {href}")
             else:
-                # Если нет ссылки на игрока, пытаемся получить хотя бы текст
-                player_name = cells[0].text.strip()
-                if player_name:
-                    # Очищаем имя игрока от переносов строк
-                    player_data['player_nickname'] = re.sub(r'\s+', ' ', player_name.replace('\n', ' ')).strip()
-                    logger.warning(f"Не найдена ссылка на профиль игрока '{player_data['player_nickname']}' (матч {match_id})")
+                # Пробуем стандартный селектор, если уточненный не сработал
+                player_link = player_cell.select_one(PLAYER_LINK)
+                if player_link and ('/player/' in player_link.get('href', '') or '/players/' in player_link.get('href', '')):
+                    player_data['player_id'] = self._extract_id_from_url(player_link.get('href'))
+                    player_nickname_text = re.sub(r'\s+', ' ', player_link.text.strip().replace('\n', ' ')).strip()
+                    player_data['player_nickname'] = player_nickname_text
+                    
+                    # Извлекаем полное имя и ник игрока
+                    full_name, nickname = self._extract_name_and_nickname(player_nickname_text)
+                    player_data['fullName'] = full_name
+                    player_data['nickName'] = nickname
                 else:
-                    logger.warning(f"Не найдено имя игрока в матче {match_id}")
-                    return None
+                    # Если нет ссылки на игрока, пытаемся получить хотя бы текст
+                    player_name = player_cell.text.strip()
+                    if player_name:
+                        player_nickname_text = re.sub(r'\s+', ' ', player_name.replace('\n', ' ')).strip()
+                        player_data['player_nickname'] = player_nickname_text
+                        
+                        # Извлекаем полное имя и ник игрока
+                        full_name, nickname = self._extract_name_and_nickname(player_nickname_text)
+                        player_data['fullName'] = full_name
+                        player_data['nickName'] = nickname
+                    else:
+                        logger.warning(f"Не найдено имя игрока в матче {match_id}")
+                        return None
             
-            # Статистика - с обработкой ошибок для каждого поля
-            try:
-                if cells[1].text.strip():
-                    player_data['kills'] = int(cells[1].text.strip())
-            except (ValueError, IndexError, TypeError):
-                logger.debug(f"Не удалось извлечь количество убийств для игрока {player_data['player_nickname']}")
+            # Извлекаем K-D (убийства-смерти)
+            if column_map['kd'] < len(cells):
+                kd_text = cells[column_map['kd']].text.strip()
+                if kd_text and '-' in kd_text:
+                    kd_parts = kd_text.split('-')
+                    if len(kd_parts) == 2:
+                        try:
+                            player_data['kills'] = int(kd_parts[0].strip())
+                            player_data['deaths'] = int(kd_parts[1].strip())
+                            # Рассчитываем K/D соотношение
+                            if player_data['deaths'] > 0:
+                                player_data['kd_ratio'] = round(player_data['kills'] / player_data['deaths'], 2)
+                        except ValueError:
+                            logger.debug(f"Не удалось извлечь убийства/смерти из K-D: {kd_text}")
+            
+            # Извлекаем +/-
+            if column_map['plus_minus'] < len(cells):
+                pm_text = cells[column_map['plus_minus']].text.strip()
+                if pm_text:
+                    try:
+                        if pm_text.startswith('+'):
+                            player_data['plus_minus'] = int(pm_text[1:])
+                        elif pm_text.startswith('-'):
+                            player_data['plus_minus'] = -int(pm_text[1:])
+                        else:
+                            player_data['plus_minus'] = int(pm_text)
+                    except ValueError:
+                        logger.debug(f"Не удалось извлечь +/- значение: {pm_text}")
+            
+            # Извлекаем ADR
+            if column_map['adr'] < len(cells):
+                adr_text = cells[column_map['adr']].text.strip()
+                if adr_text:
+                    try:
+                        player_data['adr'] = float(adr_text)
+                    except ValueError:
+                        logger.debug(f"Не удалось извлечь ADR: {adr_text}")
+            
+            # Извлекаем KAST
+            if column_map['kast'] < len(cells):
+                kast_text = cells[column_map['kast']].text.strip()
+                if kast_text:
+                    try:
+                        # KAST может быть в процентах
+                        kast_value = kast_text.replace('%', '')
+                        player_data['kast'] = float(kast_value) / 100 if '%' in kast_text else float(kast_value)
+                    except ValueError:
+                        logger.debug(f"Не удалось извлечь KAST: {kast_text}")
+            
+            # Извлекаем Rating
+            if 'rating' in column_map and column_map['rating'] < len(cells):
+                rating_text = cells[column_map['rating']].text.strip()
+                if rating_text:
+                    try:
+                        player_data['rating'] = float(rating_text)
+                    except ValueError:
+                        logger.debug(f"Не удалось извлечь рейтинг: {rating_text}")
+            
+            # Проверка на минимально необходимые данные
+            if player_data['player_nickname'] is not None and player_data['kills'] is not None:
+                return player_data
+            else:
+                logger.warning(f"Недостаточно данных об игроке в матче {match_id}: {player_data['player_nickname']}")
+                return None
+            
+        except Exception as e:
+            logger.error(f"Ошибка при извлечении статистики игрока в матче {match_id}: {str(e)}")
+            return None
+    
+    def _parse_player_stats_with_headers(self, soup, match_id, stats_table, team1_id, team2_id):
+        """
+        Извлекает статистику игроков из таблицы с заголовками (старый формат HLTV)
+        
+        Args:
+            soup (BeautifulSoup): HTML-документ
+            match_id (int): ID матча
+            stats_table (Tag): Таблица статистики
+            team1_id (int): ID первой команды
+            team2_id (int): ID второй команды
+            
+        Returns:
+            list: Список словарей с данными игроков
+        """
+        players_data = []
+        
+        try:
+            # Анализируем структуру таблицы для определения колонок
+            column_map = self._analyze_table_structure(stats_table)
+            if not column_map:
+                logger.warning(f"Не удалось определить структуру таблицы для матча {match_id}")
+                return players_data
                 
-            try:
-                if cells[2].text.strip():
-                    player_data['deaths'] = int(cells[2].text.strip())
-            except (ValueError, IndexError, TypeError):
-                logger.debug(f"Не удалось извлечь количество смертей для игрока {player_data['player_nickname']}")
+            logger.info(f"Определена структура таблицы: {column_map}")
+            
+            # Определяем строки для каждой команды
+            team1_rows = []
+            team2_rows = []
+            
+            # Флаг для определения, читаем ли мы строки первой или второй команды
+            current_team = 1
+            
+            # Проходим по строкам таблицы
+            for row in stats_table.select('tr'):
+                # Если нашли разделитель команд (строку с .totalstats), меняем текущую команду
+                if row.select_one(TOTAL_STATS_ROW) or 'totalstats' in row.get('class', []):
+                    current_team = 2
+                    continue
                 
-            try:
-                if cells[3].text.strip():
-                    player_data['kd_ratio'] = float(cells[3].text.strip())
-            except (ValueError, IndexError, TypeError):
-                logger.debug(f"Не удалось извлечь K/D для игрока {player_data['player_nickname']}")
+                # Пропускаем заголовки
+                if row.select_one('th'):
+                    continue
                 
-            try:
-                if cells[4].text.strip():
-                    player_data['plus_minus'] = int(cells[4].text.strip())
-            except (ValueError, IndexError, TypeError):
-                logger.debug(f"Не удалось извлечь +/- для игрока {player_data['player_nickname']}")
+                # Добавляем строку в соответствующий список
+                if current_team == 1:
+                    team1_rows.append(row)
+                else:
+                    team2_rows.append(row)
+            
+            # Обрабатываем статистику игроков первой команды
+            for row in team1_rows:
+                player_data = self._extract_player_stats(row, match_id, team1_id, column_map)
+                if player_data:
+                    players_data.append(player_data)
+            
+            # Обрабатываем статистику игроков второй команды
+            for row in team2_rows:
+                player_data = self._extract_player_stats(row, match_id, team2_id, column_map)
+                if player_data:
+                    players_data.append(player_data)
+            
+            return players_data
+            
+        except Exception as e:
+            logger.error(f"Ошибка при парсинге статистики игроков матча {match_id}: {str(e)}")
+            return []
+    
+    def _analyze_table_structure(self, stats_table):
+        """
+        Анализирует структуру таблицы статистики для определения порядка колонок
+        
+        Args:
+            stats_table: Таблица со статистикой
+            
+        Returns:
+            dict: Маппинг колонок на их индексы
+        """
+        # Ищем заголовки таблицы
+        headers = stats_table.select('th')
+        if not headers:
+            logger.warning("Заголовки таблицы не найдены")
+            return None
+        
+        # Определяем индексы колонок по заголовкам
+        column_map = {}
+        for i, header in enumerate(headers):
+            header_text = header.text.strip().lower()
+            
+            if header_text == 'player' or not header_text:
+                column_map['player'] = i
+            elif header_text == 'k' or header_text == 'kills':
+                column_map['kills'] = i
+            elif header_text == 'd' or header_text == 'deaths':
+                column_map['deaths'] = i
+            elif header_text == '+/-' or header_text == 'plus_minus':
+                column_map['plus_minus'] = i
+            elif header_text == 'adr':
+                column_map['adr'] = i
+            elif header_text == 'kast':
+                column_map['kast'] = i
+            elif header_text == 'rating' or header_text == 'rating 2.0':
+                column_map['rating'] = i
+            elif header_text == 'k/d' or header_text == 'kd':
+                column_map['kd_ratio'] = i
+        
+        # Если не нашли некоторые колонки, используем предполагаемые индексы
+        if 'player' not in column_map:
+            column_map['player'] = 0
+        if 'kills' not in column_map and len(headers) > 1:
+            column_map['kills'] = 1
+        if 'deaths' not in column_map and len(headers) > 2:
+            column_map['deaths'] = 2
+        if 'kd_ratio' not in column_map and len(headers) > 3:
+            column_map['kd_ratio'] = 3
+        if 'plus_minus' not in column_map and len(headers) > 4:
+            column_map['plus_minus'] = 4
+        if 'adr' not in column_map and len(headers) > 5:
+            column_map['adr'] = 5
+        if 'kast' not in column_map and len(headers) > 6:
+            column_map['kast'] = 6
+        if 'rating' not in column_map and len(headers) > 7:
+            column_map['rating'] = 7
+            
+        return column_map
+    
+    def _extract_player_stats(self, row, match_id, team_id, column_map):
+        """
+        Извлекает статистику одного игрока из строки таблицы с учетом карты колонок (для старого формата)
+        
+        Args:
+            row (Tag): Строка таблицы
+            match_id (int): ID матча
+            team_id (int): ID команды
+            column_map (dict): Маппинг колонок на их индексы
+            
+        Returns:
+            dict: Словарь с данными игрока или None в случае ошибки
+        """
+        try:
+            player_data = {
+                'match_id': match_id,
+                'team_id': team_id,
+                'player_id': None,
+                'player_nickname': None,
+                'fullName': None,
+                'nickName': None,
+                'kills': None,
+                'deaths': None,
+                'kd_ratio': None,
+                'plus_minus': None,
+                'adr': None,
+                'kast': None,
+                'rating': None
+            }
+            
+            # Извлекаем данные игрока
+            cells = row.select(PLAYER_STATS_CELLS)
+            
+            # Проверяем количество ячеек
+            if len(cells) < 2:
+                logger.warning(f"Недостаточно ячеек в строке ({len(cells)})")
+                return None
+            
+            # Индекс ячейки с именем игрока
+            player_index = column_map.get('player', 0)
+            if player_index >= len(cells):
+                player_index = 0
+            
+            # Получаем ячейку с именем игрока
+            player_cell = cells[player_index]
+            
+            # Проверяем наличие специального класса для ячейки игрока
+            if player_cell.select_one(PLAYER_CELL):
+                player_cell = player_cell.select_one(PLAYER_CELL)
+            
+            # Пытаемся найти ссылку на профиль игрока с более точным селектором
+            player_profile = player_cell.select_one(PLAYER_PROFILE_LINK)
+            if player_profile:
+                href = player_profile.get('href', '')
+                # Проверяем, что это ссылка на игрока, а не на команду
+                if '/player/' in href or '/players/' in href:
+                    player_data['player_id'] = self._extract_id_from_url(href)
+                    player_nickname_text = re.sub(r'\s+', ' ', player_profile.text.strip().replace('\n', ' ')).strip()
+                    player_data['player_nickname'] = player_nickname_text
+                    
+                    # Извлекаем полное имя и ник игрока
+                    full_name, nickname = self._extract_name_and_nickname(player_nickname_text)
+                    player_data['fullName'] = full_name
+                    player_data['nickName'] = nickname
+                    
+                    logger.debug(f"Найден игрок: {player_data['player_nickname']} (ID: {player_data['player_id']})")
+                else:
+                    logger.warning(f"Найдена ссылка не на игрока: {href}")
+            else:
+                # Пробуем стандартный селектор, если уточненный не сработал
+                player_link = player_cell.select_one(PLAYER_LINK)
+                if player_link and ('/player/' in player_link.get('href', '') or '/players/' in player_link.get('href', '')):
+                    player_data['player_id'] = self._extract_id_from_url(player_link.get('href'))
+                    player_nickname_text = re.sub(r'\s+', ' ', player_link.text.strip().replace('\n', ' ')).strip()
+                    player_data['player_nickname'] = player_nickname_text
+                    
+                    # Извлекаем полное имя и ник игрока
+                    full_name, nickname = self._extract_name_and_nickname(player_nickname_text)
+                    player_data['fullName'] = full_name
+                    player_data['nickName'] = nickname
+                else:
+                    # Если нет ссылки на игрока, пытаемся получить хотя бы текст
+                    player_name = player_cell.text.strip()
+                    if player_name:
+                        player_nickname_text = re.sub(r'\s+', ' ', player_name.replace('\n', ' ')).strip()
+                        player_data['player_nickname'] = player_nickname_text
+                        
+                        # Извлекаем полное имя и ник игрока
+                        full_name, nickname = self._extract_name_and_nickname(player_nickname_text)
+                        player_data['fullName'] = full_name
+                        player_data['nickName'] = nickname
+                    else:
+                        logger.warning(f"Не найдено имя игрока в матче {match_id}")
+                        return None
+            
+            # Извлекаем статистику по карте колонок
+            for stat, index in column_map.items():
+                if stat == 'player':
+                    continue  # Уже обработали имя игрока
                 
-            try:
-                if cells[5].text.strip():
-                    player_data['adr'] = float(cells[5].text.strip())
-            except (ValueError, IndexError, TypeError):
-                logger.debug(f"Не удалось извлечь ADR для игрока {player_data['player_nickname']}")
-                
-            try:
-                if len(cells) > 6 and cells[6].text.strip():
-                    # KAST (может быть в процентах)
-                    kast_text = cells[6].text.strip().replace('%', '')
-                    player_data['kast'] = float(kast_text) / 100 if '%' in cells[6].text else float(kast_text)
-            except (ValueError, IndexError, TypeError):
-                logger.debug(f"Не удалось извлечь KAST для игрока {player_data['player_nickname']}")
-                
-            try:
-                if len(cells) > 7 and cells[7].text.strip():
-                    player_data['rating'] = float(cells[7].text.strip())
-            except (ValueError, IndexError, TypeError):
-                logger.debug(f"Не удалось извлечь рейтинг для игрока {player_data['player_nickname']}")
+                if index < len(cells):
+                    try:
+                        cell_value = cells[index].text.strip()
+                        
+                        if not cell_value:
+                            continue
+                        
+                        if stat == 'kills':
+                            player_data['kills'] = int(cell_value)
+                        elif stat == 'deaths':
+                            player_data['deaths'] = int(cell_value)
+                        elif stat == 'kd_ratio':
+                            player_data['kd_ratio'] = float(cell_value)
+                        elif stat == 'plus_minus':
+                            # Обрабатываем различные форматы +/-
+                            if cell_value.startswith('+'):
+                                player_data['plus_minus'] = int(cell_value[1:])
+                            elif cell_value.startswith('-'):
+                                player_data['plus_minus'] = -int(cell_value[1:])
+                            else:
+                                player_data['plus_minus'] = int(cell_value)
+                        elif stat == 'adr':
+                            player_data['adr'] = float(cell_value)
+                        elif stat == 'kast':
+                            # KAST может быть в формате процентов
+                            kast_value = cell_value.replace('%', '')
+                            player_data['kast'] = float(kast_value) / 100 if '%' in cell_value else float(kast_value)
+                        elif stat == 'rating':
+                            player_data['rating'] = float(cell_value)
+                    except (ValueError, TypeError) as e:
+                        logger.debug(f"Не удалось извлечь {stat} для игрока {player_data['player_nickname']}: {str(e)}")
             
             # Проверка на минимально необходимые данные
             if player_data['player_nickname'] is not None:
@@ -551,14 +1048,17 @@ class MatchDetailsCollector:
                 cursor.execute('''
                     INSERT INTO player_stats (
                     match_id, team_id, player_id, player_nickname,
+                    fullName, nickName,
                     kills, deaths, kd_ratio, plus_minus,
                     adr, kast, rating
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ''', (
                     player_data['match_id'],
                     player_data['team_id'],
                     player_data['player_id'],
                     player_data['player_nickname'],
+                    player_data['fullName'],
+                    player_data['nickName'],
                     player_data['kills'],
                     player_data['deaths'],
                     player_data['kd_ratio'],
@@ -593,7 +1093,8 @@ class MatchDetailsCollector:
             'processed_files': 0,
             'successful_match_details': 0,
             'successful_player_stats': 0,
-            'errors': 0
+            'errors': 0,
+            'incomplete_stats': 0  # Матчи, в которых статистика есть только для одной команды
         }
         
         # Проверяем существование директории
@@ -638,7 +1139,17 @@ class MatchDetailsCollector:
                 
                 # Извлекаем статистику игроков
                 players_data = self._parse_player_stats(soup, match_id)
+                
+                # Проверяем, что у нас есть статистика для обеих команд
                 if players_data:
+                    # Получаем team_id из данных игроков
+                    team_ids = set(player['team_id'] for player in players_data if player['team_id'] is not None)
+                    
+                    # Если данные только по одной команде
+                    if len(team_ids) == 1:
+                        logger.warning(f"Матч {match_id}: найдена статистика только для одной команды (ID: {list(team_ids)[0]})")
+                        stats['incomplete_stats'] += 1
+                    
                     # Сохраняем статистику игроков
                     if self._save_player_stats(players_data):
                         stats['successful_player_stats'] += 1
