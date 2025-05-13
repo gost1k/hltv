@@ -16,7 +16,10 @@ class ResultsParser(BaseParser):
         def _parse_page():
             self.driver.get(RESULTS_URL)
             self._wait_for_page_load()  # Ждем полной загрузки страницы
-            return self.driver.page_source
+            html = self.driver.page_source
+            self.logger.info(f"HTML length: {len(html)}")
+            self.logger.info(f"HTML preview: {html[:500].replace(chr(10), ' ').replace(chr(13), ' ')}")
+            return html
 
         # Получаем страницу с повторными попытками
         content = self._retry_with_delay(_parse_page)

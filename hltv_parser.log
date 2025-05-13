@@ -1366,3 +1366,139 @@ Stacktrace:
 2025-05-13 17:27:36,707 - MatchesParser - INFO - Cookies saved successfully
 2025-05-13 17:27:36,724 - MatchesParser - INFO - Matches page saved to: storage/html/matches.html
 2025-05-13 17:27:36,725 - src.main - INFO - Matches page saved to: storage/html/matches.html
+2025-05-13 17:30:50,359 - __main__ - INFO - HLTV Project Started
+2025-05-13 17:30:50,359 - src.database - INFO - Database initialized successfully
+2025-05-13 17:30:50,359 - __main__ - INFO - Database initialized
+2025-05-13 17:30:50,360 - __main__ - INFO - Starting results page parsing...
+2025-05-13 17:30:50,360 - WDM - INFO - ====== WebDriver manager ======
+2025-05-13 17:30:51,141 - WDM - INFO - Get LATEST chromedriver version for google-chrome
+2025-05-13 17:30:51,269 - WDM - INFO - Get LATEST chromedriver version for google-chrome
+2025-05-13 17:30:51,357 - WDM - INFO - Driver [C:\Users\99865\.wdm\drivers\chromedriver\win64\136.0.7103.92\chromedriver-win32/chromedriver.exe] found in cache
+2025-05-13 17:30:52,644 - ResultsParser - INFO - Chrome driver initialized successfully
+2025-05-13 17:30:52,645 - ResultsParser - INFO - Starting results page parsing
+2025-05-13 17:30:52,658 - ResultsParser - WARNING - Failed to add cookie: Message: invalid cookie domain
+  (Session info: chrome=136.0.7103.93)
+Stacktrace:
+	GetHandleVerifier [0x010AFC53+61635]
+	GetHandleVerifier [0x010AFC94+61700]
+	(No symbol) [0x00ED044E]
+	(No symbol) [0x00F6F100]
+	(No symbol) [0x00F3D29C]
+	(No symbol) [0x00F5E61B]
+	(No symbol) [0x00F3D096]
+	(No symbol) [0x00F0C840]
+	(No symbol) [0x00F0D6A4]
+	GetHandleVerifier [0x01334573+2701795]
+	GetHandleVerifier [0x0132FCF6+2683238]
+	GetHandleVerifier [0x0134AA3E+2793134]
+	GetHandleVerifier [0x010C6915+155013]
+	GetHandleVerifier [0x010CCFFD+181357]
+	GetHandleVerifier [0x010B74A8+92440]
+	GetHandleVerifier [0x010B7650+92864]
+	GetHandleVerifier [0x010A2040+5296]
+	BaseThreadInitThunk [0x767C5D49+25]
+	RtlInitializeExceptionChain [0x77C0CFFB+107]
+	RtlGetAppContainerNamedObjectPath [0x77C0CF81+561]
+
+2025-05-13 17:30:52,662 - ResultsParser - WARNING - Failed to add cookie: Message: invalid cookie domain
+  (Session info: chrome=136.0.7103.93)
+Stacktrace:
+	GetHandleVerifier [0x010AFC53+61635]
+	GetHandleVerifier [0x010AFC94+61700]
+	(No symbol) [0x00ED044E]
+	(No symbol) [0x00F6F100]
+	(No symbol) [0x00F3D29C]
+	(No symbol) [0x00F5E61B]
+	(No symbol) [0x00F3D096]
+	(No symbol) [0x00F0C840]
+	(No symbol) [0x00F0D6A4]
+	GetHandleVerifier [0x01334573+2701795]
+	GetHandleVerifier [0x0132FCF6+2683238]
+	GetHandleVerifier [0x0134AA3E+2793134]
+	GetHandleVerifier [0x010C6915+155013]
+	GetHandleVerifier [0x010CCFFD+181357]
+	GetHandleVerifier [0x010B74A8+92440]
+	GetHandleVerifier [0x010B7650+92864]
+	GetHandleVerifier [0x010A2040+5296]
+	BaseThreadInitThunk [0x767C5D49+25]
+	RtlInitializeExceptionChain [0x77C0CFFB+107]
+	RtlGetAppContainerNamedObjectPath [0x77C0CF81+561]
+
+2025-05-13 17:30:52,666 - ResultsParser - WARNING - Failed to add cookie: Message: invalid cookie domain
+  (Session info: chrome=136.0.7103.93)
+Stacktrace:
+	GetHandleVerifier [0x010AFC53+61635]
+	GetHandleVerifier [0x010AFC94+61700]
+	(No symbol) [0x00ED044E]
+	(No symbol) [0x00F6F100]
+	(No symbol) [0x00F3D29C]
+	(No symbol) [0x00F5E61B]
+	(No symbol) [0x00F3D096]
+	(No symbol) [0x00F0C840]
+	(No symbol) [0x00F0D6A4]
+	GetHandleVerifier [0x01334573+2701795]
+	GetHandleVerifier [0x0132FCF6+2683238]
+	GetHandleVerifier [0x0134AA3E+2793134]
+	GetHandleVerifier [0x010C6915+155013]
+	GetHandleVerifier [0x010CCFFD+181357]
+	GetHandleVerifier [0x010B74A8+92440]
+	GetHandleVerifier [0x010B7650+92864]
+	GetHandleVerifier [0x010A2040+5296]
+	BaseThreadInitThunk [0x767C5D49+25]
+	RtlInitializeExceptionChain [0x77C0CFFB+107]
+	RtlGetAppContainerNamedObjectPath [0x77C0CF81+561]
+
+2025-05-13 17:30:52,671 - ResultsParser - WARNING - Failed to add cookie: Message: invalid cookie domain
+  (Session info: chrome=136.0.7103.93)
+Stacktrace:
+	GetHandleVerifier [0x010AFC53+61635]
+	GetHandleVerifier [0x010AFC94+61700]
+	(No symbol) [0x00ED044E]
+	(No symbol) [0x00F6F100]
+	(No symbol) [0x00F3D29C]
+	(No symbol) [0x00F5E61B]
+	(No symbol) [0x00F3D096]
+	(No symbol) [0x00F0C840]
+	(No symbol) [0x00F0D6A4]
+	GetHandleVerifier [0x01334573+2701795]
+	GetHandleVerifier [0x0132FCF6+2683238]
+	GetHandleVerifier [0x0134AA3E+2793134]
+	GetHandleVerifier [0x010C6915+155013]
+	GetHandleVerifier [0x010CCFFD+181357]
+	GetHandleVerifier [0x010B74A8+92440]
+	GetHandleVerifier [0x010B7650+92864]
+	GetHandleVerifier [0x010A2040+5296]
+	BaseThreadInitThunk [0x767C5D49+25]
+	RtlInitializeExceptionChain [0x77C0CFFB+107]
+	RtlGetAppContainerNamedObjectPath [0x77C0CF81+561]
+
+2025-05-13 17:30:52,674 - ResultsParser - WARNING - Failed to add cookie: Message: invalid cookie domain
+  (Session info: chrome=136.0.7103.93)
+Stacktrace:
+	GetHandleVerifier [0x010AFC53+61635]
+	GetHandleVerifier [0x010AFC94+61700]
+	(No symbol) [0x00ED044E]
+	(No symbol) [0x00F6F100]
+	(No symbol) [0x00F3D29C]
+	(No symbol) [0x00F5E61B]
+	(No symbol) [0x00F3D096]
+	(No symbol) [0x00F0C840]
+	(No symbol) [0x00F0D6A4]
+	GetHandleVerifier [0x01334573+2701795]
+	GetHandleVerifier [0x0132FCF6+2683238]
+	GetHandleVerifier [0x0134AA3E+2793134]
+	GetHandleVerifier [0x010C6915+155013]
+	GetHandleVerifier [0x010CCFFD+181357]
+	GetHandleVerifier [0x010B74A8+92440]
+	GetHandleVerifier [0x010B7650+92864]
+	GetHandleVerifier [0x010A2040+5296]
+	BaseThreadInitThunk [0x767C5D49+25]
+	RtlInitializeExceptionChain [0x77C0CFFB+107]
+	RtlGetAppContainerNamedObjectPath [0x77C0CF81+561]
+
+2025-05-13 17:30:52,675 - ResultsParser - INFO - Cookies loaded successfully
+2025-05-13 17:31:01,434 - ResultsParser - INFO - HTML length: 5607726
+2025-05-13 17:31:01,434 - ResultsParser - INFO - HTML preview: <html lang="en" data-client-country-iso="RU" data-impression-tracking-endpoint="https://ncuxt.hltv.org" data-bc-content-allowed="false" class="no-offtopic"><!--         --Worker debug info--          Ads API URL from origin: https://www.hltv.org/api/ads/rendered/[%7B%22key%22:%7B%22id%22:%22page%22%7D,%22value%22:%7B%22id%22:%22Unspecified%22%7D%7D]         Modified Ads API URL: https://www.hltv.org/api/ads/rendered/%5B%7B%22key%22%3A%7B%22id%22%3A%22page%22%7D%2C%22value%22%3A%7B%22id%22%3A%22U
+2025-05-13 17:31:01,439 - ResultsParser - INFO - Cookies saved successfully
+2025-05-13 17:31:01,452 - ResultsParser - INFO - Results page saved to: storage/html/results.html
+2025-05-13 17:31:01,453 - __main__ - INFO - Results page saved to: storage/html/results.html
