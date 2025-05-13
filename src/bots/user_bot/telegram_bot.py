@@ -146,6 +146,8 @@ class HLTVStatsBot:
             await self.show_completed_matches(update, context)
         elif message_text == MENU_UPCOMING_MATCHES:
             await self.show_upcoming_matches(update, context)
+        elif message_text == "За сегодня":
+            await self.send_today_stats(update, context)
         elif message_text == "За вчера":
             await self.show_matches_for_period(update, context, 1)
         elif message_text == "За 3 дня":
@@ -168,6 +170,7 @@ class HLTVStatsBot:
         """
         # Показываем меню выбора периода матчей
         keyboard = [
+            [KeyboardButton("За сегодня")],
             [KeyboardButton("За вчера")],
             [KeyboardButton("За 3 дня")],
             [KeyboardButton("За неделю")],
