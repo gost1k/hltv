@@ -58,7 +58,8 @@ class HLTVStatsBot:
         # Создаем клавиатуру с кнопками меню
         self.menu_keyboard = [
             [KeyboardButton(MENU_COMPLETED_MATCHES)],
-            [KeyboardButton(MENU_UPCOMING_MATCHES)]
+            [KeyboardButton(MENU_UPCOMING_MATCHES)],
+            [KeyboardButton("Матчи за день")]
         ]
         self.markup = ReplyKeyboardMarkup(self.menu_keyboard, resize_keyboard=True)
         
@@ -156,12 +157,18 @@ class HLTVStatsBot:
             await self.show_events_list(update, context)
         elif message_text == "Назад":
             await self.show_menu(update, context)
+        elif message_text == "Матчи за день":
+            await self.show_last_day_matches_menu(update, context)
+        elif 'match_mapping' in context.user_data and message_text in context.user_data['match_mapping']:
+            # Если текст сообщения совпадает с названием матча в нашем словаре
+            match_id = context.user_data['match_mapping'][message_text]
+            await self.show_match_details(update, context, match_id)
         elif 'event_mapping' in context.user_data and message_text in context.user_data['event_mapping']:
             # Если текст сообщения совпадает с названием события в нашем словаре
             event_id = context.user_data['event_mapping'][message_text]
             await self.show_matches_for_event(update, context, event_id)
         elif "(" in message_text and ")" in message_text:
-            # Обработка запроса статистики с ID в скобках
+            # Обработка запроса статистики с ID в скобках (оставляем для обратной совместимости)
             try:
                 # Извлекаем ID матча из скобок
                 match_id_text = message_text.split("(")[-1].split(")")[0].strip()
@@ -169,7 +176,7 @@ class HLTVStatsBot:
                 await self.show_match_details(update, context, match_id)
             except (ValueError, IndexError):
                 await update.message.reply_text(
-                    "Не удалось определить ID матча. Пожалуйста, скопируйте и отправьте код (ID) рядом с нужным матчем.",
+                    "Не удалось определить ID матча. Пожалуйста, используйте меню для выбора матча.",
                     reply_markup=self.markup
                 )
         else:
@@ -381,18 +388,16 @@ class HLTVStatsBot:
                 # Выделяем победителя
                 if team1_score > team2_score:
                     team1_name = f"<b>{team1_name}</b>"
-                    team2_name = f"{team2_name}"
                 elif team2_score > team1_score:
-                    team1_name = f"{team1_name}"
                     team2_name = f"<b>{team2_name}</b>"
                 
                 # Формируем строку результата
-                message += f"• <code>{team1_name}</code> {team1_score} : {team2_score} <code>{team2_name}</code> <code>({match_id})</code>\n"
+                message += f"• <code>{team1_name}</code> {team1_score} : {team2_score} <code>{team2_name}</code>\n"
             
             # Добавляем разделитель между событиями
             message += "\n"
         
-        message += "Скопируйте и отправьте <code>(ID)</code>, чтобы увидеть подробную статистику игроков.\n"
+        message += "Используйте меню 'Матчи за день' для просмотра подробной статистики по матчам.\n"
         
         return message
     
@@ -725,6 +730,85 @@ class HLTVStatsBot:
             logger.error(f"Ошибка при получении данных о матче {match_id}: {str(e)}")
             await update.message.reply_text(
                 "Произошла ошибка при получении данных о матче.",
+                reply_markup=self.markup
+            )
+    
+    async def show_last_day_matches_menu(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """
+        Показывает меню матчей за последний день для выбора конкретного матча
+        """
+        # Получаем дату вчерашнего дня
+        today = datetime.now()
+        yesterday = today - timedelta(days=1)
+        start_timestamp = datetime(yesterday.year, yesterday.month, yesterday.day, 0, 0, 0).timestamp()
+        end_timestamp = datetime(yesterday.year, yesterday.month, yesterday.day, 23, 59, 59).timestamp()
+        
+        try:
+            conn = sqlite3.connect(self.db_path)
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            
+            # Получаем матчи за вчерашний день
+            cursor.execute('''
+                SELECT 
+                    match_id, datetime, 
+                    team1_id, team1_name, team1_score, 
+                    team2_id, team2_name, team2_score,
+                    event_name
+                FROM match_details
+                WHERE datetime BETWEEN ? AND ?
+                AND status = 'completed'
+                ORDER BY datetime DESC
+            ''', (start_timestamp, end_timestamp))
+            
+            matches = cursor.fetchall()
+            conn.close()
+            
+            if not matches:
+                await update.message.reply_text(
+                    f"Нет данных о завершенных матчах за {yesterday.strftime('%d.%m.%Y')}.",
+                    reply_markup=self.markup
+                )
+                return
+            
+            # Создаем кнопки для каждого матча
+            keyboard = []
+            
+            # Сохраняем соответствие между названием матча и его ID в контексте пользователя
+            if 'match_mapping' not in context.user_data:
+                context.user_data['match_mapping'] = {}
+            
+            for match in matches:
+                team1_name = match['team1_name'].split()[0]
+                team2_name = match['team2_name'].split()[0]
+                team1_score = match['team1_score']
+                team2_score = match['team2_score']
+                match_id = match['match_id']
+                event_name = match['event_name']
+                
+                # Создаем текст кнопки
+                match_text = f"{team1_name} {team1_score}:{team2_score} {team2_name}"
+                
+                # Сохраняем соответствие
+                context.user_data['match_mapping'][match_text] = match_id
+                
+                # Добавляем кнопку
+                keyboard.append([KeyboardButton(match_text)])
+            
+            # Добавляем кнопку "Назад"
+            keyboard.append([KeyboardButton("Назад")])
+            
+            reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+            
+            await update.message.reply_text(
+                f"Матчи за {yesterday.strftime('%d.%m.%Y')}. Выберите матч для просмотра подробной статистики:",
+                reply_markup=reply_markup
+            )
+            
+        except Exception as e:
+            logger.error(f"Ошибка при получении списка матчей: {str(e)}")
+            await update.message.reply_text(
+                "Произошла ошибка при получении списка матчей.",
                 reply_markup=self.markup
             )
     
