@@ -1,9 +1,0 @@
-{
-  "token": "YOUR_DEV_BOT_TOKEN_HERE",
-  "hltv_db_path": "hltv.db",
-  "log_file": "dev_bot.log",
-  "admin_chat_ids": [],
-  "parser_error_notifications": true,
-  "collector_error_notifications": true,
-  "performance_monitoring": true
-}
