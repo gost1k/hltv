@@ -1,4 +1,5 @@
+#!/usr/bin/env python
 """
-Пакет конфигурации HLTV Parser
+Модуль конфигурации проекта
 """
 from .config import * 
