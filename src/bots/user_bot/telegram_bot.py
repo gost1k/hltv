@@ -152,10 +152,14 @@ class HLTVStatsBot:
             await self.show_matches_for_period(update, context, 1)
         elif message_text == "За 3 дня":
             await self.show_matches_for_period(update, context, 3)
-        elif message_text == "За неделю":
-            await self.show_matches_for_period(update, context, 7)
+        elif message_text == "По событию":
+            await self.show_events_list(update, context)
         elif message_text == "Назад":
             await self.show_menu(update, context)
+        elif 'event_mapping' in context.user_data and message_text in context.user_data['event_mapping']:
+            # Если текст сообщения совпадает с названием события в нашем словаре
+            event_id = context.user_data['event_mapping'][message_text]
+            await self.show_matches_for_event(update, context, event_id)
         else:
             await update.message.reply_text(
                 "Используйте кнопки меню или команды для взаимодействия с ботом.\n"
@@ -173,7 +177,7 @@ class HLTVStatsBot:
             [KeyboardButton("За сегодня")],
             [KeyboardButton("За вчера")],
             [KeyboardButton("За 3 дня")],
-            [KeyboardButton("За неделю")],
+            [KeyboardButton("По событию")],
             [KeyboardButton("Назад")]
         ]
         markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
@@ -345,38 +349,45 @@ class HLTVStatsBot:
         if not events:
             return "Нет данных о матчах за указанный период."
         
-        message_parts = []
+        # Начинаем pre-форматированный блок
+        message = "<pre>\n"
         
         for event_id, event_data in events.items():
             event_name = event_data['name'] or "Без названия"
             matches = event_data['matches']
             
-            event_header = f"🏆 *{event_name}*\n"
-            message_parts.append(event_header)
+            # Добавляем название события
+            message += f"🏆 {event_name}\n\n"
             
             for match in matches:
-                # Форматируем время
-                match_time = datetime.fromtimestamp(match['datetime']).strftime('%d.%m %H:%M')
-                
                 # Форматируем результат
                 team1_name = match['team1_name']
                 team2_name = match['team2_name']
                 team1_score = match['team1_score']
                 team2_score = match['team2_score']
                 
-                # Выделяем победителя
-                if team1_score > team2_score:
-                    team1_name = f"*{team1_name}*"
-                elif team2_score > team1_score:
-                    team2_name = f"*{team2_name}*"
+                # Определяем победителя
+                team1_marker = "*" if team1_score > team2_score else " "
+                team2_marker = "*" if team2_score > team1_score else " "
                 
-                match_line = f"• {match_time} {team1_name} {team1_score}:{team2_score} {team2_name}\n"
-                message_parts.append(match_line)
+                # Создаем строку с выравниванием
+                # Ограничиваем длину имен команд для единого форматирования
+                max_team_length = 15  # Максимальная длина имени команды
+                if len(team1_name) > max_team_length:
+                    team1_name = team1_name[:max_team_length-3] + "..."
+                if len(team2_name) > max_team_length:
+                    team2_name = team2_name[:max_team_length-3] + "..."
+                
+                # Форматируем строку с табуляцией
+                message += f"{team1_marker} {team1_name.ljust(max_team_length)} {team1_score} : {team2_score} {team2_name.ljust(max_team_length)} {team2_marker}\n"
             
             # Добавляем разделитель между событиями
-            message_parts.append("\n")
+            message += "\n"
         
-        return "".join(message_parts)
+        # Закрываем pre-форматированный блок
+        message += "</pre>"
+        
+        return message
     
     async def send_yesterday_stats(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """
@@ -397,11 +408,11 @@ class HLTVStatsBot:
         events = self.get_matches_by_date(start_of_today, end_of_today)
         
         # Форматируем сообщение
-        message = f"📊 *Результаты матчей за {today.strftime('%d.%m.%Y')}*\n\n"
+        message = f"📊 <b>Результаты матчей за {today.strftime('%d.%m.%Y')}</b>\n\n"
         message += self.format_matches_message(events)
         
         # Отправляем сообщение
-        await update.message.reply_text(message, parse_mode="Markdown", reply_markup=self.markup)
+        await update.message.reply_text(message, parse_mode="HTML", reply_markup=self.markup)
     
     async def show_matches_for_period(self, update: Update, context: ContextTypes.DEFAULT_TYPE, days=1):
         """
@@ -429,11 +440,149 @@ class HLTVStatsBot:
             period_text = f"за период с {start_date.strftime('%d.%m.%Y')} по {end_date.strftime('%d.%m.%Y')}"
         
         # Форматируем сообщение
-        message = f"📊 *Результаты матчей {period_text}*\n\n"
+        message = f"📊 <b>Результаты матчей {period_text}</b>\n\n"
         message += self.format_matches_message(events)
         
         # Отправляем сообщение
-        await update.message.reply_text(message, parse_mode="Markdown", reply_markup=self.markup)
+        await update.message.reply_text(message, parse_mode="HTML", reply_markup=self.markup)
+    
+    async def show_events_list(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """
+        Показывает список событий за последнюю неделю
+        """
+        today = datetime.now()
+        # Начало периода - 7 дней назад
+        start_date = today - timedelta(days=7)
+        start_timestamp = start_date.timestamp()
+        # Конец периода - текущий момент
+        end_timestamp = today.timestamp()
+        
+        try:
+            conn = sqlite3.connect(self.db_path)
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            
+            # Получаем список уникальных событий за указанный период
+            cursor.execute('''
+                SELECT DISTINCT event_id, event_name 
+                FROM match_details
+                WHERE datetime BETWEEN ? AND ?
+                AND event_id IS NOT NULL
+                AND event_name IS NOT NULL
+                ORDER BY event_name
+            ''', (start_timestamp, end_timestamp))
+            
+            events = cursor.fetchall()
+            conn.close()
+            
+            if not events:
+                await update.message.reply_text(
+                    "Нет данных о событиях за последнюю неделю.",
+                    reply_markup=self.markup
+                )
+                return
+            
+            # Сохраняем соответствие между названием события и его ID в контексте пользователя
+            if 'event_mapping' not in context.user_data:
+                context.user_data['event_mapping'] = {}
+                
+            # Создаем клавиатуру с кнопками событий
+            keyboard = []
+            for event in events:
+                event_name = event['event_name']
+                event_id = event['event_id']
+                # Сохраняем соответствие
+                context.user_data['event_mapping'][event_name] = event_id
+                # Добавляем кнопку только с названием события
+                keyboard.append([KeyboardButton(event_name)])
+            
+            # Добавляем кнопку "Назад"
+            keyboard.append([KeyboardButton("Назад")])
+            markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+            
+            await update.message.reply_text(
+                "Выберите событие для просмотра результатов матчей:",
+                reply_markup=markup
+            )
+            
+        except Exception as e:
+            logger.error(f"Ошибка при получении списка событий: {str(e)}")
+            await update.message.reply_text(
+                "Произошла ошибка при получении списка событий.",
+                reply_markup=self.markup
+            )
+    
+    async def show_matches_for_event(self, update: Update, context: ContextTypes.DEFAULT_TYPE, event_id):
+        """
+        Показывает матчи конкретного события
+        
+        Args:
+            update: Объект обновления Telegram
+            context: Контекст обработчика
+            event_id (int): ID события
+        """
+        try:
+            conn = sqlite3.connect(self.db_path)
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            
+            # Получаем название события
+            cursor.execute('SELECT event_name FROM match_details WHERE event_id = ? LIMIT 1', (event_id,))
+            event_result = cursor.fetchone()
+            
+            if not event_result:
+                await update.message.reply_text(
+                    "Событие не найдено.",
+                    reply_markup=self.markup
+                )
+                conn.close()
+                return
+            
+            event_name = event_result['event_name']
+            
+            # Получаем матчи события
+            cursor.execute('''
+                SELECT 
+                    match_id, datetime, 
+                    team1_id, team1_name, team1_score, 
+                    team2_id, team2_name, team2_score
+                FROM match_details
+                WHERE event_id = ?
+                AND status = 'completed'
+                ORDER BY datetime
+            ''', (event_id,))
+            
+            matches = cursor.fetchall()
+            conn.close()
+            
+            if not matches:
+                await update.message.reply_text(
+                    f"Нет данных о завершенных матчах события {event_name}.",
+                    reply_markup=self.markup
+                )
+                return
+            
+            # Создаем событие для форматирования
+            events = {
+                event_id: {
+                    'name': event_name,
+                    'matches': [dict(match) for match in matches]
+                }
+            }
+            
+            # Форматируем сообщение
+            message = f"📊 <b>Результаты матчей события {event_name}</b>\n\n"
+            message += self.format_matches_message(events)
+            
+            # Отправляем сообщение
+            await update.message.reply_text(message, parse_mode="HTML", reply_markup=self.markup)
+            
+        except Exception as e:
+            logger.error(f"Ошибка при получении матчей события {event_id}: {str(e)}")
+            await update.message.reply_text(
+                "Произошла ошибка при получении данных о матчах.",
+                reply_markup=self.markup
+            )
     
     def run(self):
         """

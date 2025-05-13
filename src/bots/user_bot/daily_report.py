@@ -187,34 +187,43 @@ class DailyReportSender:
         if not events:
             return "Нет данных о матчах за указанный период."
         
-        message = ""
+        # Начинаем pre-форматированный блок
+        message = "<pre>\n"
         
         for event_id, event_data in events.items():
             event_name = event_data['name'] or "Без названия"
             matches = event_data['matches']
             
-            message += f"🏆 *{event_name}*\n"
+            # Добавляем название события
+            message += f"🏆 {event_name}\n\n"
             
             for match in matches:
-                # Форматируем время
-                match_time = datetime.fromtimestamp(match['datetime']).strftime('%d.%m %H:%M')
-                
                 # Форматируем результат
                 team1_name = match['team1_name']
                 team2_name = match['team2_name']
                 team1_score = match['team1_score']
                 team2_score = match['team2_score']
                 
-                # Выделяем победителя
-                if team1_score > team2_score:
-                    team1_name = f"*{team1_name}*"
-                elif team2_score > team1_score:
-                    team2_name = f"*{team2_name}*"
+                # Определяем победителя
+                team1_marker = "*" if team1_score > team2_score else " "
+                team2_marker = "*" if team2_score > team1_score else " "
                 
-                message += f"• {match_time} {team1_name} {team1_score}:{team2_score} {team2_name}\n"
+                # Создаем строку с выравниванием
+                # Ограничиваем длину имен команд для единого форматирования
+                max_team_length = 15  # Максимальная длина имени команды
+                if len(team1_name) > max_team_length:
+                    team1_name = team1_name[:max_team_length-3] + "..."
+                if len(team2_name) > max_team_length:
+                    team2_name = team2_name[:max_team_length-3] + "..."
+                
+                # Форматируем строку с табуляцией
+                message += f"{team1_marker} {team1_name.ljust(max_team_length)} {team1_score} : {team2_score} {team2_name.ljust(max_team_length)} {team2_marker}\n"
             
             # Добавляем разделитель между событиями
             message += "\n"
+        
+        # Закрываем pre-форматированный блок
+        message += "</pre>"
         
         return message
     
@@ -239,7 +248,7 @@ class DailyReportSender:
             period_text = f"за период с {start_date.strftime('%d.%m.%Y')} по {end_date.strftime('%d.%m.%Y')}"
         
         # Форматируем сообщение
-        message = f"📊 *Результаты матчей {period_text}*\n\n"
+        message = f"📊 <b>Результаты матчей {period_text}</b>\n\n"
         message += self.format_matches_message(events)
         
         # Получаем список подписчиков
@@ -258,7 +267,7 @@ class DailyReportSender:
                 await self.bot.send_message(
                     chat_id=chat_id,
                     text=message,
-                    parse_mode=telegram.constants.ParseMode.MARKDOWN
+                    parse_mode=telegram.constants.ParseMode.HTML
                 )
                 success_count += 1
                 # Добавляем небольшую задержку, чтобы не превысить лимиты API
