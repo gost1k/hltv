@@ -100,6 +100,9 @@ class HLTVStatsBot:
         Обработчик команды /start
         """
         user = update.effective_user
+        user_info = f"User: {user.first_name} {user.last_name or ''} (@{user.username or 'no_username'}) [ID: {user.id}]"
+        logger.info(f"{user_info} - Запуск команды /start")
+        
         message = (
             f"Привет, {user.first_name}! 👋\n\n"
             f"Я бот для отображения статистики матчей HLTV.\n\n"
@@ -117,6 +120,10 @@ class HLTVStatsBot:
         """
         Обработчик команды /help
         """
+        user = update.effective_user
+        user_info = f"User: {user.first_name} {user.last_name or ''} (@{user.username or 'no_username'}) [ID: {user.id}]"
+        logger.info(f"{user_info} - Запуск команды /help")
+        
         message = (
             "Справка по командам бота:\n\n"
             "/yesterday - Показать статистику матчей за вчерашний день\n"
@@ -132,6 +139,10 @@ class HLTVStatsBot:
         """
         Показывает меню с кнопками
         """
+        user = update.effective_user
+        user_info = f"User: {user.first_name} {user.last_name or ''} (@{user.username or 'no_username'}) [ID: {user.id}]"
+        logger.info(f"{user_info} - Вызов основного меню")
+        
         await update.message.reply_text(
             "Выберите действие:",
             reply_markup=self.markup
@@ -142,30 +153,43 @@ class HLTVStatsBot:
         Обработчик текстовых сообщений и нажатий на кнопки
         """
         message_text = update.message.text
+        user = update.effective_user
+        user_info = f"User: {user.first_name} {user.last_name or ''} (@{user.username or 'no_username'}) [ID: {user.id}]"
+        logger.info(f"{user_info} - Сообщение: '{message_text}'")
         
         if message_text == MENU_COMPLETED_MATCHES:
+            logger.info(f"{user_info} - Запрос прошедших матчей")
             await self.show_completed_matches(update, context)
         elif message_text == MENU_UPCOMING_MATCHES:
+            logger.info(f"{user_info} - Запрос предстоящих матчей")
             await self.show_upcoming_matches(update, context)
         elif message_text == "За сегодня":
+            logger.info(f"{user_info} - Запрос матчей за сегодня")
             await self.send_today_stats(update, context)
         elif message_text == "За вчера":
+            logger.info(f"{user_info} - Запрос матчей за вчера")
             await self.show_matches_for_period(update, context, 1)
         elif message_text == "За 3 дня":
+            logger.info(f"{user_info} - Запрос матчей за 3 дня")
             await self.show_matches_for_period(update, context, 3)
         elif message_text == "По событию":
+            logger.info(f"{user_info} - Запрос списка событий")
             await self.show_events_list(update, context)
         elif message_text == "Назад":
+            logger.info(f"{user_info} - Возврат в главное меню")
             await self.show_menu(update, context)
         elif message_text == "Матчи за день":
+            logger.info(f"{user_info} - Запрос матчей за последний день")
             await self.show_last_day_matches_menu(update, context)
         elif 'match_mapping' in context.user_data and message_text in context.user_data['match_mapping']:
             # Если текст сообщения совпадает с названием матча в нашем словаре
             match_id = context.user_data['match_mapping'][message_text]
+            logger.info(f"{user_info} - Запрос статистики матча ID {match_id}")
             await self.show_match_details(update, context, match_id)
         elif 'event_mapping' in context.user_data and message_text in context.user_data['event_mapping']:
             # Если текст сообщения совпадает с названием события в нашем словаре
             event_id = context.user_data['event_mapping'][message_text]
+            logger.info(f"{user_info} - Запрос матчей события ID {event_id}")
             await self.show_matches_for_event(update, context, event_id)
         elif "(" in message_text and ")" in message_text:
             # Обработка запроса статистики с ID в скобках (оставляем для обратной совместимости)
@@ -221,6 +245,8 @@ class HLTVStatsBot:
         """
         chat_id = update.effective_chat.id
         user = update.effective_user
+        user_info = f"User: {user.first_name} {user.last_name or ''} (@{user.username or 'no_username'}) [ID: {user.id}]"
+        logger.info(f"{user_info} - Попытка подписки на ежедневную рассылку")
         
         try:
             conn = sqlite3.connect(self.subscribers_db_path)
@@ -271,6 +297,9 @@ class HLTVStatsBot:
         Отписывает пользователя от ежедневных отчетов
         """
         chat_id = update.effective_chat.id
+        user = update.effective_user
+        user_info = f"User: {user.first_name} {user.last_name or ''} (@{user.username or 'no_username'}) [ID: {user.id}]"
+        logger.info(f"{user_info} - Попытка отписки от ежедневной рассылки")
         
         try:
             conn = sqlite3.connect(self.subscribers_db_path)
@@ -405,12 +434,19 @@ class HLTVStatsBot:
         """
         Отправляет статистику матчей за вчерашний день
         """
+        user = update.effective_user
+        user_info = f"User: {user.first_name} {user.last_name or ''} (@{user.username or 'no_username'}) [ID: {user.id}]"
+        logger.info(f"{user_info} - Запрос статистики за вчера через команду")
         await self.show_matches_for_period(update, context, 1)
     
     async def send_today_stats(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """
         Отправляет статистику матчей за сегодняшний день
         """
+        user = update.effective_user
+        user_info = f"User: {user.first_name} {user.last_name or ''} (@{user.username or 'no_username'}) [ID: {user.id}]"
+        logger.info(f"{user_info} - Запрос статистики за сегодня")
+        
         # Получаем временные метки начала и конца текущего дня
         today = datetime.now()
         start_of_today = datetime(today.year, today.month, today.day, 0, 0, 0).timestamp()
@@ -422,6 +458,10 @@ class HLTVStatsBot:
         # Форматируем сообщение
         message = f"📊 <b>Результаты матчей за {today.strftime('%d.%m.%Y')}</b>\n\n"
         message += self.format_matches_message(events)
+        
+        # Логируем количество найденных матчей
+        match_count = sum(len(event_data['matches']) for event_data in events.values()) if events else 0
+        logger.info(f"{user_info} - Найдено {match_count} матчей за сегодня")
         
         # Отправляем сообщение
         await update.message.reply_text(message, parse_mode="HTML", reply_markup=self.markup)
@@ -435,6 +475,9 @@ class HLTVStatsBot:
             context: Контекст обработчика
             days (int): Количество дней для выборки (по умолчанию 1 день)
         """
+        user = update.effective_user
+        user_info = f"User: {user.first_name} {user.last_name or ''} (@{user.username or 'no_username'}) [ID: {user.id}]"
+        
         today = datetime.now()
         
         # Вычисляем начало и конец периода
@@ -443,8 +486,14 @@ class HLTVStatsBot:
         start_date = end_date - timedelta(days=days-1)
         start_timestamp = start_date.timestamp()
         
+        logger.info(f"{user_info} - Запрос матчей за период с {start_date.strftime('%d.%m.%Y')} по {end_date.strftime('%d.%m.%Y')}")
+        
         # Получаем матчи за период
         events = self.get_matches_by_date(start_timestamp, end_timestamp)
+        
+        # Логируем количество найденных матчей
+        match_count = sum(len(event_data['matches']) for event_data in events.values()) if events else 0
+        logger.info(f"{user_info} - Найдено {match_count} матчей за указанный период")
         
         if days == 1:
             period_text = f"за {end_date.strftime('%d.%m.%Y')}"
@@ -605,6 +654,10 @@ class HLTVStatsBot:
             context: Контекст обработчика
             match_id (int): ID матча
         """
+        user = update.effective_user
+        user_info = f"User: {user.first_name} {user.last_name or ''} (@{user.username or 'no_username'}) [ID: {user.id}]"
+        logger.info(f"{user_info} - Запрос детальной информации о матче ID {match_id}")
+        
         try:
             conn = sqlite3.connect(self.db_path)
             conn.row_factory = sqlite3.Row
