@@ -515,6 +515,12 @@ class MatchDetailsCollector:
             dict: Словарь с данными игрока или None в случае ошибки
         """
         try:
+            # Проверяем, является ли строка заголовком команды или строкой с заголовками колонок
+            row_classes = row.get('class', [])
+            if 'header-row' in row_classes or 'header' in row_classes or row.select_one('th'):
+                logger.info(f"Найдена строка заголовка в матче {match_id}, пропускаем")
+                return None
+                
             player_data = {
                 'match_id': match_id,
                 'team_id': team_id,
@@ -545,6 +551,30 @@ class MatchDetailsCollector:
             # Имя и ID игрока - из первой ячейки
             player_cell = cells[column_map['player']]
             
+            # Дополнительная проверка: если ячейка содержит заголовок или имя команды
+            if player_cell.select_one('th') or (player_cell.get('class') and ('team-name' in player_cell.get('class') or 'header' in player_cell.get('class'))):
+                logger.info(f"Найдена ячейка заголовка в матче {match_id}, пропускаем")
+                return None
+                
+            # Проверяем, содержит ли ячейка только имя команды без ссылки на игрока
+            player_link = player_cell.select_one(PLAYER_LINK)
+            if not player_link and player_cell.text.strip() in [
+                "Iberian Soul", "Monte", "9INE", "CYBERSHOKE", "ENCE", "KOMNATA", 
+                "MIGHT", "Moneyball", "Tsunami", "TYLOO", "Rare Atom", "DogEvil", 
+                "Leça", "Rhyno", "G2 Ares", "Preasy", "RUSH B", "Zero Tenacity",
+                "G2", "Astralis", "Virtus.pro", "BIG", "Natus Vincere", "Aurora",
+                "MIBR", "paiN", "FlyQuest", "JiJieHao", "Lynn Vision", "Astrum",
+                "Fire Flux", "Nexus", "Partizan", "Spirit Academy", "SINNERS",
+                "FAVBET", "Passion UA", "HEROIC Academy", "WOPA", "ESC", "Kubix",
+                "CPH Wolves", "Steel Helmet", "GATERON", "Change The Game", "E9",
+                "Young Ninjas", "ex-Astralis Talent", "BRUTE", "Sashi", "kONO",
+                "SPARTA", "PARIVISION", "AMKAL", "Delta", "ECLOT", "FORZE Reload",
+                "Illuminar", "500", "Sangal", "Inner Circle", "Mousquetaires",
+                "ENCE Academy", "Volt"
+            ]:
+                logger.info(f"Найдено имя команды без ссылки на игрока в матче {match_id}: {player_cell.text.strip()}, пропускаем")
+                return None
+
             # Пытаемся найти ссылку на профиль игрока с более точным селектором
             player_profile = player_cell.select_one(PLAYER_PROFILE_LINK)
             if player_profile:
@@ -561,6 +591,10 @@ class MatchDetailsCollector:
                     player_data['nickName'] = nickname
                     
                     logger.debug(f"Найден игрок: {player_data['player_nickname']} (ID: {player_data['player_id']})")
+                elif '/team/' in href:
+                    # Если это ссылка на команду, а не на игрока, пропускаем строку
+                    logger.info(f"Найдена ссылка на команду, а не на игрока в матче {match_id}: {href}, пропускаем")
+                    return None
                 else:
                     logger.warning(f"Найдена ссылка не на игрока: {href}")
             else:
@@ -575,6 +609,10 @@ class MatchDetailsCollector:
                     full_name, nickname = self._extract_name_and_nickname(player_nickname_text)
                     player_data['fullName'] = full_name
                     player_data['nickName'] = nickname
+                elif player_link and '/team/' in player_link.get('href', ''):
+                    # Если это ссылка на команду, а не на игрока, пропускаем строку
+                    logger.info(f"Найдена ссылка на команду, а не на игрока в матче {match_id}: {player_link.get('href')}, пропускаем")
+                    return None
                 else:
                     # Если нет ссылки на игрока, пытаемся получить хотя бы текст
                     player_name = player_cell.text.strip()
@@ -834,6 +872,30 @@ class MatchDetailsCollector:
             if player_cell.select_one(PLAYER_CELL):
                 player_cell = player_cell.select_one(PLAYER_CELL)
             
+            # Дополнительная проверка: если ячейка содержит заголовок или имя команды
+            if player_cell.select_one('th') or (player_cell.get('class') and ('team-name' in player_cell.get('class') or 'header' in player_cell.get('class'))):
+                logger.info(f"Найдена ячейка заголовка в матче {match_id}, пропускаем")
+                return None
+                
+            # Проверяем, содержит ли ячейка только имя команды без ссылки на игрока
+            player_link = player_cell.select_one(PLAYER_LINK)
+            if not player_link and player_cell.text.strip() in [
+                "Iberian Soul", "Monte", "9INE", "CYBERSHOKE", "ENCE", "KOMNATA", 
+                "MIGHT", "Moneyball", "Tsunami", "TYLOO", "Rare Atom", "DogEvil", 
+                "Leça", "Rhyno", "G2 Ares", "Preasy", "RUSH B", "Zero Tenacity",
+                "G2", "Astralis", "Virtus.pro", "BIG", "Natus Vincere", "Aurora",
+                "MIBR", "paiN", "FlyQuest", "JiJieHao", "Lynn Vision", "Astrum",
+                "Fire Flux", "Nexus", "Partizan", "Spirit Academy", "SINNERS",
+                "FAVBET", "Passion UA", "HEROIC Academy", "WOPA", "ESC", "Kubix",
+                "CPH Wolves", "Steel Helmet", "GATERON", "Change The Game", "E9",
+                "Young Ninjas", "ex-Astralis Talent", "BRUTE", "Sashi", "kONO",
+                "SPARTA", "PARIVISION", "AMKAL", "Delta", "ECLOT", "FORZE Reload",
+                "Illuminar", "500", "Sangal", "Inner Circle", "Mousquetaires",
+                "ENCE Academy", "Volt"
+            ]:
+                logger.info(f"Найдено имя команды без ссылки на игрока в матче {match_id}: {player_cell.text.strip()}, пропускаем")
+                return None
+
             # Пытаемся найти ссылку на профиль игрока с более точным селектором
             player_profile = player_cell.select_one(PLAYER_PROFILE_LINK)
             if player_profile:
@@ -850,6 +912,10 @@ class MatchDetailsCollector:
                     player_data['nickName'] = nickname
                     
                     logger.debug(f"Найден игрок: {player_data['player_nickname']} (ID: {player_data['player_id']})")
+                elif '/team/' in href:
+                    # Если это ссылка на команду, а не на игрока, пропускаем строку
+                    logger.info(f"Найдена ссылка на команду, а не на игрока в матче {match_id}: {href}, пропускаем")
+                    return None
                 else:
                     logger.warning(f"Найдена ссылка не на игрока: {href}")
             else:
@@ -864,6 +930,10 @@ class MatchDetailsCollector:
                     full_name, nickname = self._extract_name_and_nickname(player_nickname_text)
                     player_data['fullName'] = full_name
                     player_data['nickName'] = nickname
+                elif player_link and '/team/' in player_link.get('href', ''):
+                    # Если это ссылка на команду, а не на игрока, пропускаем строку
+                    logger.info(f"Найдена ссылка на команду, а не на игрока в матче {match_id}: {player_link.get('href')}, пропускаем")
+                    return None
                 else:
                     # Если нет ссылки на игрока, пытаемся получить хотя бы текст
                     player_name = player_cell.text.strip()
