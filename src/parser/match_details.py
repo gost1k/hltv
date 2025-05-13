@@ -53,25 +53,38 @@ class MatchDetailsParser(BaseParser):
             remaining_limit = self.limit
             
             # Получаем прошедшие матчи для парсинга
-            if self.parse_past and remaining_limit > 0:
-                cursor.execute('''
-                    SELECT id, url FROM url_result 
-                    WHERE toParse = 1
-                    LIMIT ?
-                ''', (remaining_limit,))
+            if self.parse_past and (remaining_limit is None or remaining_limit > 0):
+                if self.limit is None:
+                    cursor.execute('''
+                        SELECT id, url FROM url_result 
+                        WHERE toParse = 1
+                    ''')
+                else:
+                    cursor.execute('''
+                        SELECT id, url FROM url_result 
+                        WHERE toParse = 1
+                        LIMIT ?
+                    ''', (remaining_limit,))
                 
                 past_matches = [{"id": row[0], "url": row[1], "is_past": True} for row in cursor.fetchall()]
                 matches.extend(past_matches)
-                remaining_limit -= len(past_matches)
+                if remaining_limit is not None:
+                    remaining_limit -= len(past_matches)
                 self.logger.info(f"Найдено {len(past_matches)} прошедших матчей для скачивания")
             
             # Получаем предстоящие матчи для парсинга
-            if self.parse_upcoming and remaining_limit > 0:
-                cursor.execute('''
-                    SELECT id, url FROM url_upcoming 
-                    WHERE toParse = 1
-                    LIMIT ?
-                ''', (remaining_limit,))
+            if self.parse_upcoming and (remaining_limit is None or remaining_limit > 0):
+                if self.limit is None:
+                    cursor.execute('''
+                        SELECT id, url FROM url_upcoming 
+                        WHERE toParse = 1
+                    ''')
+                else:
+                    cursor.execute('''
+                        SELECT id, url FROM url_upcoming 
+                        WHERE toParse = 1
+                        LIMIT ?
+                    ''', (remaining_limit,))
                 
                 upcoming_matches = [{"id": row[0], "url": row[1], "is_past": False} for row in cursor.fetchall()]
                 matches.extend(upcoming_matches)
@@ -174,10 +187,24 @@ class MatchDetailsParser(BaseParser):
             full_url = urljoin(HLTV_BASE_URL, url)
         else:
             full_url = url
-            
-        self.logger.info(f"Загрузка страницы матча ID {match_id}: {full_url}")
         
         try:
+            # Формируем имя файла и путь
+            file_name = self._get_filename_from_url(match_id, full_url)
+            
+            # Создаем директорию result, если её нет
+            result_dir = os.path.join(HTML_STORAGE_DIR, "result")
+            os.makedirs(result_dir, exist_ok=True)
+            
+            file_path = os.path.join(result_dir, file_name)
+            
+            # Проверяем, существует ли файл
+            if os.path.exists(file_path):
+                self.logger.info(f"Файл для матча ID {match_id} уже существует: {file_path}. Пропускаем скачивание.")
+                return True
+                
+            self.logger.info(f"Загрузка страницы матча ID {match_id}: {full_url}")
+            
             # Загружаем страницу
             self.driver.get(full_url)
             self._wait_for_page_load()
@@ -188,13 +215,6 @@ class MatchDetailsParser(BaseParser):
             if len(html) < 1000:
                 self.logger.warning(f"Получен слишком маленький HTML для матча {match_id} ({len(html)} байт)")
                 return False
-                
-            # Формируем имя файла и путь
-            file_name = self._get_filename_from_url(match_id, full_url)
-            file_path = os.path.join(HTML_STORAGE_DIR, file_name)
-            
-            # Создаем директорию, если её нет
-            os.makedirs(HTML_STORAGE_DIR, exist_ok=True)
             
             # Сохраняем HTML в файл
             with open(file_path, "w", encoding="utf-8") as f:

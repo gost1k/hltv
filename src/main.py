@@ -27,7 +27,8 @@ def parse_arguments():
     parser.add_argument('--parse-matches', action='store_true', help='Parse matches page')
     parser.add_argument('--parse-results', action='store_true', help='Parse results page')
     parser.add_argument('--parse-details', action='store_true', help='Parse match details pages from DB')
-    parser.add_argument('--details-limit', type=int, default=10, help='Limit of match details to parse (default: 10)')
+    parser.add_argument('--details-limit', type=int, help='Limit of match details to parse (default: parse all)')
+    parser.add_argument('--all-details', action='store_true', help='Parse all match details from DB without limit')
     parser.add_argument('--test', action='store_true', help='Test mode: parse only 3 matches')
     parser.add_argument('--parse-past', action='store_true', help='Parse past matches (from past_matches table)')
     parser.add_argument('--parse-upcoming', action='store_true', help='Parse upcoming matches (from upcoming_matches table)')
@@ -63,8 +64,15 @@ def main():
             logger.info("Data collection completed")
         
         if args.all or args.parse_details:
-            # Если указан тестовый режим, используем лимит 3, иначе используем указанный лимит
-            details_limit = 3 if args.test else args.details_limit
+            # Если указан тестовый режим, используем лимит 3
+            if args.test:
+                details_limit = 3
+            # Иначе, если указан конкретный лимит, используем его
+            elif args.details_limit is not None:
+                details_limit = args.details_limit
+            # Если указан флаг --all-details или не указан --details-limit, парсим все матчи
+            else:
+                details_limit = None
             
             # Определяем, какие типы матчей нужно парсить
             parse_past = args.parse_past or not args.parse_upcoming  # По умолчанию парсим прошедшие
@@ -77,7 +85,8 @@ def main():
             if parse_upcoming:
                 match_types.append("предстоящих")
             
-            logger.info(f"Starting match details parsing ({', '.join(match_types)} матчей, лимит: {details_limit})...")
+            limit_info = "без лимита" if details_limit is None else f"лимит: {details_limit}"
+            logger.info(f"Starting match details parsing ({', '.join(match_types)} матчей, {limit_info})...")
             
             details_parser = MatchDetailsParser(
                 limit=details_limit,

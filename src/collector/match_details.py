@@ -1093,6 +1093,7 @@ class MatchDetailsCollector:
             'processed_files': 0,
             'successful_match_details': 0,
             'successful_player_stats': 0,
+            'deleted_files': 0,
             'errors': 0,
             'incomplete_stats': 0  # Матчи, в которых статистика есть только для одной команды
         }
@@ -1130,12 +1131,17 @@ class MatchDetailsCollector:
                 # Парсим HTML
                 soup = BeautifulSoup(html_content, 'html.parser')
                 
+                # Флаги успешного сохранения деталей и статистики
+                match_details_saved = False
+                player_stats_saved = False
+                
                 # Извлекаем данные матча
                 match_data = self._parse_match_details(soup, match_id)
                 if match_data:
                     # Сохраняем данные матча
                     if self._save_match_details(match_data):
                         stats['successful_match_details'] += 1
+                        match_details_saved = True
                 
                 # Извлекаем статистику игроков
                 players_data = self._parse_player_stats(soup, match_id)
@@ -1153,6 +1159,18 @@ class MatchDetailsCollector:
                     # Сохраняем статистику игроков
                     if self._save_player_stats(players_data):
                         stats['successful_player_stats'] += 1
+                        player_stats_saved = True
+                
+                # Удаление файла после успешной обработки
+                if match_details_saved and player_stats_saved:
+                    # Если мы успешно сохранили и детали матча, и статистику игроков,
+                    # удаляем HTML-файл, так как данные уже сохранены в БД
+                    try:
+                        os.remove(file_path)
+                        logger.info(f"Файл {os.path.basename(file_path)} успешно удален после обработки")
+                        stats['deleted_files'] += 1
+                    except Exception as e:
+                        logger.warning(f"Не удалось удалить файл {file_path}: {str(e)}")
                 
                 stats['processed_files'] += 1
                 
