@@ -1,0 +1,7 @@
+@echo off
+cd /d C:\projects\hltv-2
+@REM Парсинг будущих матчей
+python -m src.main --parse-matches
+python -m src.main --collect-matches-list
+python -m src.main --parse-details --upcoming
+python -m src.collector.match_upcoming

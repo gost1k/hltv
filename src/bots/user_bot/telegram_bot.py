@@ -62,6 +62,31 @@ class HLTVStatsBot:
         ]
         self.markup = ReplyKeyboardMarkup(self.menu_keyboard, resize_keyboard=True)
         
+    def _get_safe_user_info(self, user):
+        """
+        Создает безопасную строку с информацией о пользователе для логирования,
+        избегая проблем с кодировкой Unicode
+        
+        Args:
+            user: Пользователь Telegram
+            
+        Returns:
+            str: Безопасная строка с информацией о пользователе
+        """
+        try:
+            first_name = user.first_name if user.first_name else ""
+            last_name = user.last_name if user.last_name else ""
+            username = user.username if user.username else "no_username"
+            
+            # Заменяем проблемные символы на их безопасные версии или удаляем их
+            first_name = ''.join(c if ord(c) < 128 else '_' for c in first_name)
+            last_name = ''.join(c if ord(c) < 128 else '_' for c in last_name)
+            
+            return f"User: {first_name} {last_name} (@{username}) [ID: {user.id}]"
+        except:
+            # В случае любой ошибки возвращаем только ID пользователя
+            return f"User ID: {user.id}"
+    
     async def error(self, update, context):
         """
         Обработчик ошибок
@@ -99,7 +124,7 @@ class HLTVStatsBot:
         Обработчик команды /start
         """
         user = update.effective_user
-        user_info = f"User: {user.first_name} {user.last_name or ''} (@{user.username or 'no_username'}) [ID: {user.id}]"
+        user_info = self._get_safe_user_info(user)
         logger.info(f"{user_info} - Запуск команды /start")
         
         message = (
@@ -122,7 +147,7 @@ class HLTVStatsBot:
         Обработчик команды /help
         """
         user = update.effective_user
-        user_info = f"User: {user.first_name} {user.last_name or ''} (@{user.username or 'no_username'}) [ID: {user.id}]"
+        user_info = self._get_safe_user_info(user)
         logger.info(f"{user_info} - Запуск команды /help")
         
         message = (
@@ -143,7 +168,7 @@ class HLTVStatsBot:
         Показывает меню с кнопками
         """
         user = update.effective_user
-        user_info = f"User: {user.first_name} {user.last_name or ''} (@{user.username or 'no_username'}) [ID: {user.id}]"
+        user_info = self._get_safe_user_info(user)
         logger.info(f"{user_info} - Вызов основного меню")
         
         await update.message.reply_text(
@@ -157,7 +182,7 @@ class HLTVStatsBot:
         """
         message_text = update.message.text
         user = update.effective_user
-        user_info = f"User: {user.first_name} {user.last_name or ''} (@{user.username or 'no_username'}) [ID: {user.id}]"
+        user_info = self._get_safe_user_info(user)
         logger.info(f"{user_info} - Сообщение: '{message_text}'")
         
         if message_text == MENU_COMPLETED_MATCHES:
@@ -276,7 +301,7 @@ class HLTVStatsBot:
         """
         chat_id = update.effective_chat.id
         user = update.effective_user
-        user_info = f"User: {user.first_name} {user.last_name or ''} (@{user.username or 'no_username'}) [ID: {user.id}]"
+        user_info = self._get_safe_user_info(user)
         logger.info(f"{user_info} - Попытка подписки на ежедневную рассылку")
         
         try:
@@ -329,7 +354,7 @@ class HLTVStatsBot:
         """
         chat_id = update.effective_chat.id
         user = update.effective_user
-        user_info = f"User: {user.first_name} {user.last_name or ''} (@{user.username or 'no_username'}) [ID: {user.id}]"
+        user_info = self._get_safe_user_info(user)
         logger.info(f"{user_info} - Попытка отписки от ежедневной рассылки")
         
         try:
@@ -466,7 +491,7 @@ class HLTVStatsBot:
         Отправляет статистику матчей за вчерашний день
         """
         user = update.effective_user
-        user_info = f"User: {user.first_name} {user.last_name or ''} (@{user.username or 'no_username'}) [ID: {user.id}]"
+        user_info = self._get_safe_user_info(user)
         logger.info(f"{user_info} - Запрос статистики за вчера через команду")
         await self.show_matches_for_period(update, context, 1)
     
@@ -475,7 +500,7 @@ class HLTVStatsBot:
         Отправляет статистику матчей за сегодняшний день
         """
         user = update.effective_user
-        user_info = f"User: {user.first_name} {user.last_name or ''} (@{user.username or 'no_username'}) [ID: {user.id}]"
+        user_info = self._get_safe_user_info(user)
         logger.info(f"{user_info} - Запрос статистики за сегодня")
         
         # Получаем временные метки начала и конца текущего дня
@@ -507,7 +532,7 @@ class HLTVStatsBot:
             days (int): Количество дней для выборки (по умолчанию 1 день)
         """
         user = update.effective_user
-        user_info = f"User: {user.first_name} {user.last_name or ''} (@{user.username or 'no_username'}) [ID: {user.id}]"
+        user_info = self._get_safe_user_info(user)
         
         today = datetime.now()
         
@@ -551,7 +576,7 @@ class HLTVStatsBot:
             context.user_data['showing_menu'] = event_type
         
         user = update.effective_user
-        user_info = f"User: {user.first_name} {user.last_name or ''} (@{user.username or 'no_username'}) [ID: {user.id}]"
+        user_info = self._get_safe_user_info(user)
         logger.info(f"{user_info} - Запрос списка событий типа {event_type}")
         
         today = datetime.now()
@@ -647,7 +672,7 @@ class HLTVStatsBot:
             event_id (int): ID события
         """
         user = update.effective_user
-        user_info = f"User: {user.first_name} {user.last_name or ''} (@{user.username or 'no_username'}) [ID: {user.id}]"
+        user_info = self._get_safe_user_info(user)
         logger.info(f"{user_info} - Запрос матчей события ID {event_id}")
         
         # Проверяем тип события (прошедшие или предстоящие)
@@ -781,7 +806,7 @@ class HLTVStatsBot:
             match_id (int): ID матча
         """
         user = update.effective_user
-        user_info = f"User: {user.first_name} {user.last_name or ''} (@{user.username or 'no_username'}) [ID: {user.id}]"
+        user_info = self._get_safe_user_info(user)
         logger.info(f"{user_info} - Запрос детальной информации о матче ID {match_id}")
         
         try:
@@ -1054,7 +1079,7 @@ class HLTVStatsBot:
             team_name (str): Название команды для поиска
         """
         user = update.effective_user
-        user_info = f"User: {user.first_name} {user.last_name or ''} (@{user.username or 'no_username'}) [ID: {user.id}]"
+        user_info = self._get_safe_user_info(user)
         logger.info(f"{user_info} - Поиск матчей команды: {team_name}")
         
         try:
@@ -1302,7 +1327,7 @@ class HLTVStatsBot:
             days (int): Через сколько дней (0 - сегодня, 1 - завтра, и т.д.)
         """
         user = update.effective_user
-        user_info = f"User: {user.first_name} {user.last_name or ''} (@{user.username or 'no_username'}) [ID: {user.id}]"
+        user_info = self._get_safe_user_info(user)
         
         today = datetime.now()
         current_timestamp = today.timestamp()
@@ -1349,7 +1374,7 @@ class HLTVStatsBot:
         Отправляет информацию о предстоящих матчах на сегодня
         """
         user = update.effective_user
-        user_info = f"User: {user.first_name} {user.last_name or ''} (@{user.username or 'no_username'}) [ID: {user.id}]"
+        user_info = self._get_safe_user_info(user)
         logger.info(f"{user_info} - Запрос предстоящих матчей через команду")
         await self.show_upcoming_matches_for_period(update, context, 0)
     
