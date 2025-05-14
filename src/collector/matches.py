@@ -157,13 +157,33 @@ class MatchesCollector:
     def _save_upcoming_matches(self, matches: list) -> dict:
         """Сохраняет предстоящие матчи в базу данных"""
         if not matches:
-            return {"new": 0, "updated": 0}
+            return {"new": 0, "updated": 0, "deleted": 0}
             
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
         
         new_matches = 0
         updated_matches = 0
+        deleted_matches = 0
+        
+        # Получаем список всех ID матчей из текущего HTML
+        current_match_ids = [match['id'] for match in matches]
+        
+        # Получаем список всех ID в базе данных
+        cursor.execute('SELECT id FROM url_upcoming')
+        db_match_ids = [row[0] for row in cursor.fetchall()]
+        
+        # Находим ID матчей, которые есть в БД, но отсутствуют в текущем HTML
+        obsolete_ids = [match_id for match_id in db_match_ids if match_id not in current_match_ids]
+        
+        # Удаляем устаревшие матчи
+        if obsolete_ids:
+            # Используем параметризованный запрос с placeholders для безопасности
+            placeholders = ','.join(['?'] * len(obsolete_ids))
+            delete_query = f'DELETE FROM url_upcoming WHERE id IN ({placeholders})'
+            cursor.execute(delete_query, obsolete_ids)
+            deleted_matches = cursor.rowcount
+            logger.info(f"Удалено {deleted_matches} устаревших матчей из таблицы url_upcoming")
         
         for match in matches:
             # Проверяем, существует ли матч в таблице предстоящих матчей
@@ -191,8 +211,8 @@ class MatchesCollector:
         
         conn.commit()
         conn.close()
-        logger.info(f"Добавлено новых предстоящих матчей: {new_matches}, обновлено: {updated_matches}")
-        return {"new": new_matches, "updated": updated_matches}
+        logger.info(f"Добавлено новых предстоящих матчей: {new_matches}, обновлено: {updated_matches}, удалено устаревших: {deleted_matches}")
+        return {"new": new_matches, "updated": updated_matches, "deleted": deleted_matches}
         
     def _save_past_matches(self, matches: list) -> dict:
         """Сохраняет результаты матчей в базу данных"""
@@ -243,6 +263,7 @@ class MatchesCollector:
             "total": 0,
             "new": 0,
             "updated": 0,
+            "deleted": 0,
             "failed": 0
         }
         
@@ -266,6 +287,7 @@ class MatchesCollector:
                 result = self._save_upcoming_matches(matches)
                 stats["new"] = result["new"]
                 stats["updated"] = result["updated"]
+                stats["deleted"] = result["deleted"]
             
             return stats
             

@@ -122,6 +122,8 @@ def main():
             logger.info("Collecting data from matches.html...")
             matches_stats = collector_manager.collect_matches()
             logger.info(f"Matches list collection completed: {matches_stats}")
+            if matches_stats.get('deleted', 0) > 0:
+                logger.info(f"Removed {matches_stats['deleted']} obsolete matches from database.")
             
         if args.collect_results_list:
             logger.info("Collecting data from results.html...")
@@ -133,6 +135,8 @@ def main():
             logger.info("Collecting data from matches and results HTML...")
             collection_stats = collector_manager.collect_results_list()
             logger.info(f"Results list collection completed: {collection_stats}")
+            if collection_stats.get('matches', {}).get('deleted', 0) > 0:
+                logger.info(f"Removed {collection_stats['matches']['deleted']} obsolete matches from database.")
             
         if args.collect_results_matches or args.collect_results_details or args.collect_details:
             if args.collect_details:
