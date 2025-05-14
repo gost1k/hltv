@@ -9,3 +9,5 @@ python -m src.main --collect-results-matches
 
 @REM Парсинг будущих матчей
 @REM python -m src.main --parse-matches
+@REM python -m src.main --collect-matches-list
+

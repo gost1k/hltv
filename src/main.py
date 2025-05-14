@@ -31,11 +31,12 @@ def parse_arguments():
     parser.add_argument('--parse-details', action='store_true', help='Alias for --parse-results-details (deprecated)')
     
     # Collector commands
-    parser.add_argument('--collect-results-list', action='store_true', help='Collect data from matches and results HTML files')
+    parser.add_argument('--collect-matches-list', action='store_true', help='Collect data from matches.html file')
+    parser.add_argument('--collect-results-list', action='store_true', help='Collect data from results.html file')
     parser.add_argument('--collect-results-matches', action='store_true', help='Collect data from match details HTML files')
     
     # Backward compatibility
-    parser.add_argument('--collect-lists', action='store_true', help='Alias for --collect-results-list (deprecated)')
+    parser.add_argument('--collect-lists', action='store_true', help='Collect data from both matches.html and results.html files (deprecated)')
     parser.add_argument('--collect-details', action='store_true', help='Alias for --collect-results-details (deprecated)')
     parser.add_argument('--collect-results-details', action='store_true', help='Alias for --collect-results-matches (deprecated)')
     
@@ -117,13 +118,19 @@ def main():
             logger.info(f"Match details parsing completed. Successfully parsed: {success_count}")
             
         # Handle collector commands
-        if args.collect_results_list or args.collect_lists:
-            if args.collect_lists:
-                logger.warning("The --collect-lists command is deprecated. Please use --collect-results-list instead.")
-                
-            logger.info("Collecting data from matches and results HTML...")
+        if args.collect_matches_list:
+            logger.info("Collecting data from matches.html...")
+            matches_stats = collector_manager.collect_matches()
+            logger.info(f"Matches list collection completed: {matches_stats}")
             
-            # Collect matches and results data
+        if args.collect_results_list:
+            logger.info("Collecting data from results.html...")
+            results_stats = collector_manager.collect_results()
+            logger.info(f"Results list collection completed: {results_stats}")
+            
+        if args.collect_lists:
+            logger.warning("The --collect-lists command is deprecated. Please use --collect-matches-list and --collect-results-list separately.")
+            logger.info("Collecting data from matches and results HTML...")
             collection_stats = collector_manager.collect_results_list()
             logger.info(f"Results list collection completed: {collection_stats}")
             
