@@ -83,26 +83,43 @@ class DatabaseService:
                 )
             ''')
             
-            # Matches table
+            # Upcoming matches table (was 'matches' before)
             self.cursor.execute('''
-                CREATE TABLE IF NOT EXISTS matches (
-                    id INTEGER PRIMARY KEY,
-                    url TEXT NOT NULL,
+                CREATE TABLE IF NOT EXISTS match_upcoming (
+                    match_id INTEGER PRIMARY KEY,
+                    datetime INTEGER,
                     team1_id INTEGER,
+                    team1_name TEXT,
+                    team1_rank INTEGER,
                     team2_id INTEGER,
-                    date TIMESTAMP NOT NULL,
+                    team2_name TEXT,
+                    team2_rank INTEGER,
                     event_id INTEGER,
                     event_name TEXT,
-                    match_format TEXT,
+                    head_to_head_team1_wins INTEGER,
+                    head_to_head_team2_wins INTEGER,
+                    parsed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     status TEXT DEFAULT 'upcoming',
-                    winner_id INTEGER,
-                    score_team1 INTEGER,
-                    score_team2 INTEGER,
-                    parsed BOOLEAN DEFAULT 0,
-                    last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     FOREIGN KEY (team1_id) REFERENCES teams (id),
                     FOREIGN KEY (team2_id) REFERENCES teams (id),
                     FOREIGN KEY (event_id) REFERENCES events (id)
+                )
+            ''')
+            
+            # Upcoming match players table
+            self.cursor.execute('''
+                CREATE TABLE IF NOT EXISTS match_upcoming_players (
+                    match_id INTEGER NOT NULL,
+                    team_id INTEGER NOT NULL,
+                    player_id INTEGER,
+                    player_nickname TEXT NOT NULL,
+                    fullName TEXT,
+                    nickName TEXT,
+                    parsed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    PRIMARY KEY (match_id, player_nickname),
+                    FOREIGN KEY (match_id) REFERENCES match_upcoming (match_id),
+                    FOREIGN KEY (team_id) REFERENCES teams (id),
+                    FOREIGN KEY (player_id) REFERENCES players (id)
                 )
             ''')
             
@@ -116,7 +133,7 @@ class DatabaseService:
                     score_team1 INTEGER,
                     score_team2 INTEGER,
                     last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    FOREIGN KEY (match_id) REFERENCES matches (id)
+                    FOREIGN KEY (match_id) REFERENCES match_details (id)
                 )
             ''')
             
@@ -129,7 +146,7 @@ class DatabaseService:
                     stats TEXT,
                     last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     PRIMARY KEY (match_id, player_id),
-                    FOREIGN KEY (match_id) REFERENCES matches (id),
+                    FOREIGN KEY (match_id) REFERENCES match_details (id),
                     FOREIGN KEY (player_id) REFERENCES players (id),
                     FOREIGN KEY (team_id) REFERENCES teams (id)
                 )
@@ -158,16 +175,16 @@ class DatabaseService:
         try:
             status = "completed" if is_past else "upcoming"
             query = """
-                SELECT id FROM matches 
+                SELECT match_id FROM match_upcoming 
                 WHERE status = ? AND parsed = 0
-                ORDER BY date DESC
+                ORDER BY datetime DESC
             """
             
             if limit:
                 query += f" LIMIT {limit}"
                 
             self.cursor.execute(query, (status,))
-            match_ids = [row['id'] for row in self.cursor.fetchall()]
+            match_ids = [row['match_id'] for row in self.cursor.fetchall()]
             return match_ids
         except sqlite3.Error as e:
             logger.error(f"Error getting match IDs for parsing: {e}")
@@ -189,7 +206,7 @@ class DatabaseService:
         self.connect()
         try:
             self.cursor.execute(
-                "UPDATE matches SET parsed = ?, last_updated = CURRENT_TIMESTAMP WHERE id = ?",
+                "UPDATE match_upcoming SET parsed = ?, last_updated = CURRENT_TIMESTAMP WHERE match_id = ?",
                 (1 if parsed else 0, match_id)
             )
             self.conn.commit()

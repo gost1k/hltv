@@ -13,6 +13,7 @@ HTML_DIR = f"{STORAGE_DIR}/html"
 RESULTS_HTML_FILE = f"{HTML_DIR}/results.html"
 MATCHES_HTML_FILE = f"{HTML_DIR}/matches.html"
 MATCH_DETAILS_DIR = f"{HTML_DIR}/match_details"
+MATCH_UPCOMING_DIR = f"{HTML_DIR}/upcoming"
 
 # Logging
 LOG_DIR = "logs"

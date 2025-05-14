@@ -12,7 +12,7 @@ from pathlib import Path
 from urllib.parse import urljoin, urlparse
 
 from src.parser.base import BaseParser
-from src.config import HLTV_BASE_URL, HTML_STORAGE_DIR
+from src.config.constants import BASE_URL as HLTV_BASE_URL, HTML_DIR as HTML_STORAGE_DIR, MATCH_UPCOMING_DIR
 
 
 class MatchDetailsParser(BaseParser):
@@ -76,13 +76,11 @@ class MatchDetailsParser(BaseParser):
             if self.parse_upcoming and (remaining_limit is None or remaining_limit > 0):
                 if self.limit is None:
                     cursor.execute('''
-                        SELECT id, url FROM url_upcoming 
-                        WHERE toParse = 1
+                        SELECT id, url FROM url_upcoming
                     ''')
                 else:
                     cursor.execute('''
-                        SELECT id, url FROM url_upcoming 
-                        WHERE toParse = 1
+                        SELECT id, url FROM url_upcoming
                         LIMIT ?
                     ''', (remaining_limit,))
                 
@@ -107,6 +105,11 @@ class MatchDetailsParser(BaseParser):
             is_past (bool): Является ли матч прошедшим
             status (int): Новый статус (0 - обработан, 1 - требует обработки)
         """
+        # Для предстоящих матчей не меняем статус toParse
+        if not is_past:
+            self.logger.info(f"Не обновляем статус toParse для предстоящего матча ID {match_id} (оставляем как есть)")
+            return
+            
         try:
             conn = sqlite3.connect(self.db_path)
             cursor = conn.cursor()
@@ -192,15 +195,24 @@ class MatchDetailsParser(BaseParser):
             # Формируем имя файла и путь
             file_name = self._get_filename_from_url(match_id, full_url)
             
-            # Создаем директорию result, если её нет
-            result_dir = os.path.join(HTML_STORAGE_DIR, "result")
-            os.makedirs(result_dir, exist_ok=True)
+            # Определяем директорию для сохранения в зависимости от типа матча
+            if is_past:
+                # Для прошедших матчей используем директорию result
+                save_dir = os.path.join(HTML_STORAGE_DIR, "result")
+                self.logger.info(f"Матч ID {match_id} определен как прошедший, сохраняем в {save_dir}")
+            else:
+                # Для предстоящих матчей используем директорию upcoming
+                save_dir = MATCH_UPCOMING_DIR
+                self.logger.info(f"Матч ID {match_id} определен как предстоящий, сохраняем в {save_dir}")
             
-            file_path = os.path.join(result_dir, file_name)
+            # Создаем директорию, если её нет
+            os.makedirs(save_dir, exist_ok=True)
             
-            # Проверяем, существует ли файл
-            if os.path.exists(file_path):
-                self.logger.info(f"Файл для матча ID {match_id} уже существует: {file_path}. Пропускаем скачивание.")
+            file_path = os.path.join(save_dir, file_name)
+            
+            # Для предстоящих матчей всегда перезаписываем файл, для прошедших - пропускаем если уже существует
+            if is_past and os.path.exists(file_path):
+                self.logger.info(f"Файл для прошедшего матча ID {match_id} уже существует: {file_path}. Пропускаем скачивание.")
                 return True
                 
             self.logger.info(f"Загрузка страницы матча ID {match_id}: {full_url}")
@@ -254,7 +266,8 @@ class MatchDetailsParser(BaseParser):
                 
                 # Парсим страницу
                 if self._parse_match_page(match):
-                    # Если успешно, обновляем статус
+                    # Если успешно и это прошедший матч, обновляем статус
+                    # Для предстоящих матчей статус не меняем (это делает метод _update_match_status)
                     self._update_match_status(match["id"], match.get("is_past", True), 0)
                     successful += 1
                 
