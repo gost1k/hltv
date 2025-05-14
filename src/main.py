@@ -1,17 +1,15 @@
 """
-Основной модуль HLTV Parser
+Main entry point for HLTV Parser
 """
 import argparse
 import logging
-from src.database import init_db
-from src.parser.matches import MatchesParser
-from src.parser.results import ResultsParser
-from src.parser.match_details import MatchDetailsParser
-from src.collector.matches import MatchesCollector
-from src.collector.match_details import MatchDetailsCollector
-from src.config import LOG_LEVEL, LOG_FORMAT, LOG_FILE
+import sys
+from src.parsers.manager import ParserManager
+from src.collectors.manager import CollectorManager
+from src.db.database import DatabaseService
+from src.config.constants import LOG_LEVEL, LOG_FORMAT, LOG_FILE
 
-# Настройка логирования
+# Setup logging
 logging.basicConfig(
     level=getattr(logging, LOG_LEVEL),
     format=LOG_FORMAT,
@@ -23,97 +21,127 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 def parse_arguments():
-    """Парсинг аргументов командной строки"""
+    """Parse command line arguments"""
     parser = argparse.ArgumentParser(description='HLTV Parser CLI')
+    
+    # Parser commands
     parser.add_argument('--parse-matches', action='store_true', help='Parse matches page')
     parser.add_argument('--parse-results', action='store_true', help='Parse results page')
-    parser.add_argument('--parse-details', action='store_true', help='Parse match details pages from DB')
-    parser.add_argument('--details-limit', type=int, help='Limit of match details to parse (default: parse all)')
-    parser.add_argument('--all-details', action='store_true', help='Parse all match details from DB without limit')
+    parser.add_argument('--parse-results-details', action='store_true', help='Parse match details pages from DB')
+    parser.add_argument('--parse-details', action='store_true', help='Alias for --parse-results-details (deprecated)')
+    
+    # Collector commands
+    parser.add_argument('--collect-results-list', action='store_true', help='Collect data from matches and results HTML files')
+    parser.add_argument('--collect-results-matches', action='store_true', help='Collect data from match details HTML files')
+    
+    # Backward compatibility
+    parser.add_argument('--collect-lists', action='store_true', help='Alias for --collect-results-list (deprecated)')
+    parser.add_argument('--collect-details', action='store_true', help='Alias for --collect-results-details (deprecated)')
+    parser.add_argument('--collect-results-details', action='store_true', help='Alias for --collect-results-matches (deprecated)')
+    
+    # Optional parameters
+    parser.add_argument('--details-limit', type=int, help='Limit of match details to parse')
     parser.add_argument('--test', action='store_true', help='Test mode: parse only 3 matches')
-    parser.add_argument('--parse-past', action='store_true', help='Parse past matches (from past_matches table)')
-    parser.add_argument('--parse-upcoming', action='store_true', help='Parse upcoming matches (from upcoming_matches table)')
-    parser.add_argument('--collect', action='store_true', help='Collect data from all HTML files (both lists and details)')
-    parser.add_argument('--collect-lists', action='store_true', help='Collect data only from list HTML files (results.html)')
-    parser.add_argument('--collect-details', action='store_true', help='Collect data only from match details HTML files in /storage/html/result/')
-    parser.add_argument('--all', action='store_true', help='Run all operations')
+    parser.add_argument('--past', action='store_true', help='Parse past matches')
+    parser.add_argument('--upcoming', action='store_true', help='Parse upcoming matches')
+    
     return parser.parse_args()
 
+def init_database():
+    """Initialize the database"""
+    db_service = DatabaseService()
+    if db_service.init_db():
+        logger.info("Database initialized successfully")
+        return True
+    else:
+        logger.error("Failed to initialize database")
+        return False
+
 def main():
-    """Основная функция программы"""
+    """Main entry point"""
     args = parse_arguments()
-    logger.info("HLTV Project Started")
+    logger.info("HLTV Parser Started")
     
     try:
-        init_db()
-        logger.info("Database initialized")
-
-        if args.all or args.parse_matches:
+        # Initialize database
+        if not init_database():
+            sys.exit(1)
+            
+        # Create manager instances
+        parser_manager = ParserManager()
+        collector_manager = CollectorManager()
+        
+        # Handle parser commands
+        if args.parse_matches:
             logger.info("Starting matches page parsing...")
-            with MatchesParser() as matches_parser:
-                matches_file = matches_parser.parse()
-                logger.info(f"Matches page saved to: {matches_file}")
-        
-        if args.all or args.parse_results:
+            matches_file = parser_manager.parse_matches()
+            logger.info(f"Matches page saved to: {matches_file}")
+            
+        if args.parse_results:
             logger.info("Starting results page parsing...")
-            with ResultsParser() as results_parser:
-                results_file = results_parser.parse()
-                logger.info(f"Results page saved to: {results_file}")
-        
-        if args.all or args.collect or args.collect_lists:
-            if args.collect or args.collect_lists:
-                logger.info("Starting data collection from list HTML files...")
-                # Собираем данные из списков матчей
-                collector = MatchesCollector()
-                collector.collect()
+            results_file = parser_manager.parse_results()
+            logger.info(f"Results page saved to: {results_file}")
             
-        if args.all or args.collect or args.collect_details:
-            if args.collect or args.collect_details:
-                # Собираем данные из деталей матчей
-                logger.info("Starting match details collection from HTML files...")
-                match_details_collector = MatchDetailsCollector()
-                stats = match_details_collector.collect()
-                logger.info(f"Match details collection completed. Stats: {stats['successful_match_details']} matches processed, {stats['successful_player_stats']} player stats saved")
-            
-        if args.all or args.collect or args.collect_lists or args.collect_details:
-            logger.info("Data collection completed")
-        
-        if args.all or args.parse_details:
-            # Если указан тестовый режим, используем лимит 3
+        if args.parse_details or args.parse_results_details:
+            if args.parse_details:
+                logger.warning("The --parse-details command is deprecated. Please use --parse-results-details instead.")
+                
+            # Use test mode limit if specified
             if args.test:
                 details_limit = 3
-            # Иначе, если указан конкретный лимит, используем его
-            elif args.details_limit is not None:
+            elif args.details_limit:
                 details_limit = args.details_limit
-            # Если указан флаг --all-details или не указан --details-limit, парсим все матчи
             else:
                 details_limit = None
+                
+            # Determine which types of matches to parse
+            parse_past = args.past or not args.upcoming  # Default to past if not specified
+            parse_upcoming = args.upcoming
             
-            # Определяем, какие типы матчей нужно парсить
-            parse_past = args.parse_past or not args.parse_upcoming  # По умолчанию парсим прошедшие
-            parse_upcoming = args.parse_upcoming
-            
-            # Выводим информацию о том, что будем парсить
+            # Log info about what's being parsed
             match_types = []
             if parse_past:
-                match_types.append("прошедших")
+                match_types.append("past")
             if parse_upcoming:
-                match_types.append("предстоящих")
+                match_types.append("upcoming")
+                
+            limit_info = f"limit: {details_limit}" if details_limit else "no limit"
+            logger.info(f"Parsing details for {', '.join(match_types)} matches ({limit_info})...")
             
-            limit_info = "без лимита" if details_limit is None else f"лимит: {details_limit}"
-            logger.info(f"Starting match details parsing ({', '.join(match_types)} матчей, {limit_info})...")
-            
-            details_parser = MatchDetailsParser(
+            # Run the parser
+            success_count = parser_manager.parse_match_details(
                 limit=details_limit,
                 parse_past=parse_past,
                 parse_upcoming=parse_upcoming
             )
-            successful = details_parser.parse()
-            logger.info(f"Match details parsing completed. Successful: {successful}")
+            logger.info(f"Match details parsing completed. Successfully parsed: {success_count}")
             
+        # Handle collector commands
+        if args.collect_results_list or args.collect_lists:
+            if args.collect_lists:
+                logger.warning("The --collect-lists command is deprecated. Please use --collect-results-list instead.")
+                
+            logger.info("Collecting data from matches and results HTML...")
+            
+            # Collect matches and results data
+            collection_stats = collector_manager.collect_results_list()
+            logger.info(f"Results list collection completed: {collection_stats}")
+            
+        if args.collect_results_matches or args.collect_results_details or args.collect_details:
+            if args.collect_details:
+                logger.warning("The --collect-details command is deprecated. Please use --collect-results-matches instead.")
+            if args.collect_results_details:
+                logger.warning("The --collect-results-details command is deprecated. Please use --collect-results-matches instead.")
+                
+            logger.info("Collecting data from match details HTML...")
+            details_stats = collector_manager.collect_results_details()
+            logger.info(f"Match details collection completed: {details_stats}")
+            
+        logger.info("HLTV Parser completed successfully")
+        
     except Exception as e:
-        logger.error(f"Error in main process: {e}")
-        raise
+        logger.error(f"Error in main process: {e}", exc_info=True)
+        sys.exit(1)
 
 if __name__ == "__main__":
     main()

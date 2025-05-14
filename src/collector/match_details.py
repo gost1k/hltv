@@ -10,6 +10,7 @@ from bs4 import BeautifulSoup
 import glob
 from datetime import datetime
 import time
+from src.config.constants import MATCH_DETAILS_DIR
 from src.config.selectors import *
 
 # Настройка логирования
@@ -29,7 +30,177 @@ class MatchDetailsCollector:
         """
         self.html_dir = html_dir
         self.db_path = db_path
+    
+    def collect(self):
+        """
+        Основной метод для извлечения данных из HTML-файлов и сохранения их в БД
         
+        Returns:
+            dict: Статистика обработки файлов
+        """
+        logger.info("Начинаем сбор деталей матчей")
+        
+        # Статистика обработки
+        stats = {
+            'total_files': 0,
+            'processed_files': 0,
+            'successful_match_details': 0,
+            'successful_player_stats': 0,
+            'errors': 0,
+            'already_exists': 0
+        }
+        
+        # Получаем файлы для обработки
+        files_to_process = self.get_files_to_process()
+        stats['total_files'] = len(files_to_process)
+        
+        if not files_to_process:
+            logger.info("Нет новых файлов для обработки")
+            return stats
+        
+        logger.info(f"Найдено {len(files_to_process)} файлов для обработки")
+        
+        # Обрабатываем каждый файл
+        for file_path in files_to_process:
+            try:
+                result = self.process_file(file_path)
+                stats['processed_files'] += 1
+                
+                if result == "success":
+                    stats['successful_match_details'] += 1
+                    stats['successful_player_stats'] += 1
+                elif result == "already_exists":
+                    stats['already_exists'] += 1
+                elif result == "error":
+                    stats['errors'] += 1
+                
+                # Логируем прогресс каждые 10 файлов
+                if stats['processed_files'] % 10 == 0:
+                    logger.info(f"Обработано {stats['processed_files']} из {stats['total_files']} файлов")
+                    
+            except Exception as e:
+                logger.error(f"Ошибка при обработке файла {file_path}: {str(e)}")
+                stats['errors'] += 1
+        
+        logger.info(f"Завершен сбор деталей матчей. Обработано {stats['processed_files']} из {stats['total_files']} файлов")
+        logger.info(f"Успешно: {stats['successful_match_details']}, Уже существуют: {stats['already_exists']}, Ошибок: {stats['errors']}")
+        
+        return stats
+    
+    def get_files_to_process(self):
+        """
+        Получает список HTML-файлов для обработки
+        
+        Returns:
+            list: Список путей к HTML-файлам
+        """
+        # Проверяем, что директория существует
+        if not os.path.exists(self.html_dir):
+            logger.error(f"Директория {self.html_dir} не существует")
+            return []
+            
+        # Получаем все HTML-файлы в директории
+        html_files = glob.glob(os.path.join(self.html_dir, "match_*.html"))
+        logger.info(f"Найдено {len(html_files)} HTML-файлов с деталями матчей")
+        
+        # Отфильтровываем только файлы, которые еще не были обработаны
+        files_to_process = []
+        for file_path in html_files:
+            match_id = self._extract_match_id_from_filename(os.path.basename(file_path))
+            if match_id and not self._is_match_details_exists(match_id):
+                files_to_process.append(file_path)
+                
+        logger.info(f"Из них {len(files_to_process)} файлов требуют обработки")
+        return files_to_process
+    
+    def process_file(self, file_path):
+        """
+        Обрабатывает один HTML-файл с деталями матча
+        
+        Args:
+            file_path (str): Путь к HTML-файлу
+            
+        Returns:
+            str: Статус обработки ("success", "already_exists", "error")
+        """
+        try:
+            match_id = self._extract_match_id_from_filename(os.path.basename(file_path))
+            
+            if not match_id:
+                logger.error(f"Не удалось извлечь ID матча из имени файла: {file_path}")
+                return "error"
+                
+            # Проверяем, существуют ли уже детали этого матча в БД
+            if self._is_match_details_exists(match_id):
+                logger.info(f"Детали матча {match_id} уже существуют в базе данных")
+                return "already_exists"
+                
+            logger.info(f"Обработка файла {file_path} для матча {match_id}")
+            
+            # Читаем HTML-файл
+            with open(file_path, 'r', encoding='utf-8') as f:
+                html_content = f.read()
+                
+            # Парсим HTML
+            soup = BeautifulSoup(html_content, 'html.parser')
+            
+            # Извлекаем детали матча
+            match_data = self._parse_match_details(soup, match_id)
+            
+            if not match_data:
+                logger.error(f"Не удалось извлечь детали матча из {file_path}")
+                return "error"
+                
+            # Сохраняем детали матча в БД
+            self._save_match_details(match_data)
+            
+            # Извлекаем статистику игроков
+            players_data = self._parse_player_stats(soup, match_id)
+            
+            if players_data:
+                # Сохраняем статистику игроков в БД
+                self._save_player_stats(players_data)
+                
+            logger.info(f"Успешно обработан файл {file_path}")
+            return "success"
+            
+        except Exception as e:
+            logger.error(f"Ошибка при обработке файла {file_path}: {str(e)}")
+            return "error"
+    
+    def _is_match_details_exists(self, match_id):
+        """
+        Проверяет, существуют ли детали матча в базе данных
+        
+        Args:
+            match_id (int): ID матча
+            
+        Returns:
+            bool: True, если детали матча уже есть в БД, иначе False
+        """
+        try:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            
+            # Проверяем существование таблицы match_details
+            cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='match_details'")
+            table_exists = cursor.fetchone() is not None
+            
+            if not table_exists:
+                conn.close()
+                return False
+                
+            # Проверяем наличие данных о матче
+            cursor.execute("SELECT 1 FROM match_details WHERE match_id = ?", (match_id,))
+            exists = cursor.fetchone() is not None
+            
+            conn.close()
+            return exists
+            
+        except Exception as e:
+            logger.error(f"Ошибка при проверке существования деталей матча {match_id}: {str(e)}")
+            return False
+
     def _extract_match_id_from_filename(self, filename):
         """
         Извлекает ID матча из имени файла
@@ -1146,110 +1317,6 @@ class MatchDetailsCollector:
         except Exception as e:
             logger.error(f"Ошибка при сохранении статистики игроков: {str(e)}")
             return False
-    
-    def collect(self, limit=None):
-        """
-        Основной метод сбора данных из HTML-файлов матчей
-        
-        Args:
-            limit (int): Максимальное количество файлов для обработки
-            
-        Returns:
-            dict: Статистика сбора данных
-        """
-        # Статистика
-        stats = {
-            'total_files': 0,
-            'processed_files': 0,
-            'successful_match_details': 0,
-            'successful_player_stats': 0,
-            'deleted_files': 0,
-            'errors': 0,
-            'incomplete_stats': 0  # Матчи, в которых статистика есть только для одной команды
-        }
-        
-        # Проверяем существование директории
-        if not os.path.exists(self.html_dir):
-            logger.error(f"Директория {self.html_dir} не существует")
-            return stats
-            
-        # Получаем список файлов матчей
-        match_files = glob.glob(os.path.join(self.html_dir, 'match_*.html'))
-        stats['total_files'] = len(match_files)
-        
-        # Ограничиваем количество файлов, если указан лимит
-        if limit and limit > 0:
-            match_files = match_files[:limit]
-        
-        logger.info(f"Найдено {stats['total_files']} файлов матчей в директории {self.html_dir}, обработка {len(match_files)}")
-        
-        # Обрабатываем каждый файл
-        for file_path in match_files:
-            try:
-                # Извлекаем ID матча из имени файла
-                match_id = self._extract_match_id_from_filename(os.path.basename(file_path))
-                if not match_id:
-                    logger.warning(f"Не удалось извлечь ID матча из имени файла: {file_path}")
-                    continue
-                
-                logger.info(f"Обработка матча ID {match_id} из файла {os.path.basename(file_path)}")
-                
-                # Читаем HTML-файл
-                with open(file_path, 'r', encoding='utf-8') as f:
-                    html_content = f.read()
-                
-                # Парсим HTML
-                soup = BeautifulSoup(html_content, 'html.parser')
-                
-                # Флаги успешного сохранения деталей и статистики
-                match_details_saved = False
-                player_stats_saved = False
-                
-                # Извлекаем данные матча
-                match_data = self._parse_match_details(soup, match_id)
-                if match_data:
-                    # Сохраняем данные матча
-                    if self._save_match_details(match_data):
-                        stats['successful_match_details'] += 1
-                        match_details_saved = True
-                
-                # Извлекаем статистику игроков
-                players_data = self._parse_player_stats(soup, match_id)
-                
-                # Проверяем, что у нас есть статистика для обеих команд
-                if players_data:
-                    # Получаем team_id из данных игроков
-                    team_ids = set(player['team_id'] for player in players_data if player['team_id'] is not None)
-                    
-                    # Если данные только по одной команде
-                    if len(team_ids) == 1:
-                        logger.warning(f"Матч {match_id}: найдена статистика только для одной команды (ID: {list(team_ids)[0]})")
-                        stats['incomplete_stats'] += 1
-                    
-                    # Сохраняем статистику игроков
-                    if self._save_player_stats(players_data):
-                        stats['successful_player_stats'] += 1
-                        player_stats_saved = True
-                
-                # Удаление файла после успешной обработки
-                if match_details_saved and player_stats_saved:
-                    # Если мы успешно сохранили и детали матча, и статистику игроков,
-                    # удаляем HTML-файл, так как данные уже сохранены в БД
-                    try:
-                        os.remove(file_path)
-                        logger.info(f"Файл {os.path.basename(file_path)} успешно удален после обработки")
-                        stats['deleted_files'] += 1
-                    except Exception as e:
-                        logger.warning(f"Не удалось удалить файл {file_path}: {str(e)}")
-                
-                stats['processed_files'] += 1
-                
-            except Exception as e:
-                logger.error(f"Ошибка при обработке файла {file_path}: {str(e)}")
-                stats['errors'] += 1
-        
-        logger.info(f"Обработка завершена. Статистика: {stats}")
-        return stats
 
 if __name__ == "__main__":
     # Настройка логирования

@@ -4,11 +4,12 @@ import sqlite3
 from datetime import datetime
 import re
 import logging
+from src.config.constants import HTML_DIR, MATCHES_HTML_FILE, RESULTS_HTML_FILE, DATABASE_FILE
 
 logger = logging.getLogger(__name__)
 
 class MatchesCollector:
-    def __init__(self, html_dir: str = "storage/html", db_path: str = "hltv.db"):
+    def __init__(self, html_dir: str = HTML_DIR, db_path: str = DATABASE_FILE):
         self.html_dir = html_dir
         self.db_path = db_path
         
@@ -107,15 +108,19 @@ class MatchesCollector:
 
     def _parse_html_file(self, file_path: str) -> list:
         """Парсит HTML файл и возвращает список матчей"""
-        with open(file_path, 'r', encoding='utf-8') as f:
-            soup = BeautifulSoup(f.read(), 'html.parser')
+        try:
+            with open(file_path, 'r', encoding='utf-8') as f:
+                soup = BeautifulSoup(f.read(), 'html.parser')
 
-        # Определяем тип страницы по имени файла
-        if 'matches' in file_path.lower():
-            return self._parse_matches_file(soup)
-        elif 'results' in file_path.lower():
-            return self._parse_results_file(soup)
-        return []
+            # Определяем тип страницы по имени файла
+            if 'matches' in file_path.lower():
+                return self._parse_matches_file(soup)
+            elif 'results' in file_path.lower():
+                return self._parse_results_file(soup)
+            return []
+        except Exception as e:
+            logger.error(f"Ошибка при чтении файла {file_path}: {str(e)}")
+            return []
         
     def _create_tables(self):
         """Создает необходимые таблицы в базе данных"""
@@ -149,10 +154,10 @@ class MatchesCollector:
         except Exception as e:
             logger.error(f"Ошибка при создании таблиц: {str(e)}")
     
-    def _save_upcoming_matches(self, matches: list) -> int:
+    def _save_upcoming_matches(self, matches: list) -> dict:
         """Сохраняет предстоящие матчи в базу данных"""
         if not matches:
-            return 0
+            return {"new": 0, "updated": 0}
             
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
@@ -187,12 +192,12 @@ class MatchesCollector:
         conn.commit()
         conn.close()
         logger.info(f"Добавлено новых предстоящих матчей: {new_matches}, обновлено: {updated_matches}")
-        return new_matches
+        return {"new": new_matches, "updated": updated_matches}
         
-    def _save_past_matches(self, matches: list) -> int:
+    def _save_past_matches(self, matches: list) -> dict:
         """Сохраняет результаты матчей в базу данных"""
         if not matches:
-            return 0
+            return {"new": 0, "updated": 0}
             
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
@@ -222,44 +227,108 @@ class MatchesCollector:
         conn.commit()
         conn.close()
         logger.info(f"Добавлено новых прошедших матчей: {new_matches}, обновлено: {updated_matches}")
-        return new_matches
+        return {"new": new_matches, "updated": updated_matches}
+    
+    def collect_matches(self) -> dict:
+        """
+        Собирает данные из HTML-файла со списком матчей
+        
+        Returns:
+            dict: Статистика обработки
+        """
+        # Создаем таблицы, если их нет
+        self._create_tables()
+        
+        stats = {
+            "total": 0,
+            "new": 0,
+            "updated": 0,
+            "failed": 0
+        }
+        
+        try:
+            file_path = MATCHES_HTML_FILE
+            logger.info(f"Обработка файла матчей: {file_path}")
+            
+            # Проверяем существование файла
+            if not os.path.exists(file_path):
+                logger.error(f"Файл не найден: {file_path}")
+                stats["failed"] = 1
+                return stats
+                
+            # Парсим файл
+            matches = self._parse_html_file(file_path)
+            stats["total"] = len(matches)
+            logger.info(f"Найдено предстоящих матчей: {stats['total']}")
+            
+            # Сохраняем в базу данных
+            if matches:
+                result = self._save_upcoming_matches(matches)
+                stats["new"] = result["new"]
+                stats["updated"] = result["updated"]
+            
+            return stats
+            
+        except Exception as e:
+            logger.error(f"Ошибка при обработке матчей: {str(e)}")
+            stats["failed"] = 1
+            return stats
+    
+    def collect_results(self) -> dict:
+        """
+        Собирает данные из HTML-файла с результатами матчей
+        
+        Returns:
+            dict: Статистика обработки
+        """
+        # Создаем таблицы, если их нет
+        self._create_tables()
+        
+        stats = {
+            "total": 0,
+            "new": 0,
+            "updated": 0,
+            "failed": 0
+        }
+        
+        try:
+            file_path = RESULTS_HTML_FILE
+            logger.info(f"Обработка файла результатов: {file_path}")
+            
+            # Проверяем существование файла
+            if not os.path.exists(file_path):
+                logger.error(f"Файл не найден: {file_path}")
+                stats["failed"] = 1
+                return stats
+                
+            # Парсим файл
+            matches = self._parse_html_file(file_path)
+            stats["total"] = len(matches)
+            logger.info(f"Найдено результатов матчей: {stats['total']}")
+            
+            # Сохраняем в базу данных
+            if matches:
+                result = self._save_past_matches(matches)
+                stats["new"] = result["new"]
+                stats["updated"] = result["updated"]
+            
+            return stats
+            
+        except Exception as e:
+            logger.error(f"Ошибка при обработке результатов: {str(e)}")
+            stats["failed"] = 1
+            return stats
         
     def collect(self):
         """Собирает данные из всех HTML файлов в папке"""
-        if not os.path.exists(self.html_dir):
-            logger.error(f"Папка {self.html_dir} не найдена")
-            return
-            
-        # Создаем таблицы, если их нет
-        self._create_tables()
-            
-        # Собираем все HTML файлы matches и results
-        for file_name in os.listdir(self.html_dir):
-            if file_name.endswith('.html'):
-                is_matches = 'matches' in file_name.lower()
-                is_results = 'results' in file_name.lower()
-                
-                if is_matches or is_results:
-                    file_path = os.path.join(self.html_dir, file_name)
-                    file_type = 'matches' if is_matches else 'results'
-                    logger.info(f"Обработка файла {file_type}: {file_name}")
-                    
-                    # Парсим файл
-                    matches = self._parse_html_file(file_path)
-                    logger.info(f"Найдено матчей: {len(matches)}")
-                    
-                    # Сохраняем в соответствующую таблицу
-                    if matches:
-                        if is_matches:
-                            new_matches = self._save_upcoming_matches(matches)
-                            logger.info(f"Обработано предстоящих матчей: {new_matches}")
-                        else:
-                            new_matches = self._save_past_matches(matches)
-                            logger.info(f"Обработано прошедших матчей: {new_matches}")
-                    
-                    # Можно раскомментировать, если нужно удалять обработанные файлы
-                    # os.remove(file_path)
-                    # logger.info(f"Файл {file_name} удален")
+        # Для обратной совместимости со старым кодом
+        matches_stats = self.collect_matches()
+        results_stats = self.collect_results()
+        
+        return {
+            "matches": matches_stats,
+            "results": results_stats
+        }
 
 if __name__ == "__main__":
     # Настройка логирования
@@ -269,5 +338,5 @@ if __name__ == "__main__":
     )
     
     collector = MatchesCollector()
-    collector.collect()
-    logger.info("Collection completed")
+    result = collector.collect()
+    logger.info(f"Collection completed: {result}")
