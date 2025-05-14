@@ -58,8 +58,7 @@ class HLTVStatsBot:
         # Создаем клавиатуру с кнопками меню
         self.menu_keyboard = [
             [KeyboardButton(MENU_COMPLETED_MATCHES)],
-            [KeyboardButton(MENU_UPCOMING_MATCHES)],
-            [KeyboardButton("Матчи за день")]
+            [KeyboardButton(MENU_UPCOMING_MATCHES)]
         ]
         self.markup = ReplyKeyboardMarkup(self.menu_keyboard, resize_keyboard=True)
         
@@ -112,7 +111,8 @@ class HLTVStatsBot:
             f"/subscribe - Подписаться на ежедневную рассылку\n"
             f"/unsubscribe - Отписаться от ежедневной рассылки\n"
             f"/menu - Показать меню\n"
-            f"/help - Показать справку"
+            f"/help - Показать справку\n\n"
+            f"Также вы можете ввести точное название команды (например, 'NAVI' или 'Astralis'), чтобы найти её последние матчи."
         )
         await update.message.reply_text(message, reply_markup=self.markup)
     
@@ -131,7 +131,8 @@ class HLTVStatsBot:
             "/subscribe - Подписаться на ежедневную рассылку\n"
             "/unsubscribe - Отписаться от ежедневной рассылки\n"
             "/menu - Показать меню\n"
-            "/help - Показать эту справку"
+            "/help - Показать эту справку\n\n"
+            "Для поиска матчей определенной команды, введите её точное название в чат (например, 'NAVI' или 'Astralis')."
         )
         await update.message.reply_text(message, reply_markup=self.markup)
     
@@ -178,9 +179,6 @@ class HLTVStatsBot:
         elif message_text == "Назад":
             logger.info(f"{user_info} - Возврат в главное меню")
             await self.show_menu(update, context)
-        elif message_text == "Матчи за день":
-            logger.info(f"{user_info} - Запрос матчей за последний день")
-            await self.show_last_day_matches_menu(update, context)
         elif 'match_mapping' in context.user_data and message_text in context.user_data['match_mapping']:
             # Если текст сообщения совпадает с названием матча в нашем словаре
             match_id = context.user_data['match_mapping'][message_text]
@@ -204,12 +202,18 @@ class HLTVStatsBot:
                     reply_markup=self.markup
                 )
         else:
-            await update.message.reply_text(
-                "Используйте кнопки меню или команды для взаимодействия с ботом.\n"
-                "Для показа меню наберите /menu\n"
-                "Для получения списка команд наберите /help",
-                reply_markup=self.markup
-            )
+            # Проверяем, может быть это название команды
+            team_name = message_text.strip()
+            if len(team_name) >= 2:  # Минимальная длина названия команды
+                await self.find_matches_by_team(update, context, team_name)
+            else:
+                await update.message.reply_text(
+                    "Используйте кнопки меню или команды для взаимодействия с ботом.\n"
+                    "Для показа меню наберите /menu\n"
+                    "Для получения списка команд наберите /help\n"
+                    "Введите точное название команды (не менее 2 символов) для поиска её матчей.",
+                    reply_markup=self.markup
+                )
     
     async def show_completed_matches(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """
@@ -425,8 +429,6 @@ class HLTVStatsBot:
             
             # Добавляем разделитель между событиями
             message += "\n"
-        
-        message += "Используйте меню 'Матчи за день' для просмотра подробной статистики по матчам.\n"
         
         return message
     
@@ -862,6 +864,102 @@ class HLTVStatsBot:
             logger.error(f"Ошибка при получении списка матчей: {str(e)}")
             await update.message.reply_text(
                 "Произошла ошибка при получении списка матчей.",
+                reply_markup=self.markup
+            )
+    
+    async def find_matches_by_team(self, update: Update, context: ContextTypes.DEFAULT_TYPE, team_name):
+        """
+        Поиск и отображение последних 20 матчей команды
+        
+        Args:
+            update: Объект обновления Telegram
+            context: Контекст обработчика
+            team_name (str): Название команды для поиска
+        """
+        user = update.effective_user
+        user_info = f"User: {user.first_name} {user.last_name or ''} (@{user.username or 'no_username'}) [ID: {user.id}]"
+        logger.info(f"{user_info} - Поиск матчей команды: {team_name}")
+        
+        try:
+            conn = sqlite3.connect(self.db_path)
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            
+            # Поиск матчей команды (проверяем и team1_name, и team2_name)
+            # Ищем только точное совпадение по имени, без учета регистра
+            cursor.execute('''
+                SELECT 
+                    match_id, datetime, 
+                    team1_id, team1_name, team1_score, 
+                    team2_id, team2_name, team2_score,
+                    event_name, status
+                FROM match_details
+                WHERE (LOWER(team1_name) = LOWER(?) OR LOWER(team2_name) = LOWER(?))
+                AND status = 'completed'
+                ORDER BY datetime DESC
+                LIMIT 20
+            ''', (team_name, team_name))
+            
+            matches = cursor.fetchall()
+            conn.close()
+            
+            if not matches:
+                await update.message.reply_text(
+                    f"Не найдено матчей для команды '{team_name}'.",
+                    reply_markup=self.markup
+                )
+                return
+            
+            # Создаем кнопки для каждого матча
+            keyboard = []
+            
+            # Сохраняем соответствие между названием матча и его ID в контексте пользователя
+            if 'match_mapping' not in context.user_data:
+                context.user_data['match_mapping'] = {}
+            
+            # Формируем текстовый список матчей с датами
+            matches_list = f"<b>Последние матчи команды '{team_name}':</b>\n\n"
+            
+            for i, match in enumerate(matches, 1):
+                team1_name = match['team1_name'].split()[0]
+                team2_name = match['team2_name'].split()[0]
+                team1_score = match['team1_score']
+                team2_score = match['team2_score']
+                match_id = match['match_id']
+                match_date = datetime.fromtimestamp(match['datetime']).strftime('%d.%m.%Y')
+                
+                # Добавляем матч в текстовый список
+                matches_list += f"{i}. <b>{match_date}</b>: {team1_name} {team1_score}:{team2_score} {team2_name}\n"
+                
+                # Создаем текст кнопки без даты
+                match_text = f"{team1_name} {team1_score}:{team2_score} {team2_name}"
+                
+                # Сохраняем соответствие
+                context.user_data['match_mapping'][match_text] = match_id
+                
+                # Добавляем кнопку
+                keyboard.append([KeyboardButton(match_text)])
+            
+            # Добавляем кнопку "Назад"
+            keyboard.append([KeyboardButton("Назад")])
+            
+            reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+            
+            # Отправляем список матчей и клавиатуру для выбора
+            await update.message.reply_text(
+                matches_list,
+                parse_mode="HTML"
+            )
+            
+            await update.message.reply_text(
+                "Выберите матч для просмотра подробной статистики:",
+                reply_markup=reply_markup
+            )
+            
+        except Exception as e:
+            logger.error(f"Ошибка при поиске матчей команды: {str(e)}")
+            await update.message.reply_text(
+                "Произошла ошибка при поиске матчей команды.",
                 reply_markup=self.markup
             )
     
