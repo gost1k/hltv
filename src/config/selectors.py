@@ -10,6 +10,7 @@ COUNTDOWN = '.countdown'
 TEAM1_GRADIENT = '.team1-gradient'
 TEAM2_GRADIENT = '.team2-gradient'
 TEAM_NAME = '.teamName'
+NOTEAM = '.noteam'  # Селектор для неопределенной команды
 
 # Селекторы для счета
 TEAM1_SCORE = '.team1-gradient .won, .team1-gradient .lost'
@@ -18,6 +19,18 @@ TEAM2_SCORE = '.team2-gradient .won, .team2-gradient .lost'
 # Селекторы для рейтингов
 TEAM1_RANK = '.lineups .lineup:nth-child(1) .teamRanking a'
 TEAM2_RANK = '.lineups .lineup:nth-child(3) .teamRanking a'
+
+# Селекторы для линеек игроков
+LINEUPS_CONTAINER = '.lineups'
+TEAM1_LINEUP = '.lineups .lineup:nth-child(1)'
+TEAM2_LINEUP = '.lineups .lineup:nth-child(3)'
+PLAYERS_TABLE = '.players > table'
+PLAYER_ROW = 'tr'
+PLAYER_CELL = 'td.player'
+PLAYER_DATA_ID = '[data-player-id]'
+PLAYER_COMPARE = '.player-compare'
+PLAYER_TEAM_ORDINAL = '[data-team-ordinal]'
+PLAYER_NICKNAME = 'div.text-ellipsis'
 
 # Селекторы для события
 EVENT = '.timeAndEvent .event a'
@@ -58,6 +71,7 @@ MATCH_OVER_TEXT = "Match over"
 STATUS_UPCOMING = 'upcoming'
 STATUS_COMPLETED = 'completed'
 STATUS_UNKNOWN = 'unknown'
+STATUS_LIVE = 'live'  # Статус для матчей, которые в данный момент идут
 
 # Селекторы HTML элементов для парсеров HLTV
 MATCHES = {

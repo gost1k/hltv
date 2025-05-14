@@ -187,6 +187,10 @@ class BaseParser(ABC):
             self.logger.warning(f"Page size too small: {len(content)} bytes")
             return False
             
+        # Не выводим содержимое контента в лог
+        content_size = len(content)
+        self.logger.debug(f"Page size validation: {content_size} bytes")
+            
         # Временно отключаем проверку Cloudflare
         # if self.cloudflare.is_cloudflare_page(content):
         #     self.logger.warning("Cloudflare protection detected")
@@ -206,9 +210,12 @@ class BaseParser(ABC):
             # if not self.cloudflare.handle_cloudflare(content):
             #     raise TimeoutException("Cloudflare protection still present after waiting")
             
+            # Проверяем валидность страницы без вывода содержимого
+            content_length = len(self.driver.page_source)
+            self.logger.debug(f"Page loaded, content length: {content_length} bytes")
+            
             # Проверяем валидность страницы
-            content = self.driver.page_source
-            if not self._is_valid_page(content):
+            if not self._is_valid_page(self.driver.page_source):
                 raise TimeoutException("Invalid page content")
                 
         except TimeoutException as e:

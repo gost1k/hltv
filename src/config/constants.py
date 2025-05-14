@@ -17,7 +17,7 @@ MATCH_UPCOMING_DIR = f"{HTML_DIR}/upcoming"
 
 # Logging
 LOG_DIR = "logs"
-LOG_FILE = f"{LOG_DIR}/hltv_parser.log"
+LOG_FILE = "hltv_parser.log"
 LOG_LEVEL = "INFO"
 LOG_FORMAT = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 

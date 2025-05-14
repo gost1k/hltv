@@ -143,6 +143,18 @@ class MatchUpcomingCollector:
             # Сохраняем данные матча в БД
             self._save_match_details(match_data)
             
+            # Проверяем, есть ли определенные команды в матче
+            # Если обе команды TBD, игроков точно нет, пропускаем сбор
+            if match_data['team1_name'] == "TBD" and match_data['team2_name'] == "TBD":
+                logger.info(f"Матч {match_id} не имеет определенных команд, пропускаем сбор данных игроков")
+                # Удаляем файл после успешной обработки
+                try:
+                    os.remove(file_path)
+                    logger.info(f"Файл {file_path} успешно удален")
+                except Exception as e:
+                    logger.warning(f"Не удалось удалить файл {file_path}: {str(e)}")
+                return "success"
+            
             # Извлекаем данные игроков
             players_data = self._parse_player_data(soup, match_id)
             
@@ -151,6 +163,14 @@ class MatchUpcomingCollector:
                 self._save_player_data(players_data)
                 
             logger.info(f"Успешно обработан файл {file_path}")
+            
+            # Удаляем файл после успешной обработки
+            try:
+                os.remove(file_path)
+                logger.info(f"Файл {file_path} успешно удален")
+            except Exception as e:
+                logger.warning(f"Не удалось удалить файл {file_path}: {str(e)}")
+                
             return "success"
             
         except Exception as e:
@@ -226,7 +246,7 @@ class MatchUpcomingCollector:
             # Проверяем, начался ли матч по тексту в блоке countdown
             match_live_element = soup.select_one(COUNTDOWN)
             if match_live_element and "LIVE" in match_live_element.text:
-                match_status = "live"
+                match_status = STATUS_LIVE
             
             match_data = {
                 'match_id': match_id,
@@ -249,9 +269,11 @@ class MatchUpcomingCollector:
             if time_element:
                 match_data['datetime'] = int(time_element.get('data-unix', 0)) // 1000  # Переводим из мс в секунды
             
-            # Извлекаем данные первой команды
+            # Проверяем команду 1 на наличие класса .noteam
             team1_element = soup.select_one(TEAM1_GRADIENT)
-            if team1_element:
+            team1_is_noteam = team1_element and NOTEAM.lstrip('.') in team1_element.get('class', [])
+            
+            if team1_element and not team1_is_noteam:
                 team1_link = team1_element.select_one(PLAYER_LINK)
                 if team1_link:
                     match_data['team1_id'] = self._extract_id_from_url(team1_link.get('href'))
@@ -259,10 +281,14 @@ class MatchUpcomingCollector:
                 team1_name_element = team1_element.select_one(TEAM_NAME)
                 if team1_name_element:
                     match_data['team1_name'] = team1_name_element.text.strip()
+            elif team1_is_noteam:
+                match_data['team1_name'] = "TBD"  # To Be Determined
             
-            # Извлекаем данные второй команды
+            # Проверяем команду 2 на наличие класса .noteam
             team2_element = soup.select_one(TEAM2_GRADIENT)
-            if team2_element:
+            team2_is_noteam = team2_element and NOTEAM.lstrip('.') in team2_element.get('class', [])
+            
+            if team2_element and not team2_is_noteam:
                 team2_link = team2_element.select_one(PLAYER_LINK)
                 if team2_link:
                     match_data['team2_id'] = self._extract_id_from_url(team2_link.get('href'))
@@ -270,15 +296,19 @@ class MatchUpcomingCollector:
                 team2_name_element = team2_element.select_one(TEAM_NAME)
                 if team2_name_element:
                     match_data['team2_name'] = team2_name_element.text.strip()
+            elif team2_is_noteam:
+                match_data['team2_name'] = "TBD"  # To Be Determined
             
-            # Извлекаем рейтинги команд
-            team1_rank_element = soup.select_one(TEAM1_RANK)
-            if team1_rank_element:
-                match_data['team1_rank'] = self._extract_rank(team1_rank_element.text.strip())
+            # Извлекаем рейтинги команд (только если команды определены)
+            if not team1_is_noteam:
+                team1_rank_element = soup.select_one(TEAM1_RANK)
+                if team1_rank_element:
+                    match_data['team1_rank'] = self._extract_rank(team1_rank_element.text.strip())
             
-            team2_rank_element = soup.select_one(TEAM2_RANK)
-            if team2_rank_element:
-                match_data['team2_rank'] = self._extract_rank(team2_rank_element.text.strip())
+            if not team2_is_noteam:
+                team2_rank_element = soup.select_one(TEAM2_RANK)
+                if team2_rank_element:
+                    match_data['team2_rank'] = self._extract_rank(team2_rank_element.text.strip())
             
             # Извлекаем данные о событии
             event_element = soup.select_one(EVENT)
@@ -286,20 +316,21 @@ class MatchUpcomingCollector:
                 match_data['event_id'] = self._extract_id_from_url(event_element.get('href'))
                 match_data['event_name'] = event_element.text.strip()
             
-            # Извлекаем данные об очных встречах
-            h2h_team1_element = soup.select_one(H2H_TEAM1_WINS)
-            if h2h_team1_element:
-                try:
-                    match_data['head_to_head_team1_wins'] = int(h2h_team1_element.text.strip())
-                except ValueError:
-                    match_data['head_to_head_team1_wins'] = 0
-            
-            h2h_team2_element = soup.select_one(H2H_TEAM2_WINS)
-            if h2h_team2_element:
-                try:
-                    match_data['head_to_head_team2_wins'] = int(h2h_team2_element.text.strip())
-                except ValueError:
-                    match_data['head_to_head_team2_wins'] = 0
+            # Извлекаем данные об очных встречах (только если обе команды определены)
+            if not team1_is_noteam and not team2_is_noteam:
+                h2h_team1_element = soup.select_one(H2H_TEAM1_WINS)
+                if h2h_team1_element:
+                    try:
+                        match_data['head_to_head_team1_wins'] = int(h2h_team1_element.text.strip())
+                    except ValueError:
+                        match_data['head_to_head_team1_wins'] = 0
+                
+                h2h_team2_element = soup.select_one(H2H_TEAM2_WINS)
+                if h2h_team2_element:
+                    try:
+                        match_data['head_to_head_team2_wins'] = int(h2h_team2_element.text.strip())
+                    except ValueError:
+                        match_data['head_to_head_team2_wins'] = 0
             
             # Логирование информации о матче
             logger.info(f"Матч {match_id} определен как {match_status}")
@@ -324,72 +355,99 @@ class MatchUpcomingCollector:
         players_data = []
         
         try:
-            # Получаем ID команд
+            # Проверяем наличие блока с линейками команд
+            lineups_container = soup.select_one(LINEUPS_CONTAINER)
+            if not lineups_container:
+                logger.info(f"Блок с линейками команд не найден для матча {match_id}")
+                return players_data
+            
+            # Получаем ID команд и проверяем, определены ли команды
+            team1_element = soup.select_one(TEAM1_GRADIENT)
+            team2_element = soup.select_one(TEAM2_GRADIENT)
+            
+            team1_is_noteam = team1_element and NOTEAM.lstrip('.') in team1_element.get('class', [])
+            team2_is_noteam = team2_element and NOTEAM.lstrip('.') in team2_element.get('class', [])
+            
+            # Если обе команды не определены, вернем пустой список
+            if team1_is_noteam and team2_is_noteam:
+                logger.info(f"Обе команды для матча {match_id} еще не определены, пропускаем парсинг игроков")
+                return players_data
+            
             team1_id = None
             team2_id = None
-            team1_name = None
-            team2_name = None
             
-            team1_element = soup.select_one(f"{TEAM1_GRADIENT} {PLAYER_LINK}")
-            if team1_element:
-                team1_id = self._extract_id_from_url(team1_element.get('href'))
+            # Получаем ID команд, если они определены
+            if not team1_is_noteam and team1_element:
+                team1_link = team1_element.select_one(PLAYER_LINK)
+                if team1_link:
+                    team1_id = self._extract_id_from_url(team1_link.get('href'))
+                    logger.debug(f"ID первой команды: {team1_id}")
             
-            team2_element = soup.select_one(f"{TEAM2_GRADIENT} {PLAYER_LINK}")
-            if team2_element:
-                team2_id = self._extract_id_from_url(team2_element.get('href'))
-                
-            team1_name_element = soup.select_one(f"{TEAM1_GRADIENT} {TEAM_NAME}")
-            if team1_name_element:
-                team1_name = team1_name_element.text.strip()
-                
-            team2_name_element = soup.select_one(f"{TEAM2_GRADIENT} {TEAM_NAME}")
-            if team2_name_element:
-                team2_name = team2_name_element.text.strip()
+            if not team2_is_noteam and team2_element:
+                team2_link = team2_element.select_one(PLAYER_LINK)
+                if team2_link:
+                    team2_id = self._extract_id_from_url(team2_link.get('href'))
+                    logger.debug(f"ID второй команды: {team2_id}")
             
-            # Найдем линейки (lineups) команд
-            lineup_container = soup.select_one('.lineups')
-            if not lineup_container:
-                logger.warning(f"Контейнер с линейками не найден для матча {match_id}")
+            # Ищем все блоки .players
+            players_divs = lineups_container.select('.players')
+            if not players_divs or len(players_divs) == 0:
+                logger.info(f"Блоки с игроками не найдены для матча {match_id}")
                 return players_data
             
-            # Найдем все блоки с командами
-            team_containers = lineup_container.select('.lineup')
+            logger.debug(f"Найдено {len(players_divs)} блоков с игроками")
             
-            if len(team_containers) < 2:
-                logger.warning(f"Недостаточно блоков с линейками команд для матча {match_id}")
-                return players_data
+            # Обрабатываем все блоки с игроками
+            total_players = 0
             
-            # Первая команда
-            team1_container = team_containers[0]
-            team1_players = team1_container.select('.player-container')
+            for player_div in players_divs:
+                # Ищем таблицу в текущем блоке .players
+                players_table = player_div.select_one('table')
+                if not players_table:
+                    continue
+                
+                # Ищем строки таблицы
+                rows = players_table.select('tr')
+                if len(rows) <= 1:
+                    continue
+                
+                # Обычно игроки находятся во второй строке таблицы
+                player_row = rows[1]
+                
+                # Получаем все ячейки с игроками
+                player_cells = player_row.select('td.player')
+                logger.debug(f"Найдено {len(player_cells)} ячеек с игроками в текущем блоке")
+                
+                # Анализируем каждую ячейку с игроком
+                for cell in player_cells:
+                    # Получаем информацию о команде игрока из атрибута data-team-ordinal
+                    player_compare = cell.select_one('.player-compare')
+                    if not player_compare:
+                        continue
+                    
+                    team_ordinal = player_compare.get('data-team-ordinal')
+                    # Определяем, к какой команде относится игрок (1 - первая команда, 2 - вторая команда)
+                    current_team_id = team1_id if team_ordinal == "1" else team2_id
+                    
+                    # Извлекаем данные игрока
+                    player_data = self._extract_player_data_from_cell(cell, match_id, current_team_id)
+                    if player_data:
+                        players_data.append(player_data)
+                        total_players += 1
             
-            for player in team1_players:
-                player_data = self._extract_player_data(player, match_id, team1_id)
-                if player_data:
-                    players_data.append(player_data)
-            
-            # Вторая команда
-            team2_container = team_containers[1]
-            team2_players = team2_container.select('.player-container')
-            
-            for player in team2_players:
-                player_data = self._extract_player_data(player, match_id, team2_id)
-                if player_data:
-                    players_data.append(player_data)
-            
-            logger.info(f"Извлечены данные {len(players_data)} игроков для матча {match_id}")
+            logger.info(f"Извлечены данные {total_players} игроков для матча {match_id}")
             return players_data
             
         except Exception as e:
             logger.error(f"Ошибка при парсинге данных игроков матча {match_id}: {str(e)}")
             return []
     
-    def _extract_player_data(self, player_element, match_id, team_id):
+    def _extract_player_data_from_cell(self, cell, match_id, team_id):
         """
-        Извлекает данные одного игрока из HTML элемента
+        Извлекает данные одного игрока из ячейки таблицы
         
         Args:
-            player_element: HTML элемент с данными игрока
+            cell: HTML элемент с данными игрока
             match_id (int): ID матча
             team_id (int): ID команды
             
@@ -406,27 +464,33 @@ class MatchUpcomingCollector:
                 'nickName': None
             }
             
-            # Получаем ссылку на игрока
-            player_link = player_element.select_one('a')
-            if player_link:
-                player_data['player_id'] = self._extract_id_from_url(player_link.get('href'))
+            # Получаем элемент с данными игрока
+            player_compare = cell.select_one('.player-compare')
+            if not player_compare:
+                return None
+            
+            # Получаем ID игрока из атрибута data-player-id
+            player_id_attr = player_compare.get('data-player-id')
+            if player_id_attr:
+                try:
+                    player_data['player_id'] = int(player_id_attr)
+                except ValueError:
+                    pass
+            
+            # Получаем ник игрока
+            player_nickname = player_compare.select_one(PLAYER_NICKNAME)
+            if player_nickname:
+                nickname_text = player_nickname.text.strip()
+                player_data['player_nickname'] = nickname_text
+                player_data['nickName'] = nickname_text
                 
-                # Получаем ник игрока
-                player_nickname = player_link.select_one('.nick')
-                if player_nickname:
-                    player_data['nickName'] = player_nickname.text.strip()
-                    player_data['player_nickname'] = player_nickname.text.strip()
-                
-                # Получаем полное имя игрока
-                player_name = player_link.select_one('.name')
-                if player_name:
-                    player_data['fullName'] = player_name.text.strip()
+                # В этой структуре полное имя обычно отсутствует, только ник
+                player_data['fullName'] = nickname_text
             
             # Проверяем, что у нас есть хотя бы ник игрока
             if player_data['player_nickname']:
                 return player_data
             else:
-                logger.warning(f"Недостаточно данных об игроке в матче {match_id}")
                 return None
             
         except Exception as e:

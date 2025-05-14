@@ -72,15 +72,17 @@ class MatchDetailsParser(BaseParser):
                     remaining_limit -= len(past_matches)
                 self.logger.info(f"Найдено {len(past_matches)} прошедших матчей для скачивания")
             
-            # Получаем предстоящие матчи для парсинга
+            # Получаем предстоящие матчи для парсинга, у которых toParse = 1
             if self.parse_upcoming and (remaining_limit is None or remaining_limit > 0):
                 if self.limit is None:
                     cursor.execute('''
                         SELECT id, url FROM url_upcoming
+                        WHERE toParse = 1
                     ''')
                 else:
                     cursor.execute('''
                         SELECT id, url FROM url_upcoming
+                        WHERE toParse = 1
                         LIMIT ?
                     ''', (remaining_limit,))
                 
@@ -105,11 +107,6 @@ class MatchDetailsParser(BaseParser):
             is_past (bool): Является ли матч прошедшим
             status (int): Новый статус (0 - обработан, 1 - требует обработки)
         """
-        # Для предстоящих матчей не меняем статус toParse
-        if not is_past:
-            self.logger.info(f"Не обновляем статус toParse для предстоящего матча ID {match_id} (оставляем как есть)")
-            return
-            
         try:
             conn = sqlite3.connect(self.db_path)
             cursor = conn.cursor()
@@ -210,10 +207,22 @@ class MatchDetailsParser(BaseParser):
             
             file_path = os.path.join(save_dir, file_name)
             
-            # Для предстоящих матчей всегда перезаписываем файл, для прошедших - пропускаем если уже существует
-            if is_past and os.path.exists(file_path):
-                self.logger.info(f"Файл для прошедшего матча ID {match_id} уже существует: {file_path}. Пропускаем скачивание.")
-                return True
+            # Для прошедших матчей и предстоящих матчей с toParse = 0 пропускаем, если файл уже существует
+            if os.path.exists(file_path):
+                # Проверяем, что у предстоящего матча стоит toParse = 0
+                if not is_past:
+                    conn = sqlite3.connect(self.db_path)
+                    cursor = conn.cursor()
+                    cursor.execute("SELECT toParse FROM url_upcoming WHERE id = ?", (match_id,))
+                    result = cursor.fetchone()
+                    conn.close()
+                    
+                    if result and result[0] == 0:
+                        self.logger.info(f"Файл для предстоящего матча ID {match_id} уже существует и toParse = 0. Пропускаем скачивание.")
+                        return True
+                else:
+                    self.logger.info(f"Файл для прошедшего матча ID {match_id} уже существует: {file_path}. Пропускаем скачивание.")
+                    return True
                 
             self.logger.info(f"Загрузка страницы матча ID {match_id}: {full_url}")
             
@@ -227,6 +236,10 @@ class MatchDetailsParser(BaseParser):
             if len(html) < 1000:
                 self.logger.warning(f"Получен слишком маленький HTML для матча {match_id} ({len(html)} байт)")
                 return False
+            
+            # Не выводим HTML-контент в лог
+            html_size = len(html)
+            self.logger.info(f"Получен HTML-контент ({html_size} байт) для матча ID {match_id}")
             
             # Сохраняем HTML в файл
             with open(file_path, "w", encoding="utf-8") as f:

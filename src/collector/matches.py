@@ -5,6 +5,7 @@ from datetime import datetime
 import re
 import logging
 from src.config.constants import HTML_DIR, MATCHES_HTML_FILE, RESULTS_HTML_FILE, DATABASE_FILE
+import time
 
 logger = logging.getLogger(__name__)
 
@@ -21,37 +22,68 @@ class MatchesCollector:
         return None
         
     def _parse_matches_file(self, soup) -> list:
-        """Парсит страницу предстоящих матчей"""
+        """Парсит страницу предстоящих матчей, собирая только матчи с определенными командами (не TBD)"""
         matches = []
         
         # Находим основной контент
         main_content = soup.select_one('.mainContent')
         if not main_content:
+            logger.error("Не найден основной контент (.mainContent) на странице")
             return matches
             
         # Находим все матчи
         match_elements = main_content.select('.match')
+        if not match_elements:
+            logger.error("Не найдены элементы матчей (.match) на странице")
+            return matches
+            
+        logger.info(f"Всего найдено {len(match_elements)} элементов матчей")
+        
         for match in match_elements:
             try:
                 # Получаем ссылку на матч
                 match_link = match.select_one('a')
                 if not match_link:
+                    logger.debug("Пропущен матч: не найдена ссылка на матч")
                     continue
                     
                 url = match_link.get('href', '')
                 match_id = self._get_match_id(url)
                 
                 if not match_id:
+                    logger.debug(f"Пропущен матч: не удалось извлечь ID из ссылки {url}")
                     continue
                 
-                # Получаем время матча
-                time_element = match.select_one('.match-time')
-                if not time_element:
+                # Извлекаем имена команд из URL
+                team_names = self._extract_team_names_from_url(url)
+                if not team_names or len(team_names) < 2:
+                    logger.debug(f"Пропущен матч {match_id}: не удалось извлечь имена команд из URL {url}")
                     continue
-                    
-                unix_time = time_element.get('data-unix', '')
+                
+                # Проверяем, что команды определены (не TBD)
+                team1_name = team_names[0].strip()
+                team2_name = team_names[1].strip()
+                
+                if team1_name.lower() == "tbd" or team2_name.lower() == "tbd" or not team1_name or not team2_name:
+                    logger.debug(f"Пропущен матч {match_id}: найдены неопределенные команды - {team1_name} vs {team2_name}")
+                    continue
+                
+                # Ищем элемент времени с data-unix атрибутом
+                unix_time = None
+                for el in match.find_all(lambda tag: tag.has_attr('data-unix')):
+                    unix_time = el.get('data-unix', '')
+                    break
+                
+                # Если не нашли через data-unix, ищем через класс времени
                 if not unix_time:
-                    continue
+                    time_element = match.select_one('.time, .date, .matchTime')
+                    if time_element:
+                        unix_time = time_element.get('data-unix', '')
+                
+                if not unix_time:
+                    # Если время не найдено, используем текущее время
+                    logger.debug(f"Матч {match_id}: время не найдено, используем текущее время")
+                    unix_time = str(int(time.time()))
                 
                 # Формируем данные матча
                 match_data = {
@@ -60,13 +92,52 @@ class MatchesCollector:
                     'date': int(unix_time),
                     'toParse': 1
                 }
+                
+                logger.debug(f"Добавлен матч {match_id}: {team1_name} vs {team2_name}")
                 matches.append(match_data)
                 
             except Exception as e:
                 logger.error(f"Ошибка при парсинге матча: {str(e)}")
                 continue
                 
+        logger.info(f"Найдено предстоящих матчей с определенными командами: {len(matches)}")
         return matches
+        
+    def _extract_team_names_from_url(self, url: str) -> list:
+        """Извлекает имена команд из URL матча"""
+        try:
+            # Пример URL: /matches/2382314/fnatic-vs-9ine-rainbet-cup-2025
+            parts = url.split('/')
+            if len(parts) < 3:
+                return []
+                
+            match_part = parts[-1]  # fnatic-vs-9ine-rainbet-cup-2025
+            
+            # Разделяем по первому вхождению дефиса после "vs"
+            team_part = match_part.split('-')
+            vs_index = -1
+            for i, part in enumerate(team_part):
+                if part.lower() == 'vs':
+                    vs_index = i
+                    break
+            
+            if vs_index == -1 or vs_index == 0 or vs_index == len(team_part) - 1:
+                return []
+                
+            team1 = '-'.join(team_part[:vs_index])
+            team2 = team_part[vs_index+1]
+            
+            # Находим индекс, где заканчивается название второй команды
+            # Обычно после имени второй команды идет название турнира
+            for i in range(vs_index+2, len(team_part)):
+                if team_part[i] in ['esl', 'blast', 'champions', 'major', 'cup', 'series', 'tournament', 'qualifier']:
+                    break
+                team2 += '-' + team_part[i]
+            
+            return [team1, team2]
+        except Exception as e:
+            logger.error(f"Ошибка при извлечении имен команд из URL: {str(e)}")
+            return []
 
     def _parse_results_file(self, soup) -> list:
         """Парсит страницу результатов"""

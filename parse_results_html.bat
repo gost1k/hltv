@@ -11,3 +11,4 @@ python -m src.main --collect-results-matches
 @REM python -m src.main --parse-matches
 @REM python -m src.main --collect-matches-list
 @REM python -m src.main --parse-details --upcoming
+@REM python -m src.collector.match_upcoming
