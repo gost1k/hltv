@@ -100,6 +100,8 @@ class DatabaseService:
                     head_to_head_team2_wins INTEGER,
                     parsed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     status TEXT DEFAULT 'upcoming',
+                    parsed INTEGER DEFAULT 0,
+                    last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     FOREIGN KEY (team1_id) REFERENCES teams (id),
                     FOREIGN KEY (team2_id) REFERENCES teams (id),
                     FOREIGN KEY (event_id) REFERENCES events (id)
@@ -153,12 +155,68 @@ class DatabaseService:
             ''')
             
             self.conn.commit()
+            
+            # Проверяем, нужно ли добавить колонки миграции
+            self._migrate_db_if_needed()
+            
             return True
         except sqlite3.Error as e:
             logger.error(f"Database initialization error: {e}")
             return False
         finally:
             self.close()
+            
+    def _migrate_db_if_needed(self):
+        """
+        Проверяет необходимость миграции БД и добавляет отсутствующие колонки
+        """
+        try:
+            # Проверяем существование таблицы
+            self.cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='match_upcoming'")
+            if not self.cursor.fetchone():
+                logger.warning("Table match_upcoming does not exist yet, skipping migration")
+                return
+                
+            # Получаем список колонок в таблице match_upcoming
+            self.cursor.execute("PRAGMA table_info(match_upcoming)")
+            columns_info = self.cursor.fetchall()
+            columns = [column[1] for column in columns_info]
+            
+            logger.info(f"Existing columns in match_upcoming: {columns}")
+            
+            # Проверяем отсутствующие колонки и добавляем их
+            if "parsed" not in columns:
+                logger.info("Adding 'parsed' column to match_upcoming table")
+                self.cursor.execute("ALTER TABLE match_upcoming ADD COLUMN parsed INTEGER DEFAULT 0")
+                logger.info("'parsed' column added successfully")
+            else:
+                logger.info("'parsed' column already exists")
+            
+            if "last_updated" not in columns:
+                logger.info("Adding 'last_updated' column to match_upcoming table")
+                # SQLite не поддерживает DEFAULT CURRENT_TIMESTAMP при ALTER TABLE
+                self.cursor.execute("ALTER TABLE match_upcoming ADD COLUMN last_updated TEXT")
+                # Устанавливаем начальное значение для last_updated
+                self.cursor.execute("UPDATE match_upcoming SET last_updated = datetime('now') WHERE last_updated IS NULL")
+                logger.info("'last_updated' column added successfully")
+            else:
+                logger.info("'last_updated' column already exists")
+            
+            self.conn.commit()
+            
+            # Проверяем после миграции
+            self.cursor.execute("PRAGMA table_info(match_upcoming)")
+            columns_after = [column[1] for column in self.cursor.fetchall()]
+            logger.info(f"Columns after migration: {columns_after}")
+            
+            logger.info("Database migration completed successfully")
+        except sqlite3.Error as e:
+            logger.error(f"Database migration error: {e}")
+            # Добавляем вывод запроса для отладки
+            self.cursor.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name='match_upcoming'")
+            table_def = self.cursor.fetchone()
+            if table_def:
+                logger.error(f"Current table definition: {table_def[0]}")
             
     def get_match_ids_for_parsing(self, is_past: bool = True, limit: Optional[int] = None) -> List[int]:
         """
@@ -205,12 +263,36 @@ class DatabaseService:
         """
         self.connect()
         try:
+            # Сначала проверим, существует ли колонка parsed
+            self.cursor.execute("PRAGMA table_info(match_upcoming)")
+            columns = [column[1] for column in self.cursor.fetchall()]
+            
+            if "parsed" not in columns:
+                # Попытаемся добавить колонку, если ее нет
+                logger.warning("Column 'parsed' does not exist in match_upcoming, attempting to add it")
+                try:
+                    self.cursor.execute("ALTER TABLE match_upcoming ADD COLUMN parsed INTEGER DEFAULT 0")
+                    self.conn.commit()
+                    logger.info("Added 'parsed' column to match_upcoming table")
+                except sqlite3.Error as e:
+                    logger.error(f"Failed to add 'parsed' column: {e}")
+                    return False
+            
+            # Теперь выполняем обновление
             self.cursor.execute(
-                "UPDATE match_upcoming SET parsed = ?, last_updated = CURRENT_TIMESTAMP WHERE match_id = ?",
+                "UPDATE match_upcoming SET parsed = ?, last_updated = datetime('now') WHERE match_id = ?",
                 (1 if parsed else 0, match_id)
             )
             self.conn.commit()
-            return True
+            
+            # Проверяем, была ли обновлена хотя бы одна строка
+            if self.cursor.rowcount > 0:
+                logger.info(f"Successfully updated match {match_id} parsed status to {parsed}")
+                return True
+            else:
+                logger.warning(f"No rows affected when updating match {match_id} parsed status")
+                return True  # Возвращаем True, так как ошибки не было, просто не было затронутых строк
+                
         except sqlite3.Error as e:
             logger.error(f"Error updating match parsed status: {e}")
             return False
