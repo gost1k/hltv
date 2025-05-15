@@ -17,7 +17,6 @@ DEFAULT_CONFIG = {
     "token": "YOUR_BOT_TOKEN_HERE",
     "hltv_db_path": "hltv.db",
     "log_file": "bot.log",
-    "daily_report_time": "09:00",
     "admin_chat_ids": []
 }
 
