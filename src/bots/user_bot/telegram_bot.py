@@ -22,7 +22,6 @@ logger = logging.getLogger(__name__)
 # Получаем параметры из конфигурации
 TOKEN = config['token']
 DB_PATH = config['hltv_db_path']
-SUBSCRIBERS_DB_PATH = config['subscribers_db_path']
 
 # Кнопки меню
 MENU_UPCOMING_MATCHES = "Будущие матчи"
@@ -36,18 +35,16 @@ class HLTVStatsBot:
     Телеграм-бот для отображения статистики HLTV
     """
     
-    def __init__(self, token, db_path, subscribers_db_path):
+    def __init__(self, token, db_path):
         """
         Инициализация бота
         
         Args:
             token (str): Токен для Telegram API
             db_path (str): Путь к БД со статистикой HLTV
-            subscribers_db_path (str): Путь к БД подписчиков
         """
         self.token = token
         self.db_path = db_path
-        self.subscribers_db_path = subscribers_db_path
         
         # Настройка логирования для этого класса
         self.logger = logging.getLogger(__name__)
@@ -61,9 +58,6 @@ class HLTVStatsBot:
             
         # Используем локальный логгер вместо глобального
         self.logger.info("Инициализация бота HLTV")
-        
-        # Инициализация базы данных подписчиков
-        self._init_subscribers_db()
         
         # Создаем клавиатуру с кнопками меню
         self.menu_keyboard = [
@@ -103,32 +97,6 @@ class HLTVStatsBot:
         """
         self.logger.error(f"Ошибка: {context.error} при обработке запроса {update}")
     
-    def _init_subscribers_db(self):
-        """
-        Инициализирует базу данных подписчиков
-        """
-        try:
-            conn = sqlite3.connect(self.subscribers_db_path)
-            cursor = conn.cursor()
-            
-            # Создаем таблицу подписчиков, если она не существует
-            cursor.execute('''
-                CREATE TABLE IF NOT EXISTS subscribers (
-                    chat_id INTEGER PRIMARY KEY,
-                    first_name TEXT,
-                    last_name TEXT,
-                    username TEXT,
-                    subscribed_date INTEGER,
-                    is_active INTEGER DEFAULT 1
-                )
-            ''')
-            
-            conn.commit()
-            conn.close()
-            
-        except Exception as e:
-            self.logger.error(f"Ошибка при инициализации базы данных подписчиков: {str(e)}")
-    
     async def start(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """
         Обработчик команды /start
@@ -144,8 +112,6 @@ class HLTVStatsBot:
             f"/yesterday - Показать статистику матчей за вчерашний день\n"
             f"/today - Показать статистику матчей за сегодня\n"
             f"/upcoming - Показать предстоящие матчи на сегодня\n"
-            f"/subscribe - Подписаться на ежедневную рассылку\n"
-            f"/unsubscribe - Отписаться от ежедневной рассылки\n"
             f"/menu - Показать меню\n"
             f"/help - Показать справку\n\n"
             f"Также вы можете ввести точное название команды (например, 'NAVI' или 'Astralis'), чтобы найти её последние и предстоящие матчи."
@@ -165,8 +131,6 @@ class HLTVStatsBot:
             "/yesterday - Показать статистику матчей за вчерашний день\n"
             "/today - Показать статистику матчей за сегодня\n"
             "/upcoming - Показать предстоящие матчи на сегодня\n"
-            "/subscribe - Подписаться на ежедневную рассылку\n"
-            "/unsubscribe - Отписаться от ежедневной рассылки\n"
             "/menu - Показать меню\n"
             "/help - Показать эту справку\n\n"
             "Для поиска матчей определенной команды, введите её точное название в чат (например, 'NAVI' или 'Astralis')."
@@ -195,11 +159,16 @@ class HLTVStatsBot:
         user_info = self._get_safe_user_info(user)
         self.logger.info(f"{user_info} - Сообщение: '{message_text}'")
         
+        # Сохраняем текст нажатой кнопки для последующего определения типа действий
+        context.user_data['last_button'] = message_text
+        
         if message_text == MENU_COMPLETED_MATCHES:
             self.logger.info(f"{user_info} - Запрос прошедших матчей")
+            context.user_data['showing_menu'] = MENU_COMPLETED_MATCHES
             await self.show_completed_matches(update, context)
         elif message_text == MENU_UPCOMING_MATCHES:
             self.logger.info(f"{user_info} - Запрос предстоящих матчей")
+            context.user_data['showing_menu'] = MENU_UPCOMING_MATCHES
             await self.show_upcoming_matches(update, context)
         elif message_text == "За сегодня":
             self.logger.info(f"{user_info} - Запрос матчей за сегодня")
@@ -248,27 +217,13 @@ class HLTVStatsBot:
                     reply_markup=self.markup
                 )
         else:
-            # Проверяем, может быть это название команды
-            team_name = message_text.strip()
-            if len(team_name) >= 2:  # Минимальная длина названия команды
-                await self.find_matches_by_team(update, context, team_name)
-            else:
-                await update.message.reply_text(
-                    "Используйте кнопки меню или команды для взаимодействия с ботом.\n"
-                    "Для показа меню наберите /menu\n"
-                    "Для получения списка команд наберите /help\n"
-                    "Введите точное название команды (не менее 2 символов) для поиска её матчей.",
-                    reply_markup=self.markup
-                )
+            # Пробуем найти команду по названию
+            await self.find_matches_by_team(update, context, message_text)
     
     async def show_completed_matches(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """
-        Показывает прошедшие матчи
+        Показывает меню для выбора прошедших матчей
         """
-        # Сохраняем тип меню в контексте
-        context.user_data['showing_menu'] = MENU_COMPLETED_MATCHES
-        
-        # Показываем меню выбора периода матчей
         keyboard = [
             [KeyboardButton("За сегодня")],
             [KeyboardButton("За вчера")],
@@ -279,18 +234,14 @@ class HLTVStatsBot:
         markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
         
         await update.message.reply_text(
-            "Выберите период для просмотра результатов матчей:",
+            "Выберите период для просмотра прошедших матчей:",
             reply_markup=markup
         )
     
     async def show_upcoming_matches(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """
-        Показывает предстоящие матчи
+        Показывает меню для выбора предстоящих матчей
         """
-        # Сохраняем тип меню в контексте
-        context.user_data['showing_menu'] = MENU_UPCOMING_MATCHES
-        
-        # Показываем меню выбора периода матчей
         keyboard = [
             [KeyboardButton("На сегодня")],
             [KeyboardButton("На завтра")],
@@ -304,201 +255,6 @@ class HLTVStatsBot:
             "Выберите период для просмотра предстоящих матчей:",
             reply_markup=markup
         )
-    
-    async def subscribe(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """
-        Подписывает пользователя на ежедневные отчеты
-        """
-        chat_id = update.effective_chat.id
-        user = update.effective_user
-        user_info = self._get_safe_user_info(user)
-        self.logger.info(f"{user_info} - Попытка подписки на ежедневную рассылку")
-        
-        try:
-            conn = sqlite3.connect(self.subscribers_db_path)
-            cursor = conn.cursor()
-            
-            # Проверяем, есть ли уже такой подписчик
-            cursor.execute('SELECT is_active FROM subscribers WHERE chat_id = ?', (chat_id,))
-            result = cursor.fetchone()
-            
-            if result:
-                if result[0] == 1:
-                    await update.message.reply_text("Вы уже подписаны на ежедневную рассылку! 👍")
-                    conn.close()
-                    return
-                else:
-                    # Обновляем запись, если пользователь был отписан ранее
-                    cursor.execute(
-                        'UPDATE subscribers SET is_active = 1, subscribed_date = ? WHERE chat_id = ?',
-                        (int(datetime.now(MOSCOW_TIMEZONE).timestamp()), chat_id)
-                    )
-            else:
-                # Добавляем нового подписчика
-                cursor.execute(
-                    'INSERT INTO subscribers (chat_id, first_name, last_name, username, subscribed_date, is_active) VALUES (?, ?, ?, ?, ?, 1)',
-                    (
-                        chat_id,
-                        user.first_name,
-                        user.last_name,
-                        user.username,
-                        int(datetime.now(MOSCOW_TIMEZONE).timestamp())
-                    )
-                )
-            
-            conn.commit()
-            conn.close()
-            
-            await update.message.reply_text(
-                "Вы успешно подписались на ежедневную рассылку результатов матчей! 🎮\n"
-                "Отчет будет приходить каждое утро в 9:00.",
-                reply_markup=self.markup
-            )
-            
-        except Exception as e:
-            self.logger.error(f"Ошибка при подписке пользователя {chat_id}: {str(e)}")
-            await update.message.reply_text(
-                "Произошла ошибка при подписке. Пожалуйста, попробуйте позже.",
-                reply_markup=self.markup
-            )
-    
-    async def unsubscribe(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """
-        Отписывает пользователя от ежедневных отчетов
-        """
-        chat_id = update.effective_chat.id
-        user = update.effective_user
-        user_info = self._get_safe_user_info(user)
-        self.logger.info(f"{user_info} - Попытка отписки от ежедневной рассылки")
-        
-        try:
-            conn = sqlite3.connect(self.subscribers_db_path)
-            cursor = conn.cursor()
-            
-            # Проверяем, есть ли такой подписчик
-            cursor.execute('SELECT is_active FROM subscribers WHERE chat_id = ?', (chat_id,))
-            result = cursor.fetchone()
-            
-            if result and result[0] == 1:
-                # Отписываем пользователя
-                cursor.execute('UPDATE subscribers SET is_active = 0 WHERE chat_id = ?', (chat_id,))
-                conn.commit()
-                await update.message.reply_text("Вы успешно отписались от ежедневной рассылки. 👋")
-            else:
-                await update.message.reply_text("Вы не были подписаны на ежедневную рассылку.")
-            
-            conn.close()
-            
-        except Exception as e:
-            self.logger.error(f"Ошибка при отписке пользователя {chat_id}: {str(e)}")
-            await update.message.reply_text("Произошла ошибка при отписке. Пожалуйста, попробуйте позже.")
-    
-    def get_matches_by_date(self, date_start, date_end):
-        """
-        Получает матчи из базы данных за указанный период
-        
-        Args:
-            date_start (int): Начало периода (UNIX timestamp)
-            date_end (int): Конец периода (UNIX timestamp)
-            
-        Returns:
-            list: Список матчей, сгруппированных по событиям
-        """
-        try:
-            conn = sqlite3.connect(self.db_path)
-            conn.row_factory = sqlite3.Row  # Возвращать результаты в виде словарей
-            cursor = conn.cursor()
-            
-            # Получаем матчи за указанный период
-            cursor.execute('''
-                SELECT 
-                    m.match_id, m.datetime, 
-                    m.team1_id, m.team1_name, m.team1_score, m.team1_rank,
-                    m.team2_id, m.team2_name, m.team2_score, m.team2_rank,
-                    m.event_id, m.event_name
-                FROM match_details m
-                WHERE m.status = 'completed'
-                AND m.datetime BETWEEN ? AND ?
-                ORDER BY m.event_id, m.datetime
-            ''', (date_start, date_end))
-            
-            matches = cursor.fetchall()
-            
-            # Группируем матчи по событиям
-            events = {}
-            for match in matches:
-                event_id = match['event_id']
-                event_name = match['event_name']
-                
-                if event_id not in events:
-                    events[event_id] = {
-                        'name': event_name,
-                        'matches': []
-                    }
-                
-                events[event_id]['matches'].append({
-                    'match_id': match['match_id'],
-                    'datetime': match['datetime'],
-                    'team1_id': match['team1_id'],
-                    'team1_name': match['team1_name'],
-                    'team1_score': match['team1_score'],
-                    'team2_id': match['team2_id'],
-                    'team2_name': match['team2_name'],
-                    'team2_score': match['team2_score']
-                })
-            
-            conn.close()
-            return events
-            
-        except Exception as e:
-            self.logger.error(f"Ошибка при получении матчей: {str(e)}")
-            return {}
-    
-    def format_matches_message(self, events):
-        """
-        Форматирует сообщение с матчами
-        
-        Args:
-            events (dict): Словарь с событиями и матчами
-            
-        Returns:
-            str: Отформатированное сообщение
-        """
-        if not events:
-            return "Нет данных о матчах за указанный период."
-        
-        message = ""
-        
-        for event_id, event_data in events.items():
-            event_name = event_data['name'] or "Без названия"
-            matches = event_data['matches']
-            
-            # Добавляем название события
-            message += f"🏆 <b>{event_name}</b>\n\n"
-            
-            for match in matches:
-                # Используем полные названия команд
-                team1_name = match['team1_name'] 
-                team2_name = match['team2_name']
-                team1_score = match['team1_score']
-                team2_score = match['team2_score']
-                match_id = match['match_id']
-                
-                # Выделяем победителя
-                if team1_score > team2_score:
-                    team1_name = f"<b>{team1_name}</b>"
-                    team2_name = f"{team2_name}"
-                elif team2_score > team1_score:
-                    team1_name = f"{team1_name}"
-                    team2_name = f"<b>{team2_name}</b>"
-                
-                # Форматируем строку результата
-                message += f"• <code>{team1_name}</code> {team1_score} : {team2_score} <code>{team2_name}</code>\n"
-            
-            # Добавляем разделитель между событиями
-            message += "\n"
-        
-        return message
     
     async def send_yesterday_stats(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """
@@ -582,12 +338,16 @@ class HLTVStatsBot:
         Показывает список событий за последнюю неделю
         """
         # Определяем, какой тип событий запрашивается (прошедшие или предстоящие)
-        if hasattr(context, 'user_data') and 'showing_menu' in context.user_data:
-            event_type = context.user_data['showing_menu']
-        else:
-            # По умолчанию показываем прошедшие события
-            event_type = MENU_COMPLETED_MATCHES
-            context.user_data['showing_menu'] = event_type
+        if 'showing_menu' not in context.user_data:
+            # Проверяем последние шаги пользователя по нажатым кнопкам меню
+            if context.user_data.get('last_button') in ["На сегодня", "На завтра", "На 3 дня", MENU_UPCOMING_MATCHES]:
+                # Если последнее действие было связано с предстоящими матчами
+                context.user_data['showing_menu'] = MENU_UPCOMING_MATCHES
+            else:
+                # По умолчанию показываем прошедшие события
+                context.user_data['showing_menu'] = MENU_COMPLETED_MATCHES
+        
+        event_type = context.user_data['showing_menu']
         
         user = update.effective_user
         user_info = self._get_safe_user_info(user)
@@ -654,8 +414,6 @@ class HLTVStatsBot:
                 event_id = event['event_id']
                 # Сохраняем соответствие
                 context.user_data['event_mapping'][event_name] = event_id
-                # Сохраняем тип события для его обработки в show_matches_for_event
-                context.user_data['event_type'] = event_type
                 # Добавляем кнопку только с названием события
                 keyboard.append([KeyboardButton(event_name)])
             
@@ -690,7 +448,7 @@ class HLTVStatsBot:
         self.logger.info(f"{user_info} - Запрос матчей события ID {event_id}")
         
         # Проверяем тип события (прошедшие или предстоящие)
-        event_type = context.user_data.get('event_type', MENU_COMPLETED_MATCHES)
+        event_type = context.user_data.get('showing_menu', MENU_COMPLETED_MATCHES)
         
         try:
             conn = sqlite3.connect(self.db_path)
@@ -746,7 +504,7 @@ class HLTVStatsBot:
                 # Форматируем сообщение
                 message = f"📊 <b>Результаты матчей события {event_name}</b>\n\n"
                 message += self.format_matches_message(events)
-            else:
+            else:  # MENU_UPCOMING_MATCHES
                 # Для предстоящих матчей
                 cursor.execute('SELECT event_name FROM match_upcoming WHERE event_id = ? LIMIT 1', (event_id,))
                 event_result = cursor.fetchone()
@@ -910,8 +668,10 @@ class HLTVStatsBot:
                 # Выделяем победителя
                 if team1_score > team2_score:
                     team1_name = f"🏆 <b>{team1_name}</b>"
+                    team2_name = f"{team2_name}"
                 elif team2_score > team1_score:
-                    team2_name = f"<b>{team2_name}</b> 🏆"
+                    team1_name = f"{team1_name}"
+                    team2_name = f"<b>{team2_name}</b>"
                     
                 message += f"{team1_name} {team1_score} : {team2_score} {team2_name}\n\n"
             else:  # upcoming
@@ -1001,89 +761,6 @@ class HLTVStatsBot:
             self.logger.error(f"Ошибка при получении данных о матче {match_id}: {str(e)}")
             await update.message.reply_text(
                 "Произошла ошибка при получении данных о матче.",
-                reply_markup=self.markup
-            )
-    
-    async def show_last_day_matches_menu(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """
-        Показывает список матчей за вчерашний день в виде кнопок
-        """
-        user = update.effective_user
-        user_info = self._get_safe_user_info(user)
-        self.logger.info(f"{user_info} - Запрос списка матчей за вчера")
-        
-        # Получаем временные метки начала и конца вчерашнего дня
-        today = datetime.now(MOSCOW_TIMEZONE)
-        yesterday = today - timedelta(days=1)
-        start_timestamp = datetime(yesterday.year, yesterday.month, yesterday.day, 0, 0, 0, tzinfo=MOSCOW_TIMEZONE).timestamp()
-        end_timestamp = datetime(yesterday.year, yesterday.month, yesterday.day, 23, 59, 59, tzinfo=MOSCOW_TIMEZONE).timestamp()
-        
-        try:
-            conn = sqlite3.connect(self.db_path)
-            conn.row_factory = sqlite3.Row
-            cursor = conn.cursor()
-            
-            # Получаем матчи за вчерашний день
-            cursor.execute('''
-                SELECT 
-                    match_id, datetime, 
-                    team1_id, team1_name, team1_score, 
-                    team2_id, team2_name, team2_score,
-                    event_name
-                FROM match_details
-                WHERE datetime BETWEEN ? AND ?
-                AND status = 'completed'
-                ORDER BY datetime DESC
-            ''', (start_timestamp, end_timestamp))
-            
-            matches = cursor.fetchall()
-            conn.close()
-            
-            if not matches:
-                await update.message.reply_text(
-                    f"Нет данных о завершенных матчах за {yesterday.strftime('%d.%m.%Y')}.",
-                    reply_markup=self.markup
-                )
-                return
-            
-            # Создаем кнопки для каждого матча
-            keyboard = []
-            
-            # Сохраняем соответствие между названием матча и его ID в контексте пользователя
-            if 'match_mapping' not in context.user_data:
-                context.user_data['match_mapping'] = {}
-            
-            for match in matches:
-                team1_name = match['team1_name'].split()[0]
-                team2_name = match['team2_name'].split()[0]
-                team1_score = match['team1_score']
-                team2_score = match['team2_score']
-                match_id = match['match_id']
-                event_name = match['event_name']
-                
-                # Создаем текст кнопки
-                match_text = f"{team1_name} {team1_score}:{team2_score} {team2_name}"
-                
-                # Сохраняем соответствие
-                context.user_data['match_mapping'][match_text] = match_id
-                
-                # Добавляем кнопку
-                keyboard.append([KeyboardButton(match_text)])
-            
-            # Добавляем кнопку "Назад"
-            keyboard.append([KeyboardButton("Назад")])
-            
-            reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
-            
-            await update.message.reply_text(
-                f"Матчи за {yesterday.strftime('%d.%m.%Y')}. Выберите матч для просмотра подробной статистики:",
-                reply_markup=reply_markup
-            )
-            
-        except Exception as e:
-            self.logger.error(f"Ошибка при получении списка матчей: {str(e)}")
-            await update.message.reply_text(
-                "Произошла ошибка при получении списка матчей.",
                 reply_markup=self.markup
             )
     
@@ -1227,6 +904,171 @@ class HLTVStatsBot:
                 reply_markup=self.markup
             )
     
+    def get_matches_by_date(self, date_start, date_end):
+        """
+        Получает завершенные матчи из базы данных за указанный период
+        
+        Args:
+            date_start (int): Начало периода (UNIX timestamp)
+            date_end (int): Конец периода (UNIX timestamp)
+            
+        Returns:
+            dict: Словарь с событиями и матчами
+        """
+        try:
+            conn = sqlite3.connect(self.db_path)
+            conn.row_factory = sqlite3.Row  # Возвращать результаты в виде словарей
+            cursor = conn.cursor()
+            
+            # Получаем матчи за указанный период
+            cursor.execute('''
+                SELECT 
+                    m.match_id, m.datetime, 
+                    m.team1_id, m.team1_name, m.team1_score, m.team1_rank,
+                    m.team2_id, m.team2_name, m.team2_score, m.team2_rank,
+                    m.event_id, m.event_name
+                FROM match_details m
+                WHERE m.status = 'completed'
+                AND m.datetime BETWEEN ? AND ?
+                ORDER BY m.event_id, m.datetime
+            ''', (date_start, date_end))
+            
+            matches = cursor.fetchall()
+            
+            # Группируем матчи по событиям
+            events = {}
+            for match in matches:
+                event_id = match['event_id']
+                event_name = match['event_name']
+                
+                if event_id not in events:
+                    events[event_id] = {
+                        'name': event_name,
+                        'matches': []
+                    }
+                
+                events[event_id]['matches'].append({
+                    'match_id': match['match_id'],
+                    'datetime': match['datetime'],
+                    'team1_id': match['team1_id'],
+                    'team1_name': match['team1_name'],
+                    'team1_score': match['team1_score'],
+                    'team2_id': match['team2_id'],
+                    'team2_name': match['team2_name'],
+                    'team2_score': match['team2_score']
+                })
+            
+            conn.close()
+            return events
+            
+        except Exception as e:
+            self.logger.error(f"Ошибка при получении матчей за период: {str(e)}")
+            return {}
+            
+    def format_matches_message(self, events):
+        """
+        Форматирует сообщение с матчами
+        
+        Args:
+            events (dict): Словарь с событиями и матчами
+            
+        Returns:
+            str: Отформатированное сообщение
+        """
+        if not events:
+            return "Нет данных о матчах за указанный период."
+        
+        message = ""
+        
+        for event_id, event_data in events.items():
+            event_name = event_data['name'] or "Без названия"
+            matches = event_data['matches']
+            
+            # Добавляем название события
+            message += f"🏆 <b>{event_name}</b>\n\n"
+            
+            for match in matches:
+                # Получаем короткие имена команд (никнеймы)
+                team1_name = match['team1_name']
+                team2_name = match['team2_name']
+                team1_score = match['team1_score']
+                team2_score = match['team2_score']
+                
+                # Выделяем победителя
+                if team1_score > team2_score:
+                    team1_name = f"<b>{team1_name}</b>"
+                elif team2_score > team1_score:
+                    team2_name = f"<b>{team2_name}</b>"
+                
+                # Формируем строку результата без ID
+                message += f"• <code>{team1_name}</code> {team1_score} : {team2_score} <code>{team2_name}</code>\n"
+            
+            # Добавляем разделитель между событиями
+            message += "\n"
+        
+        return message
+    
+    async def show_upcoming_matches_for_period(self, update: Update, context: ContextTypes.DEFAULT_TYPE, days=0):
+        """
+        Показывает предстоящие матчи за указанный период
+        
+        Args:
+            update: Объект обновления Telegram
+            context: Контекст обработчика
+            days (int): Через сколько дней (0 - сегодня, 1 - завтра, и т.д.)
+        """
+        user = update.effective_user
+        user_info = self._get_safe_user_info(user)
+        
+        today = datetime.now(MOSCOW_TIMEZONE)
+        current_timestamp = today.timestamp()
+        
+        # Вычисляем начало и конец периода
+        if days == 0:  # Сегодня - берем с текущего момента до конца дня
+            start_timestamp = current_timestamp
+            end_date = datetime(today.year, today.month, today.day, 23, 59, 59, tzinfo=MOSCOW_TIMEZONE)
+            end_timestamp = end_date.timestamp()
+            period_text = "на сегодня"
+            self.logger.info(f"{user_info} - Запрос предстоящих матчей на сегодня ({start_timestamp} - {end_timestamp})")
+        elif days == 1:  # Завтра
+            tomorrow = today + timedelta(days=1)
+            start_date = datetime(tomorrow.year, tomorrow.month, tomorrow.day, 0, 0, 0, tzinfo=MOSCOW_TIMEZONE)
+            end_date = datetime(tomorrow.year, tomorrow.month, tomorrow.day, 23, 59, 59, tzinfo=MOSCOW_TIMEZONE)
+            start_timestamp = start_date.timestamp()
+            end_timestamp = end_date.timestamp()
+            period_text = f"на завтра ({start_date.strftime('%d.%m.%Y')})"
+            self.logger.info(f"{user_info} - Запрос предстоящих матчей на завтра ({start_timestamp} - {end_timestamp})")
+        else:  # Несколько дней вперед
+            start_date = datetime(today.year, today.month, today.day, 0, 0, 0, tzinfo=MOSCOW_TIMEZONE)
+            end_date = start_date + timedelta(days=days)
+            start_timestamp = current_timestamp  # С текущего момента
+            end_timestamp = end_date.timestamp()
+            period_text = f"на ближайшие {days} дней"
+            self.logger.info(f"{user_info} - Запрос предстоящих матчей на {days} дней ({start_timestamp} - {end_timestamp})")
+            
+        # Получаем матчи за период
+        events = self.get_upcoming_matches_by_date(start_timestamp, end_timestamp)
+        
+        # Логируем количество найденных матчей
+        match_count = sum(len(event_data['matches']) for event_data in events.values()) if events else 0
+        self.logger.info(f"{user_info} - Найдено {match_count} предстоящих матчей за указанный период")
+        
+        # Форматируем сообщение
+        message = f"📅 <b>Предстоящие матчи {period_text}</b>\n\n"
+        message += self.format_upcoming_matches_message(events)
+        
+        # Отправляем сообщение
+        await update.message.reply_text(message, parse_mode="HTML", reply_markup=self.markup)
+    
+    async def send_upcoming_matches(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """
+        Отправляет информацию о предстоящих матчах на сегодня
+        """
+        user = update.effective_user
+        user_info = self._get_safe_user_info(user)
+        self.logger.info(f"{user_info} - Запрос предстоящих матчей через команду")
+        await self.show_upcoming_matches_for_period(update, context, 0)
+    
     def get_upcoming_matches_by_date(self, date_start, date_end):
         """
         Получает предстоящие матчи из базы данных за указанный период
@@ -1236,7 +1078,7 @@ class HLTVStatsBot:
             date_end (int): Конец периода (UNIX timestamp)
             
         Returns:
-            list: Список предстоящих матчей, сгруппированных по событиям
+            dict: Словарь с предстоящими матчами, сгруппированными по событиям
         """
         try:
             conn = sqlite3.connect(self.db_path)
@@ -1320,7 +1162,6 @@ class HLTVStatsBot:
                 # Используем полные названия команд
                 team1_name = match['team1_name']
                 team2_name = match['team2_name']
-                match_id = match['match_id']
                 
                 # Форматируем дату и время с учетом московского часового пояса
                 match_datetime = datetime.fromtimestamp(match['datetime'], tz=MOSCOW_TIMEZONE)
@@ -1335,82 +1176,21 @@ class HLTVStatsBot:
         
         return message
     
-    async def show_upcoming_matches_for_period(self, update: Update, context: ContextTypes.DEFAULT_TYPE, days=0):
-        """
-        Показывает предстоящие матчи за указанный период
-        
-        Args:
-            update: Объект обновления Telegram
-            context: Контекст обработчика
-            days (int): Через сколько дней (0 - сегодня, 1 - завтра, и т.д.)
-        """
-        user = update.effective_user
-        user_info = self._get_safe_user_info(user)
-        
-        today = datetime.now(MOSCOW_TIMEZONE)
-        current_timestamp = today.timestamp()
-        
-        # Вычисляем начало и конец периода
-        if days == 0:  # Сегодня - берем с текущего момента до конца дня
-            start_timestamp = current_timestamp
-            end_date = datetime(today.year, today.month, today.day, 23, 59, 59, tzinfo=MOSCOW_TIMEZONE)
-            end_timestamp = end_date.timestamp()
-            period_text = "на сегодня"
-            self.logger.info(f"{user_info} - Запрос предстоящих матчей на сегодня ({start_timestamp} - {end_timestamp})")
-        elif days == 1:  # Завтра
-            tomorrow = today + timedelta(days=1)
-            start_date = datetime(tomorrow.year, tomorrow.month, tomorrow.day, 0, 0, 0, tzinfo=MOSCOW_TIMEZONE)
-            end_date = datetime(tomorrow.year, tomorrow.month, tomorrow.day, 23, 59, 59, tzinfo=MOSCOW_TIMEZONE)
-            start_timestamp = start_date.timestamp()
-            end_timestamp = end_date.timestamp()
-            period_text = f"на завтра ({start_date.strftime('%d.%m.%Y')})"
-            self.logger.info(f"{user_info} - Запрос предстоящих матчей на завтра ({start_timestamp} - {end_timestamp})")
-        else:  # Несколько дней вперед
-            start_date = datetime(today.year, today.month, today.day, 0, 0, 0, tzinfo=MOSCOW_TIMEZONE)
-            end_date = start_date + timedelta(days=days)
-            start_timestamp = current_timestamp  # С текущего момента
-            end_timestamp = end_date.timestamp()
-            period_text = f"на ближайшие {days} дней"
-            self.logger.info(f"{user_info} - Запрос предстоящих матчей на {days} дней ({start_timestamp} - {end_timestamp})")
-            
-        # Получаем матчи за период
-        events = self.get_upcoming_matches_by_date(start_timestamp, end_timestamp)
-        
-        # Логируем количество найденных матчей
-        match_count = sum(len(event_data['matches']) for event_data in events.values()) if events else 0
-        self.logger.info(f"{user_info} - Найдено {match_count} предстоящих матчей за указанный период")
-        
-        # Форматируем сообщение
-        message = f"📅 <b>Предстоящие матчи {period_text}</b>\n\n"
-        message += self.format_upcoming_matches_message(events)
-        
-        # Отправляем сообщение
-        await update.message.reply_text(message, parse_mode="HTML", reply_markup=self.markup)
-    
-    async def send_upcoming_matches(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """
-        Отправляет информацию о предстоящих матчах на сегодня
-        """
-        user = update.effective_user
-        user_info = self._get_safe_user_info(user)
-        self.logger.info(f"{user_info} - Запрос предстоящих матчей через команду")
-        await self.show_upcoming_matches_for_period(update, context, 0)
-    
     def run(self):
         """
         Запускает бота
         """
         self.logger.info("Запуск бота...")
+        
+        # Создаем экземпляр приложения Telegram
         application = Application.builder().token(self.token).build()
         
-        # Регистрация обработчиков команд
+        # Регистрация команд бота
         application.add_handler(CommandHandler("start", self.start))
         application.add_handler(CommandHandler("help", self.help))
         application.add_handler(CommandHandler("yesterday", self.send_yesterday_stats))
         application.add_handler(CommandHandler("today", self.send_today_stats))
         application.add_handler(CommandHandler("upcoming", self.send_upcoming_matches))
-        application.add_handler(CommandHandler("subscribe", self.subscribe))
-        application.add_handler(CommandHandler("unsubscribe", self.unsubscribe))
         application.add_handler(CommandHandler("menu", self.show_menu))
         
         # Обработчик текстовых сообщений
@@ -1422,11 +1202,13 @@ class HLTVStatsBot:
         # Запуск бота
         application.run_polling(stop_signals=None)
 
+
 def main():
     """
     Основная функция для запуска бота
     """
-    bot = HLTVStatsBot(TOKEN, DB_PATH, SUBSCRIBERS_DB_PATH)
+    # Создаем экземпляр бота и запускаем его
+    bot = HLTVStatsBot(TOKEN, DB_PATH)
     bot.run()
 
 if __name__ == "__main__":

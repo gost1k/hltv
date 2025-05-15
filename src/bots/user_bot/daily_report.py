@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 """
-Скрипт для автоматической ежедневной отправки статистики матчей подписчикам бота
+Скрипт для автоматической ежедневной отправки статистики матчей
 """
 
 import os
@@ -30,84 +30,25 @@ logger = logging.getLogger(__name__)
 # Получаем параметры из конфигурации
 TOKEN = config['token']
 DB_PATH = config['hltv_db_path']
-SUBSCRIBERS_DB_PATH = config['subscribers_db_path']
 
 # Определяем московское время (UTC+3)
 MOSCOW_TIMEZONE = timezone(timedelta(hours=3))
 
 class DailyReportSender:
     """
-    Класс для отправки ежедневных отчетов подписчикам
+    Класс для отправки ежедневных отчетов
     """
-    def __init__(self, token, hltv_db_path, subscribers_db_path):
+    def __init__(self, token, hltv_db_path):
         """
         Инициализация отправщика отчетов
         
         Args:
             token (str): Токен телеграм-бота
             hltv_db_path (str): Путь к базе данных с матчами
-            subscribers_db_path (str): Путь к базе данных с подписчиками
         """
         self.token = token
         self.hltv_db_path = hltv_db_path
-        self.subscribers_db_path = subscribers_db_path
         self.bot = telegram.Bot(token=self.token)
-        
-        # Инициализация базы данных подписчиков, если она не существует
-        self._init_subscribers_db()
-    
-    def _init_subscribers_db(self):
-        """
-        Инициализирует базу данных подписчиков
-        """
-        try:
-            conn = sqlite3.connect(self.subscribers_db_path)
-            cursor = conn.cursor()
-            
-            # Создаем таблицу подписчиков, если она не существует
-            cursor.execute('''
-                CREATE TABLE IF NOT EXISTS subscribers (
-                    chat_id INTEGER PRIMARY KEY,
-                    first_name TEXT,
-                    last_name TEXT,
-                    username TEXT,
-                    subscribed_date INTEGER,
-                    is_active INTEGER DEFAULT 1
-                )
-            ''')
-            
-            conn.commit()
-            conn.close()
-            logger.info("База данных подписчиков инициализирована")
-            
-        except Exception as e:
-            logger.error(f"Ошибка при инициализации базы данных подписчиков: {str(e)}")
-            sys.exit(1)
-    
-    def get_subscribers(self):
-        """
-        Получает список активных подписчиков
-        
-        Returns:
-            list: Список chat_id активных подписчиков
-        """
-        try:
-            conn = sqlite3.connect(self.subscribers_db_path)
-            cursor = conn.cursor()
-            
-            cursor.execute('''
-                SELECT chat_id FROM subscribers
-                WHERE is_active = 1
-            ''')
-            
-            subscribers = [row[0] for row in cursor.fetchall()]
-            conn.close()
-            
-            return subscribers
-            
-        except Exception as e:
-            logger.error(f"Ошибка при получении списка подписчиков: {str(e)}")
-            return []
     
     def get_matches_by_period(self, days=1):
         """
@@ -223,74 +164,77 @@ class DailyReportSender:
         
         return message
     
-    async def send_period_report(self, days=1):
+    async def send_daily_report(self, chat_id=None):
         """
-        Отправляет отчет за указанный период всем подписчикам
+        Отправляет отчет администратору или по указанному chat_id
         
         Args:
-            days (int): Количество дней для выборки
+            chat_id: ID чата для отправки (если None, используются admin_chat_ids из конфигурации)
         """
-        # Получаем матчи за указанный период
-        events, start_date, end_date = self.get_matches_by_period(days)
+        # Получаем отчет за один день (вчера)
+        events, start_date, end_date = self.get_matches_by_period(1)
         
         if not events:
-            logger.info(f"Нет матчей за период в {days} дней для отправки")
+            logger.info("Нет матчей за вчерашний день для отправки")
             return
         
-        # Формируем заголовок сообщения в зависимости от периода
-        if days == 1:
-            period_text = f"за {end_date.strftime('%d.%m.%Y')}"
-        else:
-            period_text = f"за период с {start_date.strftime('%d.%m.%Y')} по {end_date.strftime('%d.%m.%Y')}"
+        # Форматируем заголовок сообщения
+        yesterday = datetime.now(MOSCOW_TIMEZONE) - timedelta(days=1)
+        period_text = f"за {yesterday.strftime('%d.%m.%Y')}"
         
         # Форматируем сообщение
         message = f"📊 <b>Результаты матчей {period_text}</b>\n\n"
         message += self.format_matches_message(events)
         
-        # Получаем список подписчиков
-        subscribers = self.get_subscribers()
+        # Если не указан chat_id, используем admin_chat_ids из конфигурации
+        recipients = []
+        if chat_id:
+            recipients = [chat_id]
+        elif 'admin_chat_ids' in config and config['admin_chat_ids']:
+            recipients = config['admin_chat_ids']
         
-        if not subscribers:
-            logger.info("Нет активных подписчиков для отправки отчета")
+        if not recipients:
+            logger.warning("Не указаны получатели для отправки отчета")
             return
         
-        # Отправляем сообщение всем подписчикам
-        success_count = 0
-        failed_count = 0
-        
-        for chat_id in subscribers:
+        # Отправляем отчет каждому получателю
+        for chat_id in recipients:
             try:
                 await self.bot.send_message(
                     chat_id=chat_id,
                     text=message,
-                    parse_mode=telegram.constants.ParseMode.HTML
+                    parse_mode="HTML"
                 )
-                success_count += 1
-                # Добавляем небольшую задержку, чтобы не превысить лимиты API
-                await asyncio.sleep(0.1)
-                
+                logger.info(f"Отчет успешно отправлен получателю {chat_id}")
             except Exception as e:
-                logger.error(f"Ошибка при отправке сообщения пользователю {chat_id}: {str(e)}")
-                failed_count += 1
+                logger.error(f"Ошибка при отправке отчета получателю {chat_id}: {str(e)}")
         
-        logger.info(f"Отчет успешно отправлен {success_count} подписчикам, не удалось отправить {failed_count} подписчикам")
-        
-    async def send_daily_report(self):
-        """
-        Отправляет ежедневный отчет всем подписчикам (за 1 день)
-        """
-        await self.send_period_report(days=1)
+        logger.info(f"Отправка отчетов завершена.")
+
 
 async def main():
     """
-    Основная функция для запуска отправки отчетов
+    Основная функция для отправки ежедневного отчета
     """
-    if TOKEN == "YOUR_BOT_TOKEN_HERE":
-        logger.error("Не указан токен бота. Укажите токен в конфигурационном файле")
-        sys.exit(1)
-    
-    sender = DailyReportSender(TOKEN, DB_PATH, SUBSCRIBERS_DB_PATH)
-    await sender.send_daily_report()
+    try:
+        logger.info("Запуск отправки ежедневного отчета...")
+        sender = DailyReportSender(TOKEN, DB_PATH)
+        
+        # Если в конфигурации есть админские чаты, отправляем им отчет
+        if 'admin_chat_ids' in config and config['admin_chat_ids']:
+            for admin_id in config['admin_chat_ids']:
+                await sender.send_daily_report(admin_id)
+                logger.info(f"Отчет отправлен администратору {admin_id}")
+        else:
+            logger.warning("Не указаны admin_chat_ids в конфигурации, отчет не отправлен")
+        
+        logger.info("Отправка ежедневного отчета завершена.")
+    except Exception as e:
+        logger.error(f"Ошибка при отправке ежедневного отчета: {str(e)}")
+    finally:
+        # Закрываем ресурсы
+        if hasattr(sender, 'bot'):
+            await sender.bot.close()
 
 if __name__ == "__main__":
     asyncio.run(main()) 

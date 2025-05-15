@@ -55,8 +55,7 @@ def main():
         # Создаем экземпляр бота и запускаем его
         bot = HLTVStatsBot(
             token=config['token'],
-            db_path=config['hltv_db_path'],
-            subscribers_db_path=config['subscribers_db_path']
+            db_path=config['hltv_db_path']
         )
         bot.run()
     except Exception as e:

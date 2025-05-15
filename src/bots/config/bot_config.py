@@ -16,7 +16,6 @@ CONFIG_DIR = os.path.join(os.path.dirname(__file__))
 DEFAULT_CONFIG = {
     "token": "YOUR_BOT_TOKEN_HERE",
     "hltv_db_path": "hltv.db",
-    "subscribers_db_path": "subscribers.db",
     "log_file": "bot.log",
     "daily_report_time": "09:00",
     "admin_chat_ids": []
