@@ -262,12 +262,7 @@ class MatchesCollector:
             exists = cursor.fetchone() is not None
             
             if exists:
-                # Обновляем существующий матч
-                cursor.execute('''
-                    UPDATE url_upcoming 
-                    SET date = ?, toParse = ?
-                    WHERE id = ?
-                ''', (match['date'], match['toParse'], match['id']))
+                # Матч уже существует, ничего не делаем, просто учитываем в статистике
                 updated_matches += 1
             else:
                 # Добавляем новый матч
