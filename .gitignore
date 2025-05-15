@@ -17,6 +17,9 @@ ENV/
 *.swp
 *.swo
 
+# DB
+.db
+
 
 # Log files
 *.log
