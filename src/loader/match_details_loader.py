@@ -5,14 +5,14 @@ import sqlite3
 import glob
 from datetime import datetime
 
-# Настройка логирования
+# Setting up logging
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger(__name__)
 
-# Константы
+# Constants
 JSON_OUTPUT_DIR = "storage/json"
 MATCH_DETAILS_JSON_DIR = os.path.join(JSON_OUTPUT_DIR, "match_details")
 PLAYER_STATS_JSON_DIR = os.path.join(JSON_OUTPUT_DIR, "player_stats")
@@ -20,19 +20,19 @@ DATABASE_FILE = "hltv.db"
 
 class MatchDetailsLoader:
     """
-    Класс для загрузки деталей матчей из JSON в базу данных
+    Class for loading match details from JSON to database
     """
     def __init__(self, db_path=DATABASE_FILE):
         self.db_path = db_path
         
     def load_all(self):
         """
-        Загружает все данные из JSON файлов в базу данных
+        Loads all data from JSON files to database
         
         Returns:
-            dict: Статистика загрузки
+            dict: Loading statistics
         """
-        # Создаем таблицы, если их нет
+        # Create tables if they don't exist
         self._create_tables()
         
         stats = {
@@ -44,52 +44,52 @@ class MatchDetailsLoader:
             'player_stats_error': 0
         }
         
-        # Загружаем детали матчей
+        # Load match details
         match_details_files = glob.glob(os.path.join(MATCH_DETAILS_JSON_DIR, "*.json"))
-        logger.info(f"Найдено {len(match_details_files)} файлов с деталями матчей")
+        logger.info(f"Found {len(match_details_files)} files with match details")
         
         for file_path in match_details_files:
             try:
                 stats['match_details_processed'] += 1
                 self._load_match_details(file_path)
                 stats['match_details_success'] += 1
-                # Удаляем обработанный файл
+                # Delete processed file
                 os.remove(file_path)
-                logger.info(f"Файл {os.path.basename(file_path)} удален после обработки")
+                logger.info(f"File {os.path.basename(file_path)} deleted after processing")
             except Exception as e:
-                logger.error(f"Ошибка при загрузке деталей матча из {file_path}: {str(e)}")
+                logger.error(f"Error loading match details from {file_path}: {str(e)}")
                 stats['match_details_error'] += 1
         
-        # Загружаем статистику игроков
+        # Load player statistics
         player_stats_files = glob.glob(os.path.join(PLAYER_STATS_JSON_DIR, "*.json"))
-        logger.info(f"Найдено {len(player_stats_files)} файлов со статистикой игроков")
+        logger.info(f"Found {len(player_stats_files)} files with player statistics")
         
         for file_path in player_stats_files:
             try:
                 stats['player_stats_processed'] += 1
                 self._load_player_stats(file_path)
                 stats['player_stats_success'] += 1
-                # Удаляем обработанный файл
+                # Delete processed file
                 os.remove(file_path)
-                logger.info(f"Файл {os.path.basename(file_path)} удален после обработки")
+                logger.info(f"File {os.path.basename(file_path)} deleted after processing")
             except Exception as e:
-                logger.error(f"Ошибка при загрузке статистики игроков из {file_path}: {str(e)}")
+                logger.error(f"Error loading player statistics from {file_path}: {str(e)}")
                 stats['player_stats_error'] += 1
         
         return stats
     
     def load_match_details_and_stats(self, skip_match_details=False, skip_player_stats=False):
         """
-        Загружает данные из JSON файлов в базу данных с возможностью пропуска определенных типов данных
+        Loads data from JSON files to database with the ability to skip certain types of data
         
         Args:
-            skip_match_details (bool): Пропустить загрузку деталей матчей
-            skip_player_stats (bool): Пропустить загрузку статистики игроков
+            skip_match_details (bool): Skip loading match details
+            skip_player_stats (bool): Skip loading player statistics
             
         Returns:
-            dict: Статистика загрузки
+            dict: Loading statistics
         """
-        # Создаем таблицы, если их нет
+        # Create tables if they don't exist
         self._create_tables()
         
         stats = {
@@ -101,49 +101,49 @@ class MatchDetailsLoader:
             'player_stats_error': 0
         }
         
-        # Загружаем детали матчей
+        # Load match details
         if not skip_match_details:
             match_details_files = glob.glob(os.path.join(MATCH_DETAILS_JSON_DIR, "*.json"))
-            logger.info(f"Найдено {len(match_details_files)} файлов с деталями матчей")
+            logger.info(f"Found {len(match_details_files)} files with match details")
             
             for file_path in match_details_files:
                 try:
                     stats['match_details_processed'] += 1
                     self._load_match_details(file_path)
                     stats['match_details_success'] += 1
-                    # Удаляем обработанный файл, если не нужно сохранять
+                    # Delete processed file if not needed
                     os.remove(file_path)
-                    logger.info(f"Файл {os.path.basename(file_path)} удален после обработки")
+                    logger.info(f"File {os.path.basename(file_path)} deleted after processing")
                 except Exception as e:
-                    logger.error(f"Ошибка при загрузке деталей матча из {file_path}: {str(e)}")
+                    logger.error(f"Error loading match details from {file_path}: {str(e)}")
                     stats['match_details_error'] += 1
         
-        # Загружаем статистику игроков
+        # Load player statistics
         if not skip_player_stats:
             player_stats_files = glob.glob(os.path.join(PLAYER_STATS_JSON_DIR, "*.json"))
-            logger.info(f"Найдено {len(player_stats_files)} файлов со статистикой игроков")
+            logger.info(f"Found {len(player_stats_files)} files with player statistics")
             
             for file_path in player_stats_files:
                 try:
                     stats['player_stats_processed'] += 1
                     self._load_player_stats(file_path)
                     stats['player_stats_success'] += 1
-                    # Удаляем обработанный файл, если не нужно сохранять
+                    # Delete processed file if not needed
                     os.remove(file_path)
-                    logger.info(f"Файл {os.path.basename(file_path)} удален после обработки")
+                    logger.info(f"File {os.path.basename(file_path)} deleted after processing")
                 except Exception as e:
-                    logger.error(f"Ошибка при загрузке статистики игроков из {file_path}: {str(e)}")
+                    logger.error(f"Error loading player statistics from {file_path}: {str(e)}")
                     stats['player_stats_error'] += 1
         
         return stats
     
     def _create_tables(self):
-        """Создает необходимые таблицы в базе данных"""
+        """Creates necessary tables in the database"""
         try:
             conn = sqlite3.connect(self.db_path)
             cursor = conn.cursor()
             
-            # Создаем таблицу match_details, если она не существует
+            # Create match_details table if it doesn't exist
             cursor.execute('''
                 CREATE TABLE IF NOT EXISTS match_details (
                     match_id INTEGER PRIMARY KEY,
@@ -166,7 +166,7 @@ class MatchDetailsLoader:
                 )
             ''')
             
-            # Создаем таблицу player_stats, если она не существует
+            # Create player_stats table if it doesn't exist
             cursor.execute('''
                 CREATE TABLE IF NOT EXISTS player_stats (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -189,33 +189,33 @@ class MatchDetailsLoader:
             
             conn.commit()
             conn.close()
-            logger.info("Таблицы успешно созданы/проверены")
+            logger.info("Tables successfully created/verified")
             
         except Exception as e:
-            logger.error(f"Ошибка при создании таблиц: {str(e)}")
+            logger.error(f"Error creating tables: {str(e)}")
             raise
     
     def _load_match_details(self, file_path):
         """
-        Загружает детали матча из JSON файла в базу данных
+        Loads match details from a JSON file to the database
         
         Args:
-            file_path (str): Путь к JSON файлу
+            file_path (str): Path to JSON file
         """
         try:
-            # Чтение файла
+            # Read file
             with open(file_path, 'r', encoding='utf-8') as f:
                 match_data = json.load(f)
             
             conn = sqlite3.connect(self.db_path)
             cursor = conn.cursor()
             
-            # Проверяем, существует ли уже запись для этого матча
+            # Check if record already exists for this match
             cursor.execute('SELECT 1 FROM match_details WHERE match_id = ?', (match_data['match_id'],))
             exists = cursor.fetchone() is not None
             
             if exists:
-                # Обновляем существующую запись
+                # Update existing record
                 cursor.execute('''
                     UPDATE match_details SET 
                     datetime = ?,
@@ -253,14 +253,15 @@ class MatchDetailsLoader:
                     match_data['status'],
                     match_data['match_id']
                 ))
-                logger.info(f"Обновлены детали матча {match_data['match_id']}")
+                logger.info(f"Updated match details for match ID {match_data['match_id']}")
             else:
-                # Добавляем новую запись
+                # Insert new record
                 cursor.execute('''
                     INSERT INTO match_details (
-                    match_id, datetime, team1_id, team1_name, team1_score, team1_rank,
-                    team2_id, team2_name, team2_score, team2_rank, event_id, event_name,
-                    demo_id, head_to_head_team1_wins, head_to_head_team2_wins, status
+                        match_id, datetime, team1_id, team1_name, team1_score, team1_rank,
+                        team2_id, team2_name, team2_score, team2_rank,
+                        event_id, event_name, demo_id,
+                        head_to_head_team1_wins, head_to_head_team2_wins, status
                     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ''', (
                     match_data['match_id'],
@@ -280,84 +281,90 @@ class MatchDetailsLoader:
                     match_data['head_to_head_team2_wins'],
                     match_data['status']
                 ))
-                logger.info(f"Добавлены детали матча {match_data['match_id']}")
+                logger.info(f"Inserted new match details for match ID {match_data['match_id']}")
+                
+                # Update the toParse flag in the results table to indicate successful processing
+                cursor.execute('''
+                    UPDATE url_result SET toParse = 0 
+                    WHERE id = ?
+                ''', (match_data['match_id'],))
             
             conn.commit()
             conn.close()
             
         except Exception as e:
-            logger.error(f"Ошибка при загрузке деталей матча из {file_path}: {str(e)}")
+            logger.error(f"Error processing match details from {file_path}: {str(e)}")
             raise
     
     def _load_player_stats(self, file_path):
         """
-        Загружает статистику игроков из JSON файла в базу данных
+        Loads player statistics from a JSON file to the database
         
         Args:
-            file_path (str): Путь к JSON файлу
+            file_path (str): Path to JSON file
         """
         try:
-            # Чтение файла
+            # Read file
             with open(file_path, 'r', encoding='utf-8') as f:
-                data = json.load(f)
+                stats_data = json.load(f)
             
-            if 'players' not in data or not data['players']:
-                logger.warning(f"В файле {file_path} отсутствуют данные игроков")
-                return
-                
-            players_data = data['players']
-            match_id = players_data[0]['match_id']
+            match_id = stats_data['match_id']
+            team_players = stats_data['teams']
             
             conn = sqlite3.connect(self.db_path)
             cursor = conn.cursor()
             
-            # Удаляем существующие записи для этого матча
+            # Delete existing stats for this match if any
             cursor.execute('DELETE FROM player_stats WHERE match_id = ?', (match_id,))
             
-            # Добавляем новые записи
-            for player_data in players_data:
-                cursor.execute('''
-                    INSERT INTO player_stats (
-                    match_id, team_id, player_id, player_nickname,
-                    fullName, nickName,
-                    kills, deaths, kd_ratio, plus_minus,
-                    adr, kast, rating
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                ''', (
-                    player_data['match_id'],
-                    player_data['team_id'],
-                    player_data['player_id'],
-                    player_data['player_nickname'],
-                    player_data['fullName'],
-                    player_data['nickName'],
-                    player_data['kills'],
-                    player_data['deaths'],
-                    player_data['kd_ratio'],
-                    player_data['plus_minus'],
-                    player_data['adr'],
-                    player_data['kast'],
-                    player_data['rating']
-                ))
+            # Process each team
+            for team_data in team_players:
+                team_id = team_data['team_id']
+                
+                # Process each player
+                for player_data in team_data['players']:
+                    cursor.execute('''
+                        INSERT INTO player_stats (
+                            match_id, team_id, player_id, player_nickname,
+                            fullName, nickName, kills, deaths, kd_ratio,
+                            plus_minus, adr, kast, rating
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ''', (
+                        match_id,
+                        team_id,
+                        player_data['player_id'],
+                        player_data['player_nickname'],
+                        player_data.get('fullName', ''),
+                        player_data.get('nickName', ''),
+                        player_data.get('kills', 0),
+                        player_data.get('deaths', 0),
+                        player_data.get('kd_ratio', 0.0),
+                        player_data.get('plus_minus', 0),
+                        player_data.get('adr', 0.0),
+                        player_data.get('kast', 0.0),
+                        player_data.get('rating', 0.0)
+                    ))
             
             conn.commit()
             conn.close()
-            logger.info(f"Сохранена статистика {len(players_data)} игроков для матча {match_id}")
+            
+            logger.info(f"Loaded player statistics for match ID {match_id}, teams: {len(team_players)}")
             
         except Exception as e:
-            logger.error(f"Ошибка при загрузке статистики игроков из {file_path}: {str(e)}")
+            logger.error(f"Error processing player statistics from {file_path}: {str(e)}")
             raise
 
 if __name__ == "__main__":
     loader = MatchDetailsLoader()
     stats = loader.load_all()
     
-    # Вывод статистики
-    logger.info("======== Загрузка деталей матчей ========")
-    logger.info(f"Обработано файлов: {stats['match_details_processed']}")
-    logger.info(f"Успешно загружено: {stats['match_details_success']}")
-    logger.info(f"Ошибок: {stats['match_details_error']}")
+    # Output statistics
+    logger.info("======== Loading match details ========")
+    logger.info(f"Processed files: {stats['match_details_processed']}")
+    logger.info(f"Successfully loaded: {stats['match_details_success']}")
+    logger.info(f"Errors: {stats['match_details_error']}")
     
-    logger.info("======== Загрузка статистики игроков ========")
-    logger.info(f"Обработано файлов: {stats['player_stats_processed']}")
-    logger.info(f"Успешно загружено: {stats['player_stats_success']}")
-    logger.info(f"Ошибок: {stats['player_stats_error']}") 
+    logger.info("======== Loading player statistics ========")
+    logger.info(f"Processed files: {stats['player_stats_processed']}")
+    logger.info(f"Successfully loaded: {stats['player_stats_success']}")
+    logger.info(f"Errors: {stats['player_stats_error']}") 

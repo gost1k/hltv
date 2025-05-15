@@ -50,17 +50,17 @@ def parse_arguments():
     
     # New commands
     parser.add_argument('--load-matches-from-json', action='store_true',
-                      help='Загрузить списки матчей из JSON файлов в БД')
+                      help='Load match lists from JSON files to DB')
     parser.add_argument('--load-match-details-from-json', action='store_true',
-                      help='Загрузить детали матчей из JSON файлов в БД')
+                      help='Load match details from JSON files to DB')
     parser.add_argument('--load-upcoming-only', action='store_true',
-                      help='Загрузить только предстоящие матчи из JSON')
+                      help='Load only upcoming matches from JSON')
     parser.add_argument('--load-past-only', action='store_true',
-                      help='Загрузить только прошедшие матчи из JSON')
+                      help='Load only past matches from JSON')
     parser.add_argument('--skip-match-details', action='store_true',
-                      help='Пропустить загрузку деталей матчей (только при --load-past-only)')
+                      help='Skip loading match details (only with --load-past-only)')
     parser.add_argument('--skip-player-stats', action='store_true',
-                      help='Пропустить загрузку статистики игроков (только при --load-past-only)')
+                      help='Skip loading player statistics (only with --load-past-only)')
     
     return parser.parse_args()
 
@@ -175,27 +175,27 @@ def main():
             stats = loader.load_all()
             return
         
-        # Загрузка только предстоящих матчей
+        # Load only upcoming matches
         if args.load_upcoming_only:
             loader = MatchesLoader()
             stats = loader.load_upcoming_matches_only()
-            logger.info("======== Загрузка предстоящих матчей ========")
-            logger.info(f"Обработано файлов: {stats.get('processed', 0)}")
-            logger.info(f"Успешно загружено: {stats.get('success', 0)}")
-            logger.info(f"Ошибок: {stats.get('error', 0)}")
+            logger.info("======== Loading upcoming matches ========")
+            logger.info(f"Files processed: {stats.get('processed', 0)}")
+            logger.info(f"Successfully loaded: {stats.get('success', 0)}")
+            logger.info(f"Errors: {stats.get('error', 0)}")
             return
 
-        # Загрузка только прошедших матчей
+        # Load only past matches
         if args.load_past_only:
             matches_loader = MatchesLoader()
             matches_stats = matches_loader.load_past_matches_only()
             
-            logger.info("======== Загрузка прошедших матчей ========")
-            logger.info(f"Обработано файлов: {matches_stats.get('processed', 0)}")
-            logger.info(f"Успешно загружено: {matches_stats.get('success', 0)}")
-            logger.info(f"Ошибок: {matches_stats.get('error', 0)}")
+            logger.info("======== Loading past matches ========")
+            logger.info(f"Files processed: {matches_stats.get('processed', 0)}")
+            logger.info(f"Successfully loaded: {matches_stats.get('success', 0)}")
+            logger.info(f"Errors: {matches_stats.get('error', 0)}")
             
-            # Загружаем детали матчей и статистику игроков, если не пропущено
+            # Load match details and player stats if not skipped
             if not args.skip_match_details or not args.skip_player_stats:
                 details_loader = MatchDetailsLoader()
                 details_stats = details_loader.load_match_details_and_stats(
@@ -204,16 +204,16 @@ def main():
                 )
                 
                 if not args.skip_match_details:
-                    logger.info("======== Загрузка деталей матчей ========")
-                    logger.info(f"Обработано файлов: {details_stats.get('match_details_processed', 0)}")
-                    logger.info(f"Успешно загружено: {details_stats.get('match_details_success', 0)}")
-                    logger.info(f"Ошибок: {details_stats.get('match_details_error', 0)}")
+                    logger.info("======== Loading match details ========")
+                    logger.info(f"Files processed: {details_stats.get('match_details_processed', 0)}")
+                    logger.info(f"Successfully loaded: {details_stats.get('match_details_success', 0)}")
+                    logger.info(f"Errors: {details_stats.get('match_details_error', 0)}")
                 
                 if not args.skip_player_stats:
-                    logger.info("======== Загрузка статистики игроков ========")
-                    logger.info(f"Обработано файлов: {details_stats.get('player_stats_processed', 0)}")
-                    logger.info(f"Успешно загружено: {details_stats.get('player_stats_success', 0)}")
-                    logger.info(f"Ошибок: {details_stats.get('player_stats_error', 0)}")
+                    logger.info("======== Loading player statistics ========")
+                    logger.info(f"Files processed: {details_stats.get('player_stats_processed', 0)}")
+                    logger.info(f"Successfully loaded: {details_stats.get('player_stats_success', 0)}")
+                    logger.info(f"Errors: {details_stats.get('player_stats_error', 0)}")
             
             return
         

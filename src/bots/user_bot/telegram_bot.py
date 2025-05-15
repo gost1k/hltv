@@ -9,13 +9,18 @@ import sqlite3
 from datetime import datetime, timedelta
 from telegram import Update, ReplyKeyboardMarkup, KeyboardButton
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
+import sys
 
 from src.bots.config import load_config
 
 # Загружаем конфигурацию
 config = load_config('user')
 
+<<<<<<< HEAD
 # Логирование уже настроено в src/bots/start_user_bot.py
+=======
+# Настройка логгера
+>>>>>>> 330c76926a6f660bba10d73d36f01bcd88b5c24d
 logger = logging.getLogger(__name__)
 
 # Получаем параметры из конфигурации
@@ -29,20 +34,34 @@ MENU_COMPLETED_MATCHES = "Прошедшие матчи"
 
 class HLTVStatsBot:
     """
-    Бот для отправки статистики матчей HLTV
+    Телеграм-бот для отображения статистики HLTV
     """
-    def __init__(self, token, db_path, subscribers_db_path=None):
+    
+    def __init__(self, token, db_path, subscribers_db_path):
         """
         Инициализация бота
         
         Args:
-            token (str): Токен телеграм-бота
-            db_path (str): Путь к файлу базы данных HLTV
-            subscribers_db_path (str): Путь к файлу базы данных подписчиков
+            token (str): Токен для Telegram API
+            db_path (str): Путь к БД со статистикой HLTV
+            subscribers_db_path (str): Путь к БД подписчиков
         """
         self.token = token
         self.db_path = db_path
-        self.subscribers_db_path = subscribers_db_path or SUBSCRIBERS_DB_PATH
+        self.subscribers_db_path = subscribers_db_path
+        
+        # Настройка логирования для этого класса
+        self.logger = logging.getLogger(__name__)
+        # Проверяем, есть ли уже обработчики у логгера
+        if not self.logger.handlers:
+            console_handler = logging.StreamHandler(sys.stdout)
+            console_handler.setLevel(logging.INFO)
+            formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
+            console_handler.setFormatter(formatter)
+            self.logger.addHandler(console_handler)
+            
+        # Используем локальный логгер вместо глобального
+        self.logger.info("Инициализация бота HLTV")
         
         # Инициализация базы данных подписчиков
         self._init_subscribers_db()
@@ -83,7 +102,7 @@ class HLTVStatsBot:
         """
         Обработчик ошибок
         """
-        logger.error(f"Ошибка: {context.error} при обработке запроса {update}")
+        self.logger.error(f"Ошибка: {context.error} при обработке запроса {update}")
     
     def _init_subscribers_db(self):
         """
@@ -109,7 +128,7 @@ class HLTVStatsBot:
             conn.close()
             
         except Exception as e:
-            logger.error(f"Ошибка при инициализации базы данных подписчиков: {str(e)}")
+            self.logger.error(f"Ошибка при инициализации базы данных подписчиков: {str(e)}")
     
     async def start(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """
@@ -117,7 +136,7 @@ class HLTVStatsBot:
         """
         user = update.effective_user
         user_info = self._get_safe_user_info(user)
-        logger.info(f"{user_info} - Запуск команды /start")
+        self.logger.info(f"{user_info} - Запуск команды /start")
         
         message = (
             f"Привет, {user.first_name}! 👋\n\n"
@@ -140,7 +159,7 @@ class HLTVStatsBot:
         """
         user = update.effective_user
         user_info = self._get_safe_user_info(user)
-        logger.info(f"{user_info} - Запуск команды /help")
+        self.logger.info(f"{user_info} - Запуск команды /help")
         
         message = (
             "Справка по командам бота:\n\n"
@@ -161,7 +180,7 @@ class HLTVStatsBot:
         """
         user = update.effective_user
         user_info = self._get_safe_user_info(user)
-        logger.info(f"{user_info} - Вызов основного меню")
+        self.logger.info(f"{user_info} - Вызов основного меню")
         
         await update.message.reply_text(
             "Выберите действие:",
@@ -175,47 +194,47 @@ class HLTVStatsBot:
         message_text = update.message.text
         user = update.effective_user
         user_info = self._get_safe_user_info(user)
-        logger.info(f"{user_info} - Сообщение: '{message_text}'")
+        self.logger.info(f"{user_info} - Сообщение: '{message_text}'")
         
         if message_text == MENU_COMPLETED_MATCHES:
-            logger.info(f"{user_info} - Запрос прошедших матчей")
+            self.logger.info(f"{user_info} - Запрос прошедших матчей")
             await self.show_completed_matches(update, context)
         elif message_text == MENU_UPCOMING_MATCHES:
-            logger.info(f"{user_info} - Запрос предстоящих матчей")
+            self.logger.info(f"{user_info} - Запрос предстоящих матчей")
             await self.show_upcoming_matches(update, context)
         elif message_text == "За сегодня":
-            logger.info(f"{user_info} - Запрос матчей за сегодня")
+            self.logger.info(f"{user_info} - Запрос матчей за сегодня")
             await self.send_today_stats(update, context)
         elif message_text == "За вчера":
-            logger.info(f"{user_info} - Запрос матчей за вчера")
+            self.logger.info(f"{user_info} - Запрос матчей за вчера")
             await self.show_matches_for_period(update, context, 1)
         elif message_text == "За 3 дня":
-            logger.info(f"{user_info} - Запрос матчей за 3 дня")
+            self.logger.info(f"{user_info} - Запрос матчей за 3 дня")
             await self.show_matches_for_period(update, context, 3)
         elif message_text == "На сегодня":
-            logger.info(f"{user_info} - Запрос предстоящих матчей на сегодня")
+            self.logger.info(f"{user_info} - Запрос предстоящих матчей на сегодня")
             await self.show_upcoming_matches_for_period(update, context, 0)
         elif message_text == "На завтра":
-            logger.info(f"{user_info} - Запрос предстоящих матчей на завтра")
+            self.logger.info(f"{user_info} - Запрос предстоящих матчей на завтра")
             await self.show_upcoming_matches_for_period(update, context, 1)
         elif message_text == "На 3 дня":
-            logger.info(f"{user_info} - Запрос предстоящих матчей на 3 дня")
+            self.logger.info(f"{user_info} - Запрос предстоящих матчей на 3 дня")
             await self.show_upcoming_matches_for_period(update, context, 3)
         elif message_text == "По событию":
-            logger.info(f"{user_info} - Запрос списка событий")
+            self.logger.info(f"{user_info} - Запрос списка событий")
             await self.show_events_list(update, context)
         elif message_text == "Назад":
-            logger.info(f"{user_info} - Возврат в главное меню")
+            self.logger.info(f"{user_info} - Возврат в главное меню")
             await self.show_menu(update, context)
         elif 'match_mapping' in context.user_data and message_text in context.user_data['match_mapping']:
             # Если текст сообщения совпадает с названием матча в нашем словаре
             match_id = context.user_data['match_mapping'][message_text]
-            logger.info(f"{user_info} - Запрос статистики матча ID {match_id}")
+            self.logger.info(f"{user_info} - Запрос статистики матча ID {match_id}")
             await self.show_match_details(update, context, match_id)
         elif 'event_mapping' in context.user_data and message_text in context.user_data['event_mapping']:
             # Если текст сообщения совпадает с названием события в нашем словаре
             event_id = context.user_data['event_mapping'][message_text]
-            logger.info(f"{user_info} - Запрос матчей события ID {event_id}")
+            self.logger.info(f"{user_info} - Запрос матчей события ID {event_id}")
             await self.show_matches_for_event(update, context, event_id)
         elif "(" in message_text and ")" in message_text:
             # Обработка запроса статистики с ID в скобках (оставляем для обратной совместимости)
@@ -294,7 +313,7 @@ class HLTVStatsBot:
         chat_id = update.effective_chat.id
         user = update.effective_user
         user_info = self._get_safe_user_info(user)
-        logger.info(f"{user_info} - Попытка подписки на ежедневную рассылку")
+        self.logger.info(f"{user_info} - Попытка подписки на ежедневную рассылку")
         
         try:
             conn = sqlite3.connect(self.subscribers_db_path)
@@ -337,7 +356,7 @@ class HLTVStatsBot:
             )
             
         except Exception as e:
-            logger.error(f"Ошибка при подписке пользователя {chat_id}: {str(e)}")
+            self.logger.error(f"Ошибка при подписке пользователя {chat_id}: {str(e)}")
             await update.message.reply_text("Произошла ошибка при подписке. Пожалуйста, попробуйте позже.")
     
     async def unsubscribe(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -347,7 +366,7 @@ class HLTVStatsBot:
         chat_id = update.effective_chat.id
         user = update.effective_user
         user_info = self._get_safe_user_info(user)
-        logger.info(f"{user_info} - Попытка отписки от ежедневной рассылки")
+        self.logger.info(f"{user_info} - Попытка отписки от ежедневной рассылки")
         
         try:
             conn = sqlite3.connect(self.subscribers_db_path)
@@ -368,7 +387,7 @@ class HLTVStatsBot:
             conn.close()
             
         except Exception as e:
-            logger.error(f"Ошибка при отписке пользователя {chat_id}: {str(e)}")
+            self.logger.error(f"Ошибка при отписке пользователя {chat_id}: {str(e)}")
             await update.message.reply_text("Произошла ошибка при отписке. Пожалуйста, попробуйте позже.")
     
     def get_matches_by_date(self, date_start, date_end):
@@ -429,7 +448,7 @@ class HLTVStatsBot:
             return events
             
         except Exception as e:
-            logger.error(f"Ошибка при получении матчей: {str(e)}")
+            self.logger.error(f"Ошибка при получении матчей: {str(e)}")
             return {}
     
     def format_matches_message(self, events):
@@ -484,7 +503,7 @@ class HLTVStatsBot:
         """
         user = update.effective_user
         user_info = self._get_safe_user_info(user)
-        logger.info(f"{user_info} - Запрос статистики за вчера через команду")
+        self.logger.info(f"{user_info} - Запрос статистики за вчера через команду")
         await self.show_matches_for_period(update, context, 1)
     
     async def send_today_stats(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -493,7 +512,7 @@ class HLTVStatsBot:
         """
         user = update.effective_user
         user_info = self._get_safe_user_info(user)
-        logger.info(f"{user_info} - Запрос статистики за сегодня")
+        self.logger.info(f"{user_info} - Запрос статистики за сегодня")
         
         # Получаем временные метки начала и конца текущего дня
         today = datetime.now()
@@ -509,7 +528,7 @@ class HLTVStatsBot:
         
         # Логируем количество найденных матчей
         match_count = sum(len(event_data['matches']) for event_data in events.values()) if events else 0
-        logger.info(f"{user_info} - Найдено {match_count} матчей за сегодня")
+        self.logger.info(f"{user_info} - Найдено {match_count} матчей за сегодня")
         
         # Отправляем сообщение
         await update.message.reply_text(message, parse_mode="HTML", reply_markup=self.markup)
@@ -534,14 +553,14 @@ class HLTVStatsBot:
         start_date = end_date - timedelta(days=days-1)
         start_timestamp = start_date.timestamp()
         
-        logger.info(f"{user_info} - Запрос матчей за период с {start_date.strftime('%d.%m.%Y')} по {end_date.strftime('%d.%m.%Y')}")
+        self.logger.info(f"{user_info} - Запрос матчей за период с {start_date.strftime('%d.%m.%Y')} по {end_date.strftime('%d.%m.%Y')}")
         
         # Получаем матчи за период
         events = self.get_matches_by_date(start_timestamp, end_timestamp)
         
         # Логируем количество найденных матчей
         match_count = sum(len(event_data['matches']) for event_data in events.values()) if events else 0
-        logger.info(f"{user_info} - Найдено {match_count} матчей за указанный период")
+        self.logger.info(f"{user_info} - Найдено {match_count} матчей за указанный период")
         
         if days == 1:
             period_text = f"за {end_date.strftime('%d.%m.%Y')}"
@@ -569,7 +588,7 @@ class HLTVStatsBot:
         
         user = update.effective_user
         user_info = self._get_safe_user_info(user)
-        logger.info(f"{user_info} - Запрос списка событий типа {event_type}")
+        self.logger.info(f"{user_info} - Запрос списка событий типа {event_type}")
         
         today = datetime.now()
         
@@ -648,7 +667,7 @@ class HLTVStatsBot:
             )
             
         except Exception as e:
-            logger.error(f"Ошибка при получении списка событий: {str(e)}")
+            self.logger.error(f"Ошибка при получении списка событий: {str(e)}")
             await update.message.reply_text(
                 "Произошла ошибка при получении списка событий.",
                 reply_markup=self.markup
@@ -665,7 +684,7 @@ class HLTVStatsBot:
         """
         user = update.effective_user
         user_info = self._get_safe_user_info(user)
-        logger.info(f"{user_info} - Запрос матчей события ID {event_id}")
+        self.logger.info(f"{user_info} - Запрос матчей события ID {event_id}")
         
         # Проверяем тип события (прошедшие или предстоящие)
         event_type = context.user_data.get('event_type', MENU_COMPLETED_MATCHES)
@@ -740,7 +759,7 @@ class HLTVStatsBot:
                 event_name = event_result['event_name']
                 
                 # Получаем предстоящие матчи события
-                logger.info(f"Запрос предстоящих матчей события ID {event_id}")
+                self.logger.info(f"Запрос предстоящих матчей события ID {event_id}")
                 
                 cursor.execute('''
                     SELECT 
@@ -755,7 +774,7 @@ class HLTVStatsBot:
                 
                 matches = cursor.fetchall()
                 
-                logger.info(f"Найдено {len(matches)} предстоящих матчей для события ID {event_id}")
+                self.logger.info(f"Найдено {len(matches)} предстоящих матчей для события ID {event_id}")
                 
                 conn.close()
                 
@@ -782,7 +801,7 @@ class HLTVStatsBot:
             await update.message.reply_text(message, parse_mode="HTML", reply_markup=self.markup)
             
         except Exception as e:
-            logger.error(f"Ошибка при получении матчей события {event_id}: {str(e)}")
+            self.logger.error(f"Ошибка при получении матчей события {event_id}: {str(e)}")
             await update.message.reply_text(
                 "Произошла ошибка при получении данных о матчах.",
                 reply_markup=self.markup
@@ -799,7 +818,7 @@ class HLTVStatsBot:
         """
         user = update.effective_user
         user_info = self._get_safe_user_info(user)
-        logger.info(f"{user_info} - Запрос детальной информации о матче ID {match_id}")
+        self.logger.info(f"{user_info} - Запрос детальной информации о матче ID {match_id}")
         
         try:
             conn = sqlite3.connect(self.db_path)
@@ -976,7 +995,7 @@ class HLTVStatsBot:
             await update.message.reply_text(message, parse_mode="HTML", reply_markup=self.markup)
             
         except Exception as e:
-            logger.error(f"Ошибка при получении данных о матче {match_id}: {str(e)}")
+            self.logger.error(f"Ошибка при получении данных о матче {match_id}: {str(e)}")
             await update.message.reply_text(
                 "Произошла ошибка при получении данных о матче.",
                 reply_markup=self.markup
@@ -1055,7 +1074,7 @@ class HLTVStatsBot:
             )
             
         except Exception as e:
-            logger.error(f"Ошибка при получении списка матчей: {str(e)}")
+            self.logger.error(f"Ошибка при получении списка матчей: {str(e)}")
             await update.message.reply_text(
                 "Произошла ошибка при получении списка матчей.",
                 reply_markup=self.markup
@@ -1072,7 +1091,7 @@ class HLTVStatsBot:
         """
         user = update.effective_user
         user_info = self._get_safe_user_info(user)
-        logger.info(f"{user_info} - Поиск матчей команды: {team_name}")
+        self.logger.info(f"{user_info} - Поиск матчей команды: {team_name}")
         
         try:
             conn = sqlite3.connect(self.db_path)
@@ -1195,7 +1214,7 @@ class HLTVStatsBot:
             )
             
         except Exception as e:
-            logger.error(f"Ошибка при поиске матчей команды: {str(e)}")
+            self.logger.error(f"Ошибка при поиске матчей команды: {str(e)}")
             await update.message.reply_text(
                 "Произошла ошибка при поиске матчей команды.",
                 reply_markup=self.markup
@@ -1218,7 +1237,7 @@ class HLTVStatsBot:
             cursor = conn.cursor()
             
             # Логируем запрос для отладки
-            logger.info(f"Запрос предстоящих матчей за период от {date_start} до {date_end}")
+            self.logger.info(f"Запрос предстоящих матчей за период от {date_start} до {date_end}")
             
             # Получаем матчи за указанный период
             cursor.execute('''
@@ -1236,7 +1255,7 @@ class HLTVStatsBot:
             matches = cursor.fetchall()
             
             # Логируем количество найденных матчей
-            logger.info(f"Найдено {len(matches)} предстоящих матчей в БД")
+            self.logger.info(f"Найдено {len(matches)} предстоящих матчей в БД")
             
             # Группируем матчи по событиям
             events = {}
@@ -1265,7 +1284,7 @@ class HLTVStatsBot:
             return events
             
         except Exception as e:
-            logger.error(f"Ошибка при получении предстоящих матчей: {str(e)}")
+            self.logger.error(f"Ошибка при получении предстоящих матчей: {str(e)}")
             return {}
     
     def format_upcoming_matches_message(self, events):
@@ -1330,7 +1349,7 @@ class HLTVStatsBot:
             end_date = datetime(today.year, today.month, today.day, 23, 59, 59)
             end_timestamp = end_date.timestamp()
             period_text = "на сегодня"
-            logger.info(f"{user_info} - Запрос предстоящих матчей на сегодня ({start_timestamp} - {end_timestamp})")
+            self.logger.info(f"{user_info} - Запрос предстоящих матчей на сегодня ({start_timestamp} - {end_timestamp})")
         elif days == 1:  # Завтра
             tomorrow = today + timedelta(days=1)
             start_date = datetime(tomorrow.year, tomorrow.month, tomorrow.day, 0, 0, 0)
@@ -1338,21 +1357,21 @@ class HLTVStatsBot:
             start_timestamp = start_date.timestamp()
             end_timestamp = end_date.timestamp()
             period_text = f"на завтра ({start_date.strftime('%d.%m.%Y')})"
-            logger.info(f"{user_info} - Запрос предстоящих матчей на завтра ({start_timestamp} - {end_timestamp})")
+            self.logger.info(f"{user_info} - Запрос предстоящих матчей на завтра ({start_timestamp} - {end_timestamp})")
         else:  # Несколько дней вперед
             start_date = datetime(today.year, today.month, today.day, 0, 0, 0)
             end_date = start_date + timedelta(days=days)
             start_timestamp = current_timestamp  # С текущего момента
             end_timestamp = end_date.timestamp()
             period_text = f"на ближайшие {days} дней"
-            logger.info(f"{user_info} - Запрос предстоящих матчей на {days} дней ({start_timestamp} - {end_timestamp})")
+            self.logger.info(f"{user_info} - Запрос предстоящих матчей на {days} дней ({start_timestamp} - {end_timestamp})")
             
         # Получаем матчи за период
         events = self.get_upcoming_matches_by_date(start_timestamp, end_timestamp)
         
         # Логируем количество найденных матчей
         match_count = sum(len(event_data['matches']) for event_data in events.values()) if events else 0
-        logger.info(f"{user_info} - Найдено {match_count} предстоящих матчей за указанный период")
+        self.logger.info(f"{user_info} - Найдено {match_count} предстоящих матчей за указанный период")
         
         # Форматируем сообщение
         message = f"📅 <b>Предстоящие матчи {period_text}</b>\n\n"
@@ -1367,14 +1386,14 @@ class HLTVStatsBot:
         """
         user = update.effective_user
         user_info = self._get_safe_user_info(user)
-        logger.info(f"{user_info} - Запрос предстоящих матчей через команду")
+        self.logger.info(f"{user_info} - Запрос предстоящих матчей через команду")
         await self.show_upcoming_matches_for_period(update, context, 0)
     
     def run(self):
         """
         Запускает бота
         """
-        logger.info("Запуск бота...")
+        self.logger.info("Запуск бота...")
         application = Application.builder().token(self.token).build()
         
         # Регистрация обработчиков команд
