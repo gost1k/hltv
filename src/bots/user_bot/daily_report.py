@@ -7,7 +7,7 @@ import os
 import sys
 import logging
 import sqlite3
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import telegram
 import asyncio
 
@@ -31,6 +31,9 @@ logger = logging.getLogger(__name__)
 TOKEN = config['token']
 DB_PATH = config['hltv_db_path']
 SUBSCRIBERS_DB_PATH = config['subscribers_db_path']
+
+# Определяем московское время (UTC+3)
+MOSCOW_TIMEZONE = timezone(timedelta(hours=3))
 
 class DailyReportSender:
     """
@@ -117,10 +120,10 @@ class DailyReportSender:
             dict: Словарь с событиями и матчами
         """
         try:
-            today = datetime.now()
+            today = datetime.now(MOSCOW_TIMEZONE)
             
             # Вычисляем начало и конец периода
-            end_date = datetime(today.year, today.month, today.day, 0, 0, 0) - timedelta(days=1)
+            end_date = datetime(today.year, today.month, today.day, 0, 0, 0, tzinfo=MOSCOW_TIMEZONE) - timedelta(days=1)
             end_timestamp = end_date.timestamp() + 86399  # Конец дня (23:59:59)
             start_date = end_date - timedelta(days=days-1)
             start_timestamp = start_date.timestamp()

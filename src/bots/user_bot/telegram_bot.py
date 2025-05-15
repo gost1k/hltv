@@ -6,7 +6,7 @@
 import os
 import logging
 import sqlite3
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from telegram import Update, ReplyKeyboardMarkup, KeyboardButton
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 import sys
@@ -27,6 +27,9 @@ SUBSCRIBERS_DB_PATH = config['subscribers_db_path']
 # Кнопки меню
 MENU_UPCOMING_MATCHES = "Будущие матчи"
 MENU_COMPLETED_MATCHES = "Прошедшие матчи"
+
+# Определяем московское время (UTC+3)
+MOSCOW_TIMEZONE = timezone(timedelta(hours=3))
 
 class HLTVStatsBot:
     """
@@ -328,7 +331,7 @@ class HLTVStatsBot:
                     # Обновляем запись, если пользователь был отписан ранее
                     cursor.execute(
                         'UPDATE subscribers SET is_active = 1, subscribed_date = ? WHERE chat_id = ?',
-                        (int(datetime.now().timestamp()), chat_id)
+                        (int(datetime.now(MOSCOW_TIMEZONE).timestamp()), chat_id)
                     )
             else:
                 # Добавляем нового подписчика
@@ -339,7 +342,7 @@ class HLTVStatsBot:
                         user.first_name,
                         user.last_name,
                         user.username,
-                        int(datetime.now().timestamp())
+                        int(datetime.now(MOSCOW_TIMEZONE).timestamp())
                     )
                 )
             
@@ -347,13 +350,17 @@ class HLTVStatsBot:
             conn.close()
             
             await update.message.reply_text(
-                "Вы успешно подписались на ежедневную рассылку статистики матчей! 🎮\n"
-                "Каждое утро вы будете получать результаты матчей за прошедший день."
+                "Вы успешно подписались на ежедневную рассылку результатов матчей! 🎮\n"
+                "Отчет будет приходить каждое утро в 9:00.",
+                reply_markup=self.markup
             )
             
         except Exception as e:
             self.logger.error(f"Ошибка при подписке пользователя {chat_id}: {str(e)}")
-            await update.message.reply_text("Произошла ошибка при подписке. Пожалуйста, попробуйте позже.")
+            await update.message.reply_text(
+                "Произошла ошибка при подписке. Пожалуйста, попробуйте позже.",
+                reply_markup=self.markup
+            )
     
     async def unsubscribe(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """
@@ -510,10 +517,10 @@ class HLTVStatsBot:
         user_info = self._get_safe_user_info(user)
         self.logger.info(f"{user_info} - Запрос статистики за сегодня")
         
-        # Получаем временные метки начала и конца текущего дня
-        today = datetime.now()
-        start_of_today = datetime(today.year, today.month, today.day, 0, 0, 0).timestamp()
-        end_of_today = datetime(today.year, today.month, today.day, 23, 59, 59).timestamp()
+        # Получаем временные метки начала и конца текущего дня по московскому времени
+        today = datetime.now(MOSCOW_TIMEZONE)
+        start_of_today = datetime(today.year, today.month, today.day, 0, 0, 0, tzinfo=MOSCOW_TIMEZONE).timestamp()
+        end_of_today = datetime(today.year, today.month, today.day, 23, 59, 59, tzinfo=MOSCOW_TIMEZONE).timestamp()
         
         # Получаем матчи за текущий день
         events = self.get_matches_by_date(start_of_today, end_of_today)
@@ -541,10 +548,10 @@ class HLTVStatsBot:
         user = update.effective_user
         user_info = self._get_safe_user_info(user)
         
-        today = datetime.now()
+        today = datetime.now(MOSCOW_TIMEZONE)
         
         # Вычисляем начало и конец периода
-        end_date = datetime(today.year, today.month, today.day, 0, 0, 0) - timedelta(days=1)
+        end_date = datetime(today.year, today.month, today.day, 0, 0, 0, tzinfo=MOSCOW_TIMEZONE) - timedelta(days=1)
         end_timestamp = end_date.timestamp() + 86399  # Конец дня (23:59:59)
         start_date = end_date - timedelta(days=days-1)
         start_timestamp = start_date.timestamp()
@@ -586,7 +593,7 @@ class HLTVStatsBot:
         user_info = self._get_safe_user_info(user)
         self.logger.info(f"{user_info} - Запрос списка событий типа {event_type}")
         
-        today = datetime.now()
+        today = datetime.now(MOSCOW_TIMEZONE)
         
         try:
             conn = sqlite3.connect(self.db_path)
@@ -887,13 +894,13 @@ class HLTVStatsBot:
             conn.close()
             
             # Форматируем информацию о матче
-            match_time = datetime.fromtimestamp(match['datetime']).strftime('%d.%m.%Y %H:%M')
+            match_datetime = datetime.fromtimestamp(match['datetime'], tz=MOSCOW_TIMEZONE).strftime('%d.%m.%Y %H:%M')
             
             # Используем полные названия команд
             team1_name = match['team1_name']
             team2_name = match['team2_name']
             
-            message = f"<b>⏰ {match_time}</b>\n"
+            message = f"<b>⏰ {match_datetime}</b>\n"
             message += f"<b>🏆 {match['event_name']}</b>\n\n"
             
             if match_type == 'completed':
@@ -999,13 +1006,17 @@ class HLTVStatsBot:
     
     async def show_last_day_matches_menu(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """
-        Показывает меню матчей за последний день для выбора конкретного матча
+        Показывает список матчей за вчерашний день в виде кнопок
         """
-        # Получаем дату вчерашнего дня
-        today = datetime.now()
+        user = update.effective_user
+        user_info = self._get_safe_user_info(user)
+        self.logger.info(f"{user_info} - Запрос списка матчей за вчера")
+        
+        # Получаем временные метки начала и конца вчерашнего дня
+        today = datetime.now(MOSCOW_TIMEZONE)
         yesterday = today - timedelta(days=1)
-        start_timestamp = datetime(yesterday.year, yesterday.month, yesterday.day, 0, 0, 0).timestamp()
-        end_timestamp = datetime(yesterday.year, yesterday.month, yesterday.day, 23, 59, 59).timestamp()
+        start_timestamp = datetime(yesterday.year, yesterday.month, yesterday.day, 0, 0, 0, tzinfo=MOSCOW_TIMEZONE).timestamp()
+        end_timestamp = datetime(yesterday.year, yesterday.month, yesterday.day, 23, 59, 59, tzinfo=MOSCOW_TIMEZONE).timestamp()
         
         try:
             conn = sqlite3.connect(self.db_path)
@@ -1154,7 +1165,7 @@ class HLTVStatsBot:
                     team1_name = match['team1_name']
                     team2_name = match['team2_name']
                     match_id = match['match_id']
-                    match_date = datetime.fromtimestamp(match['datetime']).strftime('%d.%m.%Y %H:%M')
+                    match_date = datetime.fromtimestamp(match['datetime'], tz=MOSCOW_TIMEZONE).strftime('%d.%m.%Y %H:%M')
                     
                     # Добавляем матч в текстовый список
                     matches_list += f"{i}. <b>{match_date}</b>: {team1_name} vs {team2_name}\n"
@@ -1179,7 +1190,7 @@ class HLTVStatsBot:
                     team1_score = match['team1_score']
                     team2_score = match['team2_score']
                     match_id = match['match_id']
-                    match_date = datetime.fromtimestamp(match['datetime']).strftime('%d.%m.%Y')
+                    match_date = datetime.fromtimestamp(match['datetime'], tz=MOSCOW_TIMEZONE).strftime('%d.%m.%Y')
                     
                     # Добавляем матч в текстовый список
                     matches_list += f"{i}. <b>{match_date}</b>: {team1_name} {team1_score}:{team2_score} {team2_name}\n"
@@ -1311,8 +1322,8 @@ class HLTVStatsBot:
                 team2_name = match['team2_name']
                 match_id = match['match_id']
                 
-                # Форматируем дату и время
-                match_datetime = datetime.fromtimestamp(match['datetime'])
+                # Форматируем дату и время с учетом московского часового пояса
+                match_datetime = datetime.fromtimestamp(match['datetime'], tz=MOSCOW_TIMEZONE)
                 match_date = match_datetime.strftime('%d.%m')
                 match_time = match_datetime.strftime('%H:%M')
                 
@@ -1336,26 +1347,26 @@ class HLTVStatsBot:
         user = update.effective_user
         user_info = self._get_safe_user_info(user)
         
-        today = datetime.now()
+        today = datetime.now(MOSCOW_TIMEZONE)
         current_timestamp = today.timestamp()
         
         # Вычисляем начало и конец периода
         if days == 0:  # Сегодня - берем с текущего момента до конца дня
             start_timestamp = current_timestamp
-            end_date = datetime(today.year, today.month, today.day, 23, 59, 59)
+            end_date = datetime(today.year, today.month, today.day, 23, 59, 59, tzinfo=MOSCOW_TIMEZONE)
             end_timestamp = end_date.timestamp()
             period_text = "на сегодня"
             self.logger.info(f"{user_info} - Запрос предстоящих матчей на сегодня ({start_timestamp} - {end_timestamp})")
         elif days == 1:  # Завтра
             tomorrow = today + timedelta(days=1)
-            start_date = datetime(tomorrow.year, tomorrow.month, tomorrow.day, 0, 0, 0)
-            end_date = datetime(tomorrow.year, tomorrow.month, tomorrow.day, 23, 59, 59)
+            start_date = datetime(tomorrow.year, tomorrow.month, tomorrow.day, 0, 0, 0, tzinfo=MOSCOW_TIMEZONE)
+            end_date = datetime(tomorrow.year, tomorrow.month, tomorrow.day, 23, 59, 59, tzinfo=MOSCOW_TIMEZONE)
             start_timestamp = start_date.timestamp()
             end_timestamp = end_date.timestamp()
             period_text = f"на завтра ({start_date.strftime('%d.%m.%Y')})"
             self.logger.info(f"{user_info} - Запрос предстоящих матчей на завтра ({start_timestamp} - {end_timestamp})")
         else:  # Несколько дней вперед
-            start_date = datetime(today.year, today.month, today.day, 0, 0, 0)
+            start_date = datetime(today.year, today.month, today.day, 0, 0, 0, tzinfo=MOSCOW_TIMEZONE)
             end_date = start_date + timedelta(days=days)
             start_timestamp = current_timestamp  # С текущего момента
             end_timestamp = end_date.timestamp()
