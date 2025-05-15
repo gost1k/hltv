@@ -15,15 +15,7 @@ from src.bots.config import load_config
 # Загружаем конфигурацию
 config = load_config('user')
 
-# Настройка логирования
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    handlers=[
-        logging.StreamHandler(),
-        logging.FileHandler(config['log_file'])
-    ]
-)
+# Логирование уже настроено в src/bots/start_user_bot.py
 logger = logging.getLogger(__name__)
 
 # Получаем параметры из конфигурации
