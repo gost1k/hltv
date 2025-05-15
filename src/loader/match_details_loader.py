@@ -1,3 +1,7 @@
+#!/usr/bin/env python
+"""
+Модуль для загрузки деталей матчей и статистики игроков из JSON в базу данных
+"""
 import os
 import json
 import logging
@@ -207,87 +211,89 @@ class MatchDetailsLoader:
             with open(file_path, 'r', encoding='utf-8') as f:
                 match_data = json.load(f)
             
+            # Extract match ID from file name
+            file_name = os.path.basename(file_path)
+            match_id = int(os.path.splitext(file_name)[0])
+            
             conn = sqlite3.connect(self.db_path)
             cursor = conn.cursor()
             
-            # Check if record already exists for this match
-            cursor.execute('SELECT 1 FROM match_details WHERE match_id = ?', (match_data['match_id'],))
-            exists = cursor.fetchone() is not None
+            # Check if match details already exist
+            cursor.execute('SELECT match_id FROM match_details WHERE match_id = ?', (match_id,))
+            exists = cursor.fetchone()
             
             if exists:
                 # Update existing record
                 cursor.execute('''
-                    UPDATE match_details SET 
-                    datetime = ?,
-                    team1_id = ?,
-                    team1_name = ?,
-                    team1_score = ?,
-                    team1_rank = ?,
-                    team2_id = ?,
-                    team2_name = ?,
-                    team2_score = ?,
-                    team2_rank = ?,
-                    event_id = ?,
-                    event_name = ?,
-                    demo_id = ?,
-                    head_to_head_team1_wins = ?,
-                    head_to_head_team2_wins = ?,
-                    status = ?,
-                    parsed_at = CURRENT_TIMESTAMP
+                    UPDATE match_details SET
+                        datetime = ?,
+                        team1_id = ?,
+                        team1_name = ?,
+                        team1_score = ?,
+                        team1_rank = ?,
+                        team2_id = ?,
+                        team2_name = ?,
+                        team2_score = ?,
+                        team2_rank = ?,
+                        event_id = ?,
+                        event_name = ?,
+                        demo_id = ?,
+                        head_to_head_team1_wins = ?,
+                        head_to_head_team2_wins = ?,
+                        status = ?,
+                        parsed_at = ?
                     WHERE match_id = ?
                 ''', (
-                    match_data['datetime'],
-                    match_data['team1_id'],
-                    match_data['team1_name'],
-                    match_data['team1_score'],
-                    match_data['team1_rank'],
-                    match_data['team2_id'],
-                    match_data['team2_name'],
-                    match_data['team2_score'],
-                    match_data['team2_rank'],
-                    match_data['event_id'],
-                    match_data['event_name'],
-                    match_data['demo_id'],
-                    match_data['head_to_head_team1_wins'],
-                    match_data['head_to_head_team2_wins'],
-                    match_data['status'],
-                    match_data['match_id']
+                    match_data.get('datetime', 0),
+                    match_data.get('team1_id', 0),
+                    match_data.get('team1_name', ''),
+                    match_data.get('team1_score', 0),
+                    match_data.get('team1_rank', 0),
+                    match_data.get('team2_id', 0),
+                    match_data.get('team2_name', ''),
+                    match_data.get('team2_score', 0),
+                    match_data.get('team2_rank', 0),
+                    match_data.get('event_id', 0),
+                    match_data.get('event_name', ''),
+                    match_data.get('demo_id', 0),
+                    match_data.get('head_to_head_team1_wins', 0),
+                    match_data.get('head_to_head_team2_wins', 0),
+                    match_data.get('status', 'completed'),
+                    match_data.get('parsed_at', datetime.now().isoformat()),
+                    match_id
                 ))
-                logger.info(f"Updated match details for match ID {match_data['match_id']}")
+                logger.info(f"Updated match details for ID {match_id}")
             else:
                 # Insert new record
                 cursor.execute('''
                     INSERT INTO match_details (
-                        match_id, datetime, team1_id, team1_name, team1_score, team1_rank,
+                        match_id, datetime, 
+                        team1_id, team1_name, team1_score, team1_rank,
                         team2_id, team2_name, team2_score, team2_rank,
                         event_id, event_name, demo_id,
-                        head_to_head_team1_wins, head_to_head_team2_wins, status
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        head_to_head_team1_wins, head_to_head_team2_wins,
+                        status, parsed_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ''', (
-                    match_data['match_id'],
-                    match_data['datetime'],
-                    match_data['team1_id'],
-                    match_data['team1_name'],
-                    match_data['team1_score'],
-                    match_data['team1_rank'],
-                    match_data['team2_id'],
-                    match_data['team2_name'],
-                    match_data['team2_score'],
-                    match_data['team2_rank'],
-                    match_data['event_id'],
-                    match_data['event_name'],
-                    match_data['demo_id'],
-                    match_data['head_to_head_team1_wins'],
-                    match_data['head_to_head_team2_wins'],
-                    match_data['status']
+                    match_id,
+                    match_data.get('datetime', 0),
+                    match_data.get('team1_id', 0),
+                    match_data.get('team1_name', ''),
+                    match_data.get('team1_score', 0),
+                    match_data.get('team1_rank', 0),
+                    match_data.get('team2_id', 0),
+                    match_data.get('team2_name', ''),
+                    match_data.get('team2_score', 0),
+                    match_data.get('team2_rank', 0),
+                    match_data.get('event_id', 0),
+                    match_data.get('event_name', ''),
+                    match_data.get('demo_id', 0),
+                    match_data.get('head_to_head_team1_wins', 0),
+                    match_data.get('head_to_head_team2_wins', 0),
+                    match_data.get('status', 'completed'),
+                    match_data.get('parsed_at', datetime.now().isoformat())
                 ))
-                logger.info(f"Inserted new match details for match ID {match_data['match_id']}")
-                
-                # Update the toParse flag in the results table to indicate successful processing
-                cursor.execute('''
-                    UPDATE url_result SET toParse = 0 
-                    WHERE id = ?
-                ''', (match_data['match_id'],))
+                logger.info(f"Inserted match details for ID {match_id}")
             
             conn.commit()
             conn.close()
@@ -308,21 +314,80 @@ class MatchDetailsLoader:
             with open(file_path, 'r', encoding='utf-8') as f:
                 stats_data = json.load(f)
             
-            match_id = stats_data['match_id']
-            team_players = stats_data['teams']
-            
-            conn = sqlite3.connect(self.db_path)
-            cursor = conn.cursor()
-            
-            # Delete existing stats for this match if any
-            cursor.execute('DELETE FROM player_stats WHERE match_id = ?', (match_id,))
-            
-            # Process each team
-            for team_data in team_players:
-                team_id = team_data['team_id']
+            # Изменение: Проверяем формат файла и извлекаем match_id по-разному
+            # в зависимости от структуры
+            if 'match_id' in stats_data:
+                # Старый формат
+                match_id = stats_data['match_id']
+                team_players = stats_data['teams']
                 
-                # Process each player
-                for player_data in team_data['players']:
+                conn = sqlite3.connect(self.db_path)
+                cursor = conn.cursor()
+                
+                # Delete existing stats for this match if any
+                cursor.execute('DELETE FROM player_stats WHERE match_id = ?', (match_id,))
+                
+                # Process each team
+                for team_data in team_players:
+                    team_id = team_data['team_id']
+                    
+                    # Process each player
+                    for player_data in team_data['players']:
+                        cursor.execute('''
+                            INSERT INTO player_stats (
+                                match_id, team_id, player_id, player_nickname,
+                                fullName, nickName, kills, deaths, kd_ratio,
+                                plus_minus, adr, kast, rating
+                            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        ''', (
+                            match_id,
+                            team_id,
+                            player_data.get('player_id', 0),
+                            player_data.get('player_nickname', ''),
+                            player_data.get('fullName', ''),
+                            player_data.get('nickName', ''),
+                            player_data.get('kills', 0),
+                            player_data.get('deaths', 0),
+                            player_data.get('kd_ratio', 0.0),
+                            player_data.get('plus_minus', 0),
+                            player_data.get('adr', 0.0),
+                            player_data.get('kast', 0.0),
+                            player_data.get('rating', 0.0)
+                        ))
+                
+                conn.commit()
+                conn.close()
+                
+                logger.info(f"Loaded player statistics for match ID {match_id}, teams: {len(team_players)}")
+            
+            elif 'players' in stats_data:
+                # Новый формат - список игроков без группировки по командам
+                # Получим match_id из имени файла или из первого игрока
+                file_name = os.path.basename(file_path)
+                try:
+                    match_id = int(os.path.splitext(file_name)[0])
+                except ValueError:
+                    # Если не удалось получить из имени файла, берем из первого игрока
+                    if stats_data['players']:
+                        match_id = stats_data['players'][0]['match_id']
+                    else:
+                        raise ValueError("Cannot determine match_id from file or data")
+                
+                players = stats_data['players']
+                
+                conn = sqlite3.connect(self.db_path)
+                cursor = conn.cursor()
+                
+                # Delete existing stats for this match if any
+                cursor.execute('DELETE FROM player_stats WHERE match_id = ?', (match_id,))
+                
+                # Process each player directly
+                for player_data in players:
+                    # Проверяем, что match_id у игрока соответствует тому, что мы используем
+                    player_match_id = player_data.get('match_id', match_id)
+                    if player_match_id != match_id:
+                        logger.warning(f"Player match_id {player_match_id} differs from file match_id {match_id}")
+                        
                     cursor.execute('''
                         INSERT INTO player_stats (
                             match_id, team_id, player_id, player_nickname,
@@ -331,9 +396,9 @@ class MatchDetailsLoader:
                         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     ''', (
                         match_id,
-                        team_id,
-                        player_data['player_id'],
-                        player_data['player_nickname'],
+                        player_data.get('team_id', 0),
+                        player_data.get('player_id', 0),
+                        player_data.get('player_nickname', ''),
                         player_data.get('fullName', ''),
                         player_data.get('nickName', ''),
                         player_data.get('kills', 0),
@@ -344,11 +409,14 @@ class MatchDetailsLoader:
                         player_data.get('kast', 0.0),
                         player_data.get('rating', 0.0)
                     ))
+                
+                conn.commit()
+                conn.close()
+                
+                logger.info(f"Loaded player statistics for match ID {match_id}, players: {len(players)}")
             
-            conn.commit()
-            conn.close()
-            
-            logger.info(f"Loaded player statistics for match ID {match_id}, teams: {len(team_players)}")
+            else:
+                raise ValueError("Unknown player stats format - neither 'match_id' nor 'players' found")
             
         except Exception as e:
             logger.error(f"Error processing player statistics from {file_path}: {str(e)}")
