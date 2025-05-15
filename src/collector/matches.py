@@ -4,8 +4,14 @@ import sqlite3
 from datetime import datetime
 import re
 import logging
+import json
 from src.config.constants import HTML_DIR, MATCHES_HTML_FILE, RESULTS_HTML_FILE, DATABASE_FILE
 import time
+
+# Директории для JSON файлов
+JSON_OUTPUT_DIR = "storage/json"
+UPCOMING_MATCHES_JSON_FILE = os.path.join(JSON_OUTPUT_DIR, "upcoming_matches.json")
+PAST_MATCHES_JSON_FILE = os.path.join(JSON_OUTPUT_DIR, "past_matches.json")
 
 logger = logging.getLogger(__name__)
 
@@ -13,6 +19,9 @@ class MatchesCollector:
     def __init__(self, html_dir: str = HTML_DIR, db_path: str = DATABASE_FILE):
         self.html_dir = html_dir
         self.db_path = db_path
+        
+        # Создаем директорию для JSON файлов, если она не существует
+        os.makedirs(JSON_OUTPUT_DIR, exist_ok=True)
         
     def _get_match_id(self, url: str) -> int:
         """Извлекает ID матча из URL"""
@@ -225,95 +234,229 @@ class MatchesCollector:
         except Exception as e:
             logger.error(f"Ошибка при создании таблиц: {str(e)}")
     
-    def _save_upcoming_matches(self, matches: list) -> dict:
+    def _save_upcoming_matches_to_db(self, matches: list) -> dict:
         """Сохраняет предстоящие матчи в базу данных"""
         if not matches:
             return {"new": 0, "updated": 0, "deleted": 0}
             
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
+        stats = {"new": 0, "updated": 0, "deleted": 0}
         
-        new_matches = 0
-        updated_matches = 0
-        deleted_matches = 0
-        
-        # Получаем список всех ID матчей из текущего HTML
-        current_match_ids = [match['id'] for match in matches]
-        
-        # Получаем список всех ID в базе данных
-        cursor.execute('SELECT id FROM url_upcoming')
-        db_match_ids = [row[0] for row in cursor.fetchall()]
-        
-        # Находим ID матчей, которые есть в БД, но отсутствуют в текущем HTML
-        obsolete_ids = [match_id for match_id in db_match_ids if match_id not in current_match_ids]
-        
-        # Удаляем устаревшие матчи
-        if obsolete_ids:
-            # Используем параметризованный запрос с placeholders для безопасности
-            placeholders = ','.join(['?'] * len(obsolete_ids))
-            delete_query = f'DELETE FROM url_upcoming WHERE id IN ({placeholders})'
-            cursor.execute(delete_query, obsolete_ids)
-            deleted_matches = cursor.rowcount
-            logger.info(f"Удалено {deleted_matches} устаревших матчей из таблицы url_upcoming")
-        
-        for match in matches:
-            # Проверяем, существует ли матч в таблице предстоящих матчей
-            cursor.execute('SELECT 1 FROM url_upcoming WHERE id = ?', (match['id'],))
-            exists = cursor.fetchone() is not None
+        try:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
             
-            if exists:
-                # Матч уже существует, ничего не делаем, просто учитываем в статистике
-                updated_matches += 1
-            else:
-                # Добавляем новый матч
-                cursor.execute('''
-                    INSERT INTO url_upcoming (id, url, date, toParse)
-                    VALUES (?, ?, ?, ?)
-                ''', (match['id'], match['url'], match['date'], match['toParse']))
-                new_matches += 1
+            # Получаем список всех ID матчей в текущих данных
+            current_match_ids = [match['id'] for match in matches]
+            
+            # Получаем список всех ID в базе данных
+            cursor.execute('SELECT id FROM url_upcoming')
+            db_match_ids = [row[0] for row in cursor.fetchall()]
+            
+            # Находим ID матчей, которые есть в БД, но отсутствуют в текущих данных
+            obsolete_ids = [match_id for match_id in db_match_ids if match_id not in current_match_ids]
+            
+            # Удаляем устаревшие матчи
+            for obsolete_id in obsolete_ids:
+                cursor.execute('DELETE FROM url_upcoming WHERE id = ?', (obsolete_id,))
+                stats["deleted"] += 1
+            
+            # Обрабатываем каждый матч
+            for match in matches:
+                # Проверяем, существует ли матч в базе данных
+                cursor.execute('SELECT toParse FROM url_upcoming WHERE id = ?', (match['id'],))
+                result = cursor.fetchone()
                 
-            # Проверяем, не переместился ли матч из результатов в предстоящие (очень маловероятно, но возможно)
-            cursor.execute('DELETE FROM url_result WHERE id = ?', (match['id'],))
-        
-        conn.commit()
-        conn.close()
-        logger.info(f"Добавлено новых предстоящих матчей: {new_matches}, обновлено: {updated_matches}, удалено устаревших: {deleted_matches}")
-        return {"new": new_matches, "updated": updated_matches, "deleted": deleted_matches}
-        
-    def _save_past_matches(self, matches: list) -> dict:
+                if result is not None:
+                    # Обновляем существующий матч, но сохраняем значение toParse
+                    current_to_parse = result[0]
+                    cursor.execute('''
+                        UPDATE url_upcoming 
+                        SET url = ?, date = ?
+                        WHERE id = ?
+                    ''', (match['url'], match['date'], match['id']))
+                    stats["updated"] += 1
+                else:
+                    # Добавляем новый матч
+                    cursor.execute('''
+                        INSERT INTO url_upcoming (id, url, date, toParse)
+                        VALUES (?, ?, ?, ?)
+                    ''', (match['id'], match['url'], match['date'], 1))  # Для новых записей устанавливаем toParse=1
+                    stats["new"] += 1
+                
+                # Удаляем дублирующиеся записи из таблицы результатов (если матч переместился)
+                cursor.execute('DELETE FROM url_result WHERE id = ?', (match['id'],))
+            
+            conn.commit()
+            conn.close()
+            
+            logger.info(f"Сохранение предстоящих матчей завершено: новых - {stats['new']}, обновлено - {stats['updated']}, удалено - {stats['deleted']}")
+            
+            # Дополнительно сохраняем в JSON файл для совместимости с загрузчиками
+            self._save_upcoming_matches_to_json(matches)
+            
+            return stats
+            
+        except Exception as e:
+            logger.error(f"Ошибка при сохранении предстоящих матчей в БД: {str(e)}")
+            return stats
+    
+    def _save_past_matches_to_db(self, matches: list) -> dict:
         """Сохраняет результаты матчей в базу данных"""
         if not matches:
             return {"new": 0, "updated": 0}
             
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
+        stats = {"new": 0, "updated": 0}
         
-        new_matches = 0
-        updated_matches = 0
-        
-        for match in matches:
-            # Проверяем, существует ли матч в таблице результатов
-            cursor.execute('SELECT 1 FROM url_result WHERE id = ?', (match['id'],))
-            exists = cursor.fetchone() is not None
+        try:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
             
-            if exists:
-                # Считаем как обновленный, но не меняем в базе
-                updated_matches += 1
-            else:
-                # Добавляем новый матч
-                cursor.execute('''
-                    INSERT INTO url_result (id, url, toParse)
-                    VALUES (?, ?, ?)
-                ''', (match['id'], match['url'], match['toParse']))
-                new_matches += 1
+            # Обрабатываем каждый матч
+            for match in matches:
+                # Проверяем, существует ли матч в базе данных
+                cursor.execute('SELECT toParse FROM url_result WHERE id = ?', (match['id'],))
+                result = cursor.fetchone()
                 
-                # Удаляем матч из предстоящих, если он перешел в результаты
-                cursor.execute('DELETE FROM url_upcoming WHERE id = ?', (match['id'],))
+                if result is not None:
+                    # Обновляем существующий матч, но не меняем флаг toParse
+                    cursor.execute('''
+                        UPDATE url_result 
+                        SET url = ?
+                        WHERE id = ?
+                    ''', (match['url'], match['id']))
+                    stats["updated"] += 1
+                else:
+                    # Добавляем новый матч с toParse=1
+                    cursor.execute('''
+                        INSERT INTO url_result (id, url, toParse)
+                        VALUES (?, ?, ?)
+                    ''', (match['id'], match['url'], 1))
+                    stats["new"] += 1
+                    
+                    # Удаляем матч из предстоящих, если он перешел в результаты
+                    cursor.execute('DELETE FROM url_upcoming WHERE id = ?', (match['id'],))
+            
+            conn.commit()
+            conn.close()
+            
+            logger.info(f"Сохранение прошедших матчей завершено: новых - {stats['new']}, обновлено - {stats['updated']}")
+            
+            # Дополнительно сохраняем в JSON файл для совместимости с загрузчиками
+            self._save_past_matches_to_json(matches)
+            
+            return stats
+            
+        except Exception as e:
+            logger.error(f"Ошибка при сохранении прошедших матчей в БД: {str(e)}")
+            return stats
+    
+    def _save_upcoming_matches_to_json(self, matches: list) -> dict:
+        """Сохраняет предстоящие матчи в JSON файл для совместимости с загрузчиками"""
+        if not matches:
+            return {"saved": 0}
+            
+        try:
+            # Получаем актуальные значения toParse из базы данных
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            
+            # Создаем копию списка матчей для JSON
+            matches_with_to_parse = []
+            
+            for match in matches:
+                match_copy = match.copy()
+                # Получаем актуальное значение toParse из базы
+                cursor.execute('SELECT toParse FROM url_upcoming WHERE id = ?', (match['id'],))
+                result = cursor.fetchone()
+                if result:
+                    match_copy['toParse'] = result[0]
+                else:
+                    match_copy['toParse'] = 1  # По умолчанию для новых матчей
+                matches_with_to_parse.append(match_copy)
+            
+            conn.close()
+            
+            # Сохраняем обновленные данные в JSON файл
+            data_to_save = {
+                'timestamp': datetime.now().isoformat(),
+                'matches': matches_with_to_parse
+            }
+            
+            with open(UPCOMING_MATCHES_JSON_FILE, 'w', encoding='utf-8') as f:
+                json.dump(data_to_save, f, ensure_ascii=False, indent=2)
+                
+            logger.info(f"Сохранено {len(matches_with_to_parse)} предстоящих матчей в JSON файл")
+            
+            return {"saved": len(matches_with_to_parse)}
+            
+        except Exception as e:
+            logger.error(f"Ошибка при сохранении предстоящих матчей в JSON: {str(e)}")
+            return {"saved": 0}
         
-        conn.commit()
-        conn.close()
-        logger.info(f"Добавлено новых прошедших матчей: {new_matches}, обновлено: {updated_matches}")
-        return {"new": new_matches, "updated": updated_matches}
+    def _save_past_matches_to_json(self, matches: list) -> dict:
+        """Сохраняет результаты матчей в JSON файл для совместимости с загрузчиками"""
+        if not matches:
+            return {"saved": 0}
+            
+        try:
+            # Получаем актуальные значения toParse из базы данных
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            
+            # Создаем копию списка матчей для JSON с актуальными toParse
+            matches_with_to_parse = []
+            
+            for match in matches:
+                match_copy = match.copy()
+                # Получаем актуальное значение toParse из базы
+                cursor.execute('SELECT toParse FROM url_result WHERE id = ?', (match['id'],))
+                result = cursor.fetchone()
+                if result:
+                    match_copy['toParse'] = result[0]
+                else:
+                    match_copy['toParse'] = 1  # По умолчанию для новых матчей
+                matches_with_to_parse.append(match_copy)
+            
+            conn.close()
+            
+            # Загружаем существующие данные, если файл существует
+            existing_matches = {}
+            if os.path.exists(PAST_MATCHES_JSON_FILE):
+                with open(PAST_MATCHES_JSON_FILE, 'r', encoding='utf-8') as f:
+                    try:
+                        data = json.load(f)
+                        if 'matches' in data:
+                            # Преобразуем список в словарь для быстрого доступа по ID
+                            for match in data['matches']:
+                                existing_matches[match['id']] = match
+                    except json.JSONDecodeError:
+                        logger.warning(f"Невозможно прочитать существующий JSON файл: {PAST_MATCHES_JSON_FILE}")
+            
+            # Обновляем или добавляем матчи
+            updated_matches = matches_with_to_parse.copy()
+            
+            # Добавляем оставшиеся существующие матчи
+            current_match_ids = [m['id'] for m in matches_with_to_parse]
+            for match_id, match in existing_matches.items():
+                if match_id not in current_match_ids:
+                    updated_matches.append(match)
+            
+            # Сохраняем обновленные данные в JSON файл
+            data_to_save = {
+                'timestamp': datetime.now().isoformat(),
+                'matches': updated_matches
+            }
+            
+            with open(PAST_MATCHES_JSON_FILE, 'w', encoding='utf-8') as f:
+                json.dump(data_to_save, f, ensure_ascii=False, indent=2)
+                
+            logger.info(f"Сохранено {len(updated_matches)} прошедших матчей в JSON файл")
+            
+            return {"saved": len(updated_matches)}
+            
+        except Exception as e:
+            logger.error(f"Ошибка при сохранении прошедших матчей в JSON: {str(e)}")
+            return {"saved": 0}
     
     def collect_matches(self) -> dict:
         """
@@ -348,9 +491,9 @@ class MatchesCollector:
             stats["total"] = len(matches)
             logger.info(f"Найдено предстоящих матчей: {stats['total']}")
             
-            # Сохраняем в базу данных
+            # Сохраняем в базу данных напрямую
             if matches:
-                result = self._save_upcoming_matches(matches)
+                result = self._save_upcoming_matches_to_db(matches)
                 stats["new"] = result["new"]
                 stats["updated"] = result["updated"]
                 stats["deleted"] = result["deleted"]
@@ -394,9 +537,9 @@ class MatchesCollector:
             stats["total"] = len(matches)
             logger.info(f"Найдено результатов матчей: {stats['total']}")
             
-            # Сохраняем в базу данных
+            # Сохраняем в базу данных напрямую
             if matches:
-                result = self._save_past_matches(matches)
+                result = self._save_past_matches_to_db(matches)
                 stats["new"] = result["new"]
                 stats["updated"] = result["updated"]
             

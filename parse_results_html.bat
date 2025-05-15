@@ -1,14 +1,9 @@
 @echo off
 cd /d C:\projects\hltv-2
 
-@REM Парсинг прошедших матчей
+@REM Parsing past matches
 python -m src.main --parse-results
 python -m src.main --collect-results-list
 python -m src.main --parse-details
 python -m src.main --collect-results-matches
-
-@REM Парсинг будущих матчей
-@REM python -m src.main --parse-matches
-@REM python -m src.main --collect-matches-list
-@REM python -m src.main --parse-details --upcoming
-@REM python -m src.collector.match_upcoming
+python src/scripts/load_past_matches.py

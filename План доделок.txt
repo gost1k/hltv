@@ -1,4 +1,4 @@
-лайв режим, 
-предсказания по матчам на нейросетки 
-подписка на события и игры любимой команды
-alias для команд
+live mode,
+match predictions using neural networks
+subscriptions to events and favorite team games
+team aliases
