@@ -31,9 +31,13 @@ class MatchDetailsCollector:
         self.html_dir = html_dir
         self.db_path = db_path
     
-    def collect(self):
+    def collect(self, force=False, remove_processed=False):
         """
         Основной метод для извлечения данных из HTML-файлов и сохранения их в БД
+        
+        Args:
+            force (bool): Устаревший параметр, не используется
+            remove_processed (bool): Устаревший параметр, не используется
         
         Returns:
             dict: Статистика обработки файлов
@@ -47,7 +51,9 @@ class MatchDetailsCollector:
             'successful_match_details': 0,
             'successful_player_stats': 0,
             'errors': 0,
-            'already_exists': 0
+            'already_exists': 0,
+            'updated': 0,
+            'removed_files': 0
         }
         
         # Получаем файлы для обработки
@@ -69,6 +75,10 @@ class MatchDetailsCollector:
                 if result == "success":
                     stats['successful_match_details'] += 1
                     stats['successful_player_stats'] += 1
+                    stats['removed_files'] += 1
+                elif result == "updated":
+                    stats['updated'] += 1
+                    stats['removed_files'] += 1
                 elif result == "already_exists":
                     stats['already_exists'] += 1
                 elif result == "error":
@@ -83,7 +93,8 @@ class MatchDetailsCollector:
                 stats['errors'] += 1
         
         logger.info(f"Завершен сбор деталей матчей. Обработано {stats['processed_files']} из {stats['total_files']} файлов")
-        logger.info(f"Успешно: {stats['successful_match_details']}, Уже существуют: {stats['already_exists']}, Ошибок: {stats['errors']}")
+        logger.info(f"Успешно: {stats['successful_match_details']}, Обновлено: {stats['updated']}, Ошибок: {stats['errors']}")
+        logger.info(f"Удалено файлов после обработки: {stats['removed_files']}")
         
         return stats
     
@@ -103,15 +114,9 @@ class MatchDetailsCollector:
         html_files = glob.glob(os.path.join(self.html_dir, "match_*.html"))
         logger.info(f"Найдено {len(html_files)} HTML-файлов с деталями матчей")
         
-        # Отфильтровываем только файлы, которые еще не были обработаны
-        files_to_process = []
-        for file_path in html_files:
-            match_id = self._extract_match_id_from_filename(os.path.basename(file_path))
-            if match_id and not self._is_match_details_exists(match_id):
-                files_to_process.append(file_path)
-                
-        logger.info(f"Из них {len(files_to_process)} файлов требуют обработки")
-        return files_to_process
+        # Всегда возвращаем все файлы для обработки
+        logger.info(f"Все {len(html_files)} файлов будут обработаны")
+        return html_files
     
     def process_file(self, file_path):
         """
@@ -121,7 +126,7 @@ class MatchDetailsCollector:
             file_path (str): Путь к HTML-файлу
             
         Returns:
-            str: Статус обработки ("success", "already_exists", "error")
+            str: Статус обработки ("success", "updated", "already_exists", "error")
         """
         try:
             match_id = self._extract_match_id_from_filename(os.path.basename(file_path))
@@ -131,11 +136,12 @@ class MatchDetailsCollector:
                 return "error"
                 
             # Проверяем, существуют ли уже детали этого матча в БД
-            if self._is_match_details_exists(match_id):
-                logger.info(f"Детали матча {match_id} уже существуют в базе данных")
-                return "already_exists"
-                
-            logger.info(f"Обработка файла {file_path} для матча {match_id}")
+            exists = self._is_match_details_exists(match_id)
+            
+            if exists:
+                logger.info(f"Обновление существующих деталей матча {match_id}")
+            else:
+                logger.info(f"Обработка файла с новыми деталями матча {match_id}")
             
             # Читаем HTML-файл
             with open(file_path, 'r', encoding='utf-8') as f:
@@ -162,7 +168,11 @@ class MatchDetailsCollector:
                 self._save_player_stats(players_data)
                 
             logger.info(f"Успешно обработан файл {file_path}")
-            return "success"
+            
+            # Удаляем обработанный файл
+            self._remove_processed_file(file_path)
+            
+            return "updated" if exists else "success"
             
         except Exception as e:
             logger.error(f"Ошибка при обработке файла {file_path}: {str(e)}")
@@ -211,9 +221,23 @@ class MatchDetailsCollector:
         Returns:
             int or None: ID матча или None, если не удалось извлечь
         """
+        # Сначала пробуем извлечь ID как число после 'match_' и до следующего дефиса
+        match = re.search(r'match_(\d+)(?:-|\.html)', filename)
+        if match:
+            return int(match.group(1))
+            
+        # Если не получилось, пробуем просто извлечь любое число после 'match_'
         match = re.search(r'match_(\d+)', filename)
         if match:
             return int(match.group(1))
+            
+        # Еще одна попытка - ищем любое число в имени файла
+        match = re.search(r'(\d+)', filename)
+        if match:
+            logger.warning(f"Извлечение ID матча из имени файла {filename} - нестандартный формат!")
+            return int(match.group(1))
+            
+        logger.error(f"Не удалось извлечь ID матча из имени файла: {filename}")
         return None
     
     def _extract_id_from_url(self, url):
@@ -1316,6 +1340,24 @@ class MatchDetailsCollector:
             
         except Exception as e:
             logger.error(f"Ошибка при сохранении статистики игроков: {str(e)}")
+            return False
+
+    def _remove_processed_file(self, file_path):
+        """
+        Удаляет обработанный HTML-файл
+        
+        Args:
+            file_path (str): Путь к HTML-файлу
+            
+        Returns:
+            bool: True если файл успешно удален, иначе False
+        """
+        try:
+            os.remove(file_path)
+            logger.info(f"Удален обработанный файл: {file_path}")
+            return True
+        except Exception as e:
+            logger.error(f"Ошибка при удалении файла {file_path}: {str(e)}")
             return False
 
 if __name__ == "__main__":

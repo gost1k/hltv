@@ -53,9 +53,13 @@ class CollectorManager:
             "results": results_stats
         }
         
-    def collect_match_details(self):
+    def collect_match_details(self, force=False, remove_processed=False):
         """
         Collect data from match details HTML files and store in database
+        
+        Args:
+            force (bool): Deprecated parameter, not used
+            remove_processed (bool): Deprecated parameter, not used
         
         Returns:
             dict: Statistics about the collection process
@@ -68,14 +72,20 @@ class CollectorManager:
             "processed": stats['processed_files'],
             "success": stats['successful_match_details'],
             "failed": stats['errors'],
-            "already_exists": stats['already_exists']
+            "already_exists": stats['already_exists'],
+            "updated": stats.get('updated', 0),
+            "removed_files": stats.get('removed_files', 0)
         }
     
-    def collect_results_details(self):
+    def collect_results_details(self, force=False, remove_processed=False):
         """
         Collect data from match details HTML files and store in database.
         New name for collect_match_details for better naming consistency.
         
+        Args:
+            force (bool): Deprecated parameter, not used
+            remove_processed (bool): Deprecated parameter, not used
+            
         Returns:
             dict: Statistics about the collection process
         """
