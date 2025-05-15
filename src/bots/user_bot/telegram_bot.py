@@ -16,11 +16,7 @@ from src.bots.config import load_config
 # Загружаем конфигурацию
 config = load_config('user')
 
-<<<<<<< HEAD
-# Логирование уже настроено в src/bots/start_user_bot.py
-=======
 # Настройка логгера
->>>>>>> 330c76926a6f660bba10d73d36f01bcd88b5c24d
 logger = logging.getLogger(__name__)
 
 # Получаем параметры из конфигурации
