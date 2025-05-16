@@ -592,7 +592,7 @@ class HLTVStatsBot:
                     m.match_id, m.datetime, 
                     m.team1_id, m.team1_name, m.team1_score, m.team1_rank,
                     m.team2_id, m.team2_name, m.team2_score, m.team2_rank,
-                    m.event_id, m.event_name, 'completed' as match_type
+                    m.event_id, m.event_name, m.demo_id, 'completed' as match_type
                 FROM match_details m
                 WHERE m.match_id = ?
             ''', (match_id,))
@@ -606,7 +606,7 @@ class HLTVStatsBot:
                         m.match_id, m.datetime, 
                         m.team1_id, m.team1_name, 0 as team1_score, m.team1_rank,
                         m.team2_id, m.team2_name, 0 as team2_score, m.team2_rank,
-                        m.event_id, m.event_name, 'upcoming' as match_type
+                        m.event_id, m.event_name, NULL as demo_id, 'upcoming' as match_type
                     FROM match_upcoming m
                     WHERE m.match_id = ?
                 ''', (match_id,))
@@ -689,6 +689,11 @@ class HLTVStatsBot:
                     message += f"<b>История встреч:</b>\n"
                     message += f"{match['team1_name']}: {match['head_to_head_team1_wins']} побед\n"
                     message += f"{match['team2_name']}: {match['head_to_head_team2_wins']} побед\n\n"
+            
+            # Добавляем ссылку на демо, если она доступна
+            if match_type == 'completed' and match['demo_id']:
+                demo_url = f"https://www.hltv.org/download/demo/{match['demo_id']}"
+                message += f"<b>📥 <a href='{demo_url}'>Скачать Demo игры</a></b>\n\n"
             
             # Группируем статистику по командам
             team1_players = [p for p in player_stats if p['team_id'] == match['team1_id']]
