@@ -790,7 +790,7 @@ class HLTVStatsBot:
                     match_id, datetime, 
                     team1_id, team1_name, team1_score, 
                     team2_id, team2_name, team2_score,
-                    event_name, status, 'completed' as match_type
+                    event_name, 'completed' as match_type
                 FROM result_match
                 WHERE (LOWER(team1_name) = LOWER(?) OR LOWER(team2_name) = LOWER(?))
                 ORDER BY datetime DESC
