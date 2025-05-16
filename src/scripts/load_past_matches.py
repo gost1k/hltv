@@ -42,27 +42,9 @@ def main():
     args = parse_arguments()
     
     try:
-        logger.info("Начало загрузки прошедших матчей из JSON в базу данных")
-        
+        logger.info("Начало загрузки деталей матчей и статистики игроков из JSON в базу данных")
         # Создаем директорию для логов, если ее нет
         os.makedirs("logs", exist_ok=True)
-        
-        # Загружаем прошедшие матчи (result_urls)
-        matches_loader = MatchesLoader(db_path=args.db_path)
-        matches_stats = matches_loader.load_past_matches_only()
-        
-        # Статистика для итогового отчета
-        total_stats = {
-            'matches_processed': matches_stats.get('processed', 0),
-            'matches_success': matches_stats.get('success', 0),
-            'matches_error': matches_stats.get('error', 0),
-            'details_processed': 0,
-            'details_success': 0,
-            'details_error': 0,
-            'player_stats_processed': 0,
-            'player_stats_success': 0,
-            'player_stats_error': 0
-        }
         
         # Загружаем детали матчей и статистику игроков, если не пропущено
         if not args.skip_match_details or not args.skip_player_stats:
@@ -74,34 +56,18 @@ def main():
                 skip_player_stats=args.skip_player_stats
             )
             
-            # Обновляем общую статистику
+            # Выводим статистику только для деталей и игроков
             if not args.skip_match_details:
-                total_stats['details_processed'] = details_stats.get('match_details_processed', 0)
-                total_stats['details_success'] = details_stats.get('match_details_success', 0)
-                total_stats['details_error'] = details_stats.get('match_details_error', 0)
-                
+                logger.info("======== Загрузка деталей матчей ========")
+                logger.info(f"Обработано файлов: {details_stats.get('match_details_processed', 0)}")
+                logger.info(f"Успешно загружено: {details_stats.get('match_details_success', 0)}")
+                logger.info(f"Ошибок: {details_stats.get('match_details_error', 0)}")
+            
             if not args.skip_player_stats:
-                total_stats['player_stats_processed'] = details_stats.get('player_stats_processed', 0)
-                total_stats['player_stats_success'] = details_stats.get('player_stats_success', 0)
-                total_stats['player_stats_error'] = details_stats.get('player_stats_error', 0)
-        
-        # Выводим статистику
-        logger.info("======== Загрузка прошедших матчей ========")
-        logger.info(f"Обработано файлов: {total_stats['matches_processed']}")
-        logger.info(f"Успешно загружено: {total_stats['matches_success']}")
-        logger.info(f"Ошибок: {total_stats['matches_error']}")
-        
-        if not args.skip_match_details:
-            logger.info("======== Загрузка деталей матчей ========")
-            logger.info(f"Обработано файлов: {total_stats['details_processed']}")
-            logger.info(f"Успешно загружено: {total_stats['details_success']}")
-            logger.info(f"Ошибок: {total_stats['details_error']}")
-        
-        if not args.skip_player_stats:
-            logger.info("======== Загрузка статистики игроков ========")
-            logger.info(f"Обработано файлов: {total_stats['player_stats_processed']}")
-            logger.info(f"Успешно загружено: {total_stats['player_stats_success']}")
-            logger.info(f"Ошибок: {total_stats['player_stats_error']}")
+                logger.info("======== Загрузка статистики игроков ========")
+                logger.info(f"Обработано файлов: {details_stats.get('player_stats_processed', 0)}")
+                logger.info(f"Успешно загружено: {details_stats.get('player_stats_success', 0)}")
+                logger.info(f"Ошибок: {details_stats.get('player_stats_error', 0)}")
         
         logger.info("Загрузка прошедших матчей завершена")
         
