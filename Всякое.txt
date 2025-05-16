@@ -1,0 +1,2 @@
+python src/scripts/create_result_match_maps_table.py 
+Миграция для новой таблицы

@@ -49,6 +49,16 @@ class DatabaseService:
             self.conn.commit()
             # Проверяем, нужно ли добавить колонки миграции
             # self._migrate_db_if_needed()  # Можно закомментировать, если не нужно
+            self.cursor.execute('''
+                CREATE TABLE IF NOT EXISTS result_match_maps (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    match_id INTEGER NOT NULL,
+                    map_name TEXT NOT NULL,
+                    team1_rounds INTEGER,
+                    team2_rounds INTEGER,
+                    rounds TEXT
+                )
+            ''')
             return True
         except sqlite3.Error as e:
             logger.error(f"Database initialization error: {e}")

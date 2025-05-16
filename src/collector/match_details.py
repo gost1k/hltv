@@ -19,6 +19,7 @@ from src.config.selectors import *
 JSON_OUTPUT_DIR = "storage/json"
 MATCH_DETAILS_JSON_DIR = os.path.join(JSON_OUTPUT_DIR, "result_match")
 PLAYER_STATS_JSON_DIR = os.path.join(JSON_OUTPUT_DIR, "player_stats")
+RESULT_MAPS_JSON_DIR = os.path.join(JSON_OUTPUT_DIR, "result_maps")
 
 # Настройка логирования
 logger = logging.getLogger(__name__)
@@ -41,6 +42,7 @@ class MatchDetailsCollector:
         # Создаем директории для JSON файлов, если они не существуют
         os.makedirs(MATCH_DETAILS_JSON_DIR, exist_ok=True)
         os.makedirs(PLAYER_STATS_JSON_DIR, exist_ok=True)
+        os.makedirs(RESULT_MAPS_JSON_DIR, exist_ok=True)
     
     def collect(self, force=False, remove_processed=False):
         """
@@ -188,6 +190,35 @@ class MatchDetailsCollector:
                 # Сохраняем статистику игроков в JSON
                 self._save_player_stats_to_json(players_data)
                 
+            # --- Новый блок: парсинг сыгранных карт ---
+            maps = []
+            for map_holder in soup.select('.mapholder'):
+                results_played = map_holder.select_one('.results.played')
+                if not results_played:
+                    continue  # не сыгранная карта
+                map_name_elem = map_holder.select_one('.mapname')
+                team1_score_elem = results_played.select_one('.results-left .results-team-score')
+                team2_score_elem = results_played.select_one('.results-right .results-team-score')
+                rounds_elem = results_played.select_one('.results-center-half-score')
+                if map_name_elem and team1_score_elem and team2_score_elem:
+                    map_name = map_name_elem.text.strip()
+                    team1_rounds = int(team1_score_elem.text.strip())
+                    team2_rounds = int(team2_score_elem.text.strip())
+                    rounds = rounds_elem.text.strip() if rounds_elem else ''
+                    maps.append({
+                        'map_name': map_name,
+                        'team1_rounds': team1_rounds,
+                        'team2_rounds': team2_rounds,
+                        'rounds': rounds
+                    })
+            # --- Конец блока ---
+            
+            # Сохраняем карты в отдельный JSON, если они есть
+            if maps:
+                maps_json_path = os.path.join(RESULT_MAPS_JSON_DIR, f"{match_id}.json")
+                with open(maps_json_path, "w", encoding="utf-8") as f:
+                    json.dump(maps, f, ensure_ascii=False, indent=2)
+            
             logger.info(f"Успешно обработан файл {file_path}")
             
             # Удаляем обработанный файл
@@ -343,7 +374,8 @@ class MatchDetailsCollector:
                 'demo_id': None,
                 'head_to_head_team1_wins': None,
                 'head_to_head_team2_wins': None,
-                'url': None
+                'url': None,
+                'maps': []
             }
             
             # Извлекаем время матча

@@ -68,6 +68,12 @@ def main():
                 logger.info(f"Обработано файлов: {details_stats.get('player_stats_processed', 0)}")
                 logger.info(f"Успешно загружено: {details_stats.get('player_stats_success', 0)}")
                 logger.info(f"Ошибок: {details_stats.get('player_stats_error', 0)}")
+
+                # Новый блок: статистика по картам
+                logger.info("======== Загрузка информации о картах ========")
+                logger.info(f"Обработано файлов: {details_stats.get('maps_processed', 0)}")
+                logger.info(f"Успешно загружено: {details_stats.get('maps_success', 0)}")
+                logger.info(f"Ошибок: {details_stats.get('maps_error', 0)}")
         
         logger.info("Загрузка прошедших матчей завершена")
         

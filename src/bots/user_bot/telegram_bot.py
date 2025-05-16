@@ -671,6 +671,32 @@ class HLTVStatsBot:
                     team2_name = f"<b>{team2_name}</b>"
                     
                 message += f"{team1_name} {team1_score} : {team2_score} {team2_name}\n\n"
+
+                # --- Новый блок: Статистика по картам ---
+                try:
+                    conn2 = sqlite3.connect(self.db_path)
+                    conn2.row_factory = sqlite3.Row
+                    cursor2 = conn2.cursor()
+                    cursor2.execute('''
+                        SELECT map_name, team1_rounds, team2_rounds, rounds
+                        FROM result_match_maps
+                        WHERE match_id = ?
+                        ORDER BY id
+                    ''', (match_id,))
+                    maps = cursor2.fetchall()
+                    conn2.close()
+                    if maps:
+                        message += '<b>Статистика по картам:</b>\n'
+                        for m in maps:
+                            map_line = f"{m['map_name']}: {m['team1_rounds']}"
+                            if m['rounds']:
+                                map_line += f" {m['rounds']}"
+                            map_line += f" {m['team2_rounds']}"
+                            message += map_line + '\n'
+                        message += '\n'
+                except Exception as e:
+                    self.logger.error(f"Ошибка при получении сыгранных карт для матча {match_id}: {str(e)}")
+                # --- Конец блока ---
             else:  # upcoming
                 message += f"<b>{team1_name} vs {team2_name}</b>\n\n"
             

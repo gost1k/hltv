@@ -20,6 +20,7 @@ logger = logging.getLogger(__name__)
 JSON_OUTPUT_DIR = "storage/json"
 MATCH_DETAILS_JSON_DIR = os.path.join(JSON_OUTPUT_DIR, "result_match")
 PLAYER_STATS_JSON_DIR = os.path.join(JSON_OUTPUT_DIR, "player_stats")
+RESULT_MAPS_JSON_DIR = os.path.join(JSON_OUTPUT_DIR, "result_maps")
 DATABASE_FILE = "hltv.db"
 
 class MatchDetailsLoader:
@@ -42,7 +43,10 @@ class MatchDetailsLoader:
             'match_details_error': 0,
             'player_stats_processed': 0,
             'player_stats_success': 0,
-            'player_stats_error': 0
+            'player_stats_error': 0,
+            'maps_processed': 0,
+            'maps_success': 0,
+            'maps_error': 0
         }
         
         # Load match details
@@ -75,6 +79,20 @@ class MatchDetailsLoader:
                 logger.error(f"Error loading player statistics from {file_path}: {str(e)}")
                 stats['player_stats_error'] += 1
         
+        # Load match maps
+        maps_files = glob.glob(os.path.join(RESULT_MAPS_JSON_DIR, "*.json"))
+        logger.info(f"Found {len(maps_files)} files with match maps")
+        for file_path in maps_files:
+            try:
+                stats['maps_processed'] += 1
+                self._load_match_maps(file_path)
+                stats['maps_success'] += 1
+                os.remove(file_path)
+                logger.info(f"File {os.path.basename(file_path)} deleted after processing (maps)")
+            except Exception as e:
+                stats['maps_error'] += 1
+                logger.error(f"Error loading match maps from {file_path}: {str(e)}")
+        
         return stats
     
     def load_match_details_and_stats(self, skip_match_details=False, skip_player_stats=False):
@@ -94,7 +112,10 @@ class MatchDetailsLoader:
             'match_details_error': 0,
             'player_stats_processed': 0,
             'player_stats_success': 0,
-            'player_stats_error': 0
+            'player_stats_error': 0,
+            'maps_processed': 0,
+            'maps_success': 0,
+            'maps_error': 0
         }
         
         # Load match details
@@ -128,6 +149,20 @@ class MatchDetailsLoader:
                 except Exception as e:
                     logger.error(f"Error loading player statistics from {file_path}: {str(e)}")
                     stats['player_stats_error'] += 1
+        
+        # Load match maps
+        maps_files = glob.glob(os.path.join(RESULT_MAPS_JSON_DIR, "*.json"))
+        logger.info(f"Found {len(maps_files)} files with match maps")
+        for file_path in maps_files:
+            try:
+                stats['maps_processed'] += 1
+                self._load_match_maps(file_path)
+                stats['maps_success'] += 1
+                os.remove(file_path)
+                logger.info(f"File {os.path.basename(file_path)} deleted after processing (maps)")
+            except Exception as e:
+                stats['maps_error'] += 1
+                logger.error(f"Error loading match maps from {file_path}: {str(e)}")
         
         return stats
     
@@ -287,6 +322,33 @@ class MatchDetailsLoader:
             
             conn.commit()
             conn.close()
+
+            # --- Новый блок: загрузка сыгранных карт ---
+            if 'maps' in match_data and match_data['maps']:
+                try:
+                    conn2 = sqlite3.connect(self.db_path)
+                    cursor2 = conn2.cursor()
+                    cursor2.execute('DELETE FROM result_match_maps WHERE match_id = ?', (match_id,))
+                    for m in match_data['maps']:
+                        cursor2.execute(
+                            '''
+                            INSERT INTO result_match_maps (match_id, map_name, team1_rounds, team2_rounds, rounds)
+                            VALUES (?, ?, ?, ?, ?)
+                            ''',
+                            (
+                                match_id,
+                                m.get('map_name', ''),
+                                m.get('team1_rounds', 0),
+                                m.get('team2_rounds', 0),
+                                m.get('rounds', '')
+                            )
+                        )
+                    conn2.commit()
+                    conn2.close()
+                    logger.info(f"Loaded {len(match_data['maps'])} maps for match ID {match_id}")
+                except Exception as e:
+                    logger.error(f"Error loading maps for match {match_id}: {str(e)}")
+            # --- Конец нового блока ---
             
         except Exception as e:
             logger.error(f"Error processing match details from {file_path}: {str(e)}")
@@ -412,6 +474,39 @@ class MatchDetailsLoader:
             logger.error(f"Error processing player statistics from {file_path}: {str(e)}")
             raise
 
+    def _load_match_maps(self, file_path):
+        """
+        Loads played maps for a match from a JSON file to the database
+        Args:
+            file_path (str): Path to JSON file
+        """
+        try:
+            match_id = int(os.path.splitext(os.path.basename(file_path))[0])
+            with open(file_path, "r", encoding="utf-8") as f:
+                maps = json.load(f)
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            cursor.execute("DELETE FROM result_match_maps WHERE match_id = ?", (match_id,))
+            for m in maps:
+                cursor.execute(
+                    '''
+                    INSERT INTO result_match_maps (match_id, map_name, team1_rounds, team2_rounds, rounds)
+                    VALUES (?, ?, ?, ?, ?)
+                    ''',
+                    (
+                        match_id,
+                        m.get('map_name', ''),
+                        m.get('team1_rounds', 0),
+                        m.get('team2_rounds', 0),
+                        m.get('rounds', '')
+                    )
+                )
+            conn.commit()
+            conn.close()
+            logger.info(f"Loaded {len(maps)} maps for match ID {match_id}")
+        except Exception as e:
+            logger.error(f"Error loading maps for match {match_id}: {str(e)}")
+
 if __name__ == "__main__":
     loader = MatchDetailsLoader()
     stats = loader.load_all()
@@ -425,4 +520,9 @@ if __name__ == "__main__":
     logger.info("======== Loading player statistics ========")
     logger.info(f"Processed files: {stats['player_stats_processed']}")
     logger.info(f"Successfully loaded: {stats['player_stats_success']}")
-    logger.info(f"Errors: {stats['player_stats_error']}") 
+    logger.info(f"Errors: {stats['player_stats_error']}")
+    
+    logger.info("======== Загрузка информации о картах ========")
+    logger.info(f"Обработано файлов: {stats['maps_processed']}")
+    logger.info(f"Успешно загружено: {stats['maps_success']}")
+    logger.info(f"Ошибок: {stats['maps_error']}") 
