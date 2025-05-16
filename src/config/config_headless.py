@@ -1,5 +1,5 @@
 """
-Конфигурационный файл проекта HLTV Parser
+Конфигурационный файл проекта HLTV Parser (headless)
 """
 
 # URLs
@@ -12,7 +12,7 @@ DATABASE_NAME = "hltv.db"
 
 # Selenium settings
 SELENIUM_TIMEOUT = 30  # seconds
-SELENIUM_HEADLESS = True  # Включаем headless режим для всех сценариев
+SELENIUM_HEADLESS = True  # Включаем headless режим
 SELENIUM_WINDOW_SIZE = (1920, 1080)  # Размер окна браузера
 SELENIUM_PAGE_LOAD_TIMEOUT = 30  # Таймаут загрузки страницы
 SELENIUM_IMPLICIT_WAIT = 10  # Неявное ожидание элементов

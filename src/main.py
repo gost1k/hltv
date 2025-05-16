@@ -4,6 +4,8 @@ Main entry point for HLTV Parser
 import argparse
 import logging
 import sys
+import os
+import importlib.util
 from src.parsers.manager import ParserManager
 from src.collectors.manager import CollectorManager
 from src.db.database import DatabaseService
@@ -68,6 +70,7 @@ def parse_arguments():
     # dev-режим для write-db-results-list
     parser.add_argument('--dev', action='store_true', help='Development mode: limit DB writes to 3 records (only for --write-db-results-list)')
     parser.add_argument('--download-upcoming-page', action='store_true', help='Download upcoming matches page')
+    parser.add_argument('--download-upcoming-page-headless', action='store_true', help='Download upcoming matches page in headless mode')
     parser.add_argument('--write-db-upcoming-list', action='store_true', help='Write upcoming matches list to DB')
     parser.add_argument('--download-upcoming-match-page', action='store_true', help='Download upcoming match details pages from DB')
     parser.add_argument('--write-json-upcoming-match-page', action='store_true', help='Write upcoming match details JSON to DB')
@@ -252,6 +255,19 @@ def main():
             logger.info("Запущен режим write-json-upcoming-match-page: будет выполнен парсинг HTML-файлов предстоящих матчей и сохранение в JSON.")
             count = collector_manager.collect_upcoming_match_details()
             logger.info(f"Upcoming match details parsing completed. Successfully parsed: {count}")
+            return
+        
+        # Headless режим для скачивания страницы предстоящих матчей
+        if args.download_upcoming_page_headless:
+            config_headless_path = os.path.join(os.path.dirname(__file__), 'config', 'config_headless.py')
+            spec = importlib.util.spec_from_file_location('src.config', config_headless_path)
+            config_headless = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(config_headless)
+            sys.modules['src.config'] = config_headless
+            logger.info('Headless config loaded for Selenium')
+            parser_manager = ParserManager()
+            matches_file = parser_manager.parse_matches()
+            logger.info(f"Upcoming matches page saved to: {matches_file}")
             return
         
         logger.info("HLTV Parser completed successfully")
