@@ -12,12 +12,12 @@ from datetime import datetime
 import time
 import json
 import os.path
-from src.config.constants import MATCH_DETAILS_DIR
+from src.config.constants import MATCH_DETAILS_DIR, BASE_URL
 from src.config.selectors import *
 
 # Директории для JSON файлов
 JSON_OUTPUT_DIR = "storage/json"
-MATCH_DETAILS_JSON_DIR = os.path.join(JSON_OUTPUT_DIR, "match_details")
+MATCH_DETAILS_JSON_DIR = os.path.join(JSON_OUTPUT_DIR, "result_match")
 PLAYER_STATS_JSON_DIR = os.path.join(JSON_OUTPUT_DIR, "player_stats")
 
 # Настройка логирования
@@ -167,7 +167,17 @@ class MatchDetailsCollector:
             if not match_data:
                 logger.error(f"Не удалось извлечь детали матча из {file_path}")
                 return "error"
-                
+            
+            # Формируем url и добавляем в match_data ДО сохранения в JSON
+            filename = os.path.basename(file_path)
+            slug_match = re.match(r"match_\d+-(.+)\.html", filename)
+            if slug_match:
+                slug = slug_match.group(1)
+                match_url = f"https://www.hltv.org/matches/{match_id}/{slug}"
+            else:
+                match_url = f"https://www.hltv.org/matches/{match_id}"
+            match_data['url'] = match_url
+            
             # Сохраняем детали матча в JSON
             self._save_match_details_to_json(match_data)
             
@@ -317,14 +327,6 @@ class MatchDetailsCollector:
             dict: Словарь с данными матча или None в случае ошибки
         """
         try:
-            # По умолчанию статус - upcoming
-            match_status = STATUS_UPCOMING
-            
-            # Проверяем, завершен ли матч по тексту "Match over" в блоке countdown
-            match_over_element = soup.select_one(COUNTDOWN)
-            if match_over_element and MATCH_OVER_TEXT in match_over_element.text:
-                match_status = STATUS_COMPLETED
-            
             match_data = {
                 'match_id': match_id,
                 'datetime': None,
@@ -341,7 +343,7 @@ class MatchDetailsCollector:
                 'demo_id': None,
                 'head_to_head_team1_wins': None,
                 'head_to_head_team2_wins': None,
-                'status': match_status
+                'url': None
             }
             
             # Извлекаем время матча
@@ -418,13 +420,6 @@ class MatchDetailsCollector:
                     match_data['head_to_head_team2_wins'] = int(h2h_team2_element.text.strip())
                 except ValueError:
                     match_data['head_to_head_team2_wins'] = 0
-            
-            # Логирование информации о матче
-            if match_data['status'] == STATUS_COMPLETED:
-                if match_data['team1_score'] is None or match_data['team2_score'] is None:
-                    logger.warning(f"Матч {match_id} помечен как завершенный, но не имеет счета")
-            else:
-                logger.info(f"Матч {match_id} определен как предстоящий")
             
             return match_data
             

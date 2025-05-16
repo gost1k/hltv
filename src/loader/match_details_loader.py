@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 
 # Constants
 JSON_OUTPUT_DIR = "storage/json"
-MATCH_DETAILS_JSON_DIR = os.path.join(JSON_OUTPUT_DIR, "match_details")
+MATCH_DETAILS_JSON_DIR = os.path.join(JSON_OUTPUT_DIR, "result_match")
 PLAYER_STATS_JSON_DIR = os.path.join(JSON_OUTPUT_DIR, "player_stats")
 DATABASE_FILE = "hltv.db"
 
@@ -36,9 +36,6 @@ class MatchDetailsLoader:
         Returns:
             dict: Loading statistics
         """
-        # Create tables if they don't exist
-        self._create_tables()
-        
         stats = {
             'match_details_processed': 0,
             'match_details_success': 0,
@@ -57,7 +54,6 @@ class MatchDetailsLoader:
                 stats['match_details_processed'] += 1
                 self._load_match_details(file_path)
                 stats['match_details_success'] += 1
-                # Delete processed file
                 os.remove(file_path)
                 logger.info(f"File {os.path.basename(file_path)} deleted after processing")
             except Exception as e:
@@ -73,7 +69,6 @@ class MatchDetailsLoader:
                 stats['player_stats_processed'] += 1
                 self._load_player_stats(file_path)
                 stats['player_stats_success'] += 1
-                # Delete processed file
                 os.remove(file_path)
                 logger.info(f"File {os.path.basename(file_path)} deleted after processing")
             except Exception as e:
@@ -93,9 +88,6 @@ class MatchDetailsLoader:
         Returns:
             dict: Loading statistics
         """
-        # Create tables if they don't exist
-        self._create_tables()
-        
         stats = {
             'match_details_processed': 0,
             'match_details_success': 0,
@@ -115,7 +107,6 @@ class MatchDetailsLoader:
                     stats['match_details_processed'] += 1
                     self._load_match_details(file_path)
                     stats['match_details_success'] += 1
-                    # Delete processed file if not needed
                     os.remove(file_path)
                     logger.info(f"File {os.path.basename(file_path)} deleted after processing")
                 except Exception as e:
@@ -132,7 +123,6 @@ class MatchDetailsLoader:
                     stats['player_stats_processed'] += 1
                     self._load_player_stats(file_path)
                     stats['player_stats_success'] += 1
-                    # Delete processed file if not needed
                     os.remove(file_path)
                     logger.info(f"File {os.path.basename(file_path)} deleted after processing")
                 except Exception as e:
@@ -147,10 +137,11 @@ class MatchDetailsLoader:
             conn = sqlite3.connect(self.db_path)
             cursor = conn.cursor()
             
-            # Create match_details table if it doesn't exist
+            # Create result_match table if it doesn't exist
             cursor.execute('''
-                CREATE TABLE IF NOT EXISTS match_details (
+                CREATE TABLE IF NOT EXISTS result_match (
                     match_id INTEGER PRIMARY KEY,
+                    url TEXT,
                     datetime INTEGER,
                     team1_id INTEGER,
                     team1_name TEXT,
@@ -165,7 +156,6 @@ class MatchDetailsLoader:
                     demo_id INTEGER,
                     head_to_head_team1_wins INTEGER,
                     head_to_head_team2_wins INTEGER,
-                    status TEXT,
                     parsed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
             ''')
@@ -187,7 +177,7 @@ class MatchDetailsLoader:
                     adr REAL,
                     kast REAL,
                     rating REAL,
-                    FOREIGN KEY (match_id) REFERENCES match_details (match_id)
+                    FOREIGN KEY (match_id) REFERENCES result_match (match_id)
                 )
             ''')
             
@@ -219,13 +209,14 @@ class MatchDetailsLoader:
             cursor = conn.cursor()
             
             # Check if match details already exist
-            cursor.execute('SELECT match_id FROM match_details WHERE match_id = ?', (match_id,))
+            cursor.execute('SELECT match_id FROM result_match WHERE match_id = ?', (match_id,))
             exists = cursor.fetchone()
             
             if exists:
                 # Update existing record
                 cursor.execute('''
-                    UPDATE match_details SET
+                    UPDATE result_match SET
+                        url = ?,
                         datetime = ?,
                         team1_id = ?,
                         team1_name = ?,
@@ -240,10 +231,10 @@ class MatchDetailsLoader:
                         demo_id = ?,
                         head_to_head_team1_wins = ?,
                         head_to_head_team2_wins = ?,
-                        status = ?,
                         parsed_at = ?
                     WHERE match_id = ?
                 ''', (
+                    match_data.get('url', ''),
                     match_data.get('datetime', 0),
                     match_data.get('team1_id', 0),
                     match_data.get('team1_name', ''),
@@ -258,7 +249,6 @@ class MatchDetailsLoader:
                     match_data.get('demo_id', 0),
                     match_data.get('head_to_head_team1_wins', 0),
                     match_data.get('head_to_head_team2_wins', 0),
-                    match_data.get('status', 'completed'),
                     match_data.get('parsed_at', datetime.now().isoformat()),
                     match_id
                 ))
@@ -266,16 +256,17 @@ class MatchDetailsLoader:
             else:
                 # Insert new record
                 cursor.execute('''
-                    INSERT INTO match_details (
-                        match_id, datetime, 
+                    INSERT INTO result_match (
+                        match_id, url, datetime, 
                         team1_id, team1_name, team1_score, team1_rank,
                         team2_id, team2_name, team2_score, team2_rank,
                         event_id, event_name, demo_id,
                         head_to_head_team1_wins, head_to_head_team2_wins,
-                        status, parsed_at
+                        parsed_at
                     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ''', (
                     match_id,
+                    match_data.get('url', ''),
                     match_data.get('datetime', 0),
                     match_data.get('team1_id', 0),
                     match_data.get('team1_name', ''),
@@ -290,7 +281,6 @@ class MatchDetailsLoader:
                     match_data.get('demo_id', 0),
                     match_data.get('head_to_head_team1_wins', 0),
                     match_data.get('head_to_head_team2_wins', 0),
-                    match_data.get('status', 'completed'),
                     match_data.get('parsed_at', datetime.now().isoformat())
                 ))
                 logger.info(f"Inserted match details for ID {match_id}")

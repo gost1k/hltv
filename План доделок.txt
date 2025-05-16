@@ -1,4 +1,0 @@
-live mode,
-match predictions using neural networks
-subscriptions to events and favorite team games
-team aliases

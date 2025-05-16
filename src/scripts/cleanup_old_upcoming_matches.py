@@ -2,10 +2,10 @@
 """
 Скрипт для очистки устаревших матчей из таблиц upcoming
 
-1. Удаляет из таблицы match_upcoming матчи, у которых datetime (в unix-формате)
+1. Удаляет из таблицы upcoming_match матчи, у которых datetime (в unix-формате)
    меньше текущего времени, то есть матчи, которые уже прошли.
-2. Удаляет из таблицы match_upcoming_players все записи, которые не связаны
-   с актуальными матчами в таблице match_upcoming.
+2. Удаляет из таблицы upcoming_match_players все записи, которые не связаны
+   с актуальными матчами в таблице upcoming_match.
 """
 
 import sqlite3
@@ -33,10 +33,10 @@ logger = logging.getLogger("cleanup_upcoming_matches")
 
 def cleanup_old_upcoming_matches(db_path="hltv.db"):
     """
-    Очищает таблицы match_upcoming и match_upcoming_players
+    Очищает таблицы upcoming_match и upcoming_match_players
     
-    1. Удаляет прошедшие матчи из таблицы match_upcoming
-    2. Удаляет из match_upcoming_players все записи, которые не связаны с актуальными матчами
+    1. Удаляет прошедшие матчи из таблицы upcoming_match
+    2. Удаляет из upcoming_match_players все записи, которые не связаны с актуальными матчами
     
     Args:
         db_path (str): Путь к файлу базы данных SQLite
@@ -52,10 +52,10 @@ def cleanup_old_upcoming_matches(db_path="hltv.db"):
         conn = sqlite3.connect(db_path)
         cursor = conn.cursor()
         
-        # Шаг 1: Удаление прошедших матчей из match_upcoming
+        # Шаг 1: Удаление прошедших матчей из upcoming_match
         # Получаем ID матчей, которые уже прошли
         cursor.execute(
-            "SELECT match_id, datetime, team1_name, team2_name FROM match_upcoming WHERE datetime < ?", 
+            "SELECT match_id, datetime, team1_name, team2_name FROM upcoming_match WHERE datetime < ?", 
             (current_time,)
         )
         expired_matches = cursor.fetchall()
@@ -72,42 +72,42 @@ def cleanup_old_upcoming_matches(db_path="hltv.db"):
             match_ids = [match[0] for match in expired_matches]
             placeholders = ', '.join('?' for _ in match_ids)
             cursor.execute(
-                f"DELETE FROM match_upcoming WHERE match_id IN ({placeholders})", 
+                f"DELETE FROM upcoming_match WHERE match_id IN ({placeholders})", 
                 match_ids
             )
-            logger.info(f"Удалено {cursor.rowcount} устаревших матчей из таблицы match_upcoming")
+            logger.info(f"Удалено {cursor.rowcount} устаревших матчей из таблицы upcoming_match")
         else:
             logger.info("Нет устаревших матчей для удаления")
         
-        # Шаг 2: Удаление записей из match_upcoming_players, которые не связаны с match_upcoming
-        # Получаем список всех актуальных match_id из match_upcoming
-        cursor.execute("SELECT match_id FROM match_upcoming")
+        # Шаг 2: Удаление записей из upcoming_match_players, которые не связаны с upcoming_match
+        # Получаем список всех актуальных match_id из upcoming_match
+        cursor.execute("SELECT match_id FROM upcoming_match")
         valid_match_ids = [row[0] for row in cursor.fetchall()]
         
         if not valid_match_ids:
-            logger.info("Нет актуальных матчей в таблице match_upcoming, очищаем все записи из match_upcoming_players")
-            cursor.execute("DELETE FROM match_upcoming_players")
-            logger.info(f"Удалено {cursor.rowcount} записей из таблицы match_upcoming_players")
+            logger.info("Нет актуальных матчей в таблице upcoming_match, очищаем все записи из upcoming_match_players")
+            cursor.execute("DELETE FROM upcoming_match_players")
+            logger.info(f"Удалено {cursor.rowcount} записей из таблицы upcoming_match_players")
         else:
-            # Получаем записи из match_upcoming_players, которые не связаны с актуальными матчами
+            # Получаем записи из upcoming_match_players, которые не связаны с актуальными матчами
             placeholders = ', '.join('?' for _ in valid_match_ids)
             cursor.execute(
-                f"SELECT COUNT(*) FROM match_upcoming_players WHERE match_id NOT IN ({placeholders})",
+                f"SELECT COUNT(*) FROM upcoming_match_players WHERE match_id NOT IN ({placeholders})",
                 valid_match_ids
             )
             orphaned_players_count = cursor.fetchone()[0]
             
             if orphaned_players_count > 0:
-                logger.info(f"Найдено {orphaned_players_count} записей в match_upcoming_players без связи с актуальными матчами")
+                logger.info(f"Найдено {orphaned_players_count} записей в upcoming_match_players без связи с актуальными матчами")
                 
                 # Удаляем записи игроков, которые не связаны с актуальными матчами
                 cursor.execute(
-                    f"DELETE FROM match_upcoming_players WHERE match_id NOT IN ({placeholders})",
+                    f"DELETE FROM upcoming_match_players WHERE match_id NOT IN ({placeholders})",
                     valid_match_ids
                 )
-                logger.info(f"Удалено {cursor.rowcount} записей из таблицы match_upcoming_players")
+                logger.info(f"Удалено {cursor.rowcount} записей из таблицы upcoming_match_players")
             else:
-                logger.info("Все записи в match_upcoming_players связаны с актуальными матчами, очистка не требуется")
+                logger.info("Все записи в upcoming_match_players связаны с актуальными матчами, очистка не требуется")
         
         # Сохраняем изменения
         conn.commit()

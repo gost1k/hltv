@@ -56,12 +56,12 @@ class MatchDetailsParser(BaseParser):
             if self.parse_past and (remaining_limit is None or remaining_limit > 0):
                 if self.limit is None:
                     cursor.execute('''
-                        SELECT id, url FROM url_result 
+                        SELECT id, url FROM result_urls 
                         WHERE toParse = 1
                     ''')
                 else:
                     cursor.execute('''
-                        SELECT id, url FROM url_result 
+                        SELECT id, url FROM result_urls 
                         WHERE toParse = 1
                         LIMIT ?
                     ''', (remaining_limit,))
@@ -76,12 +76,12 @@ class MatchDetailsParser(BaseParser):
             if self.parse_upcoming and (remaining_limit is None or remaining_limit > 0):
                 if self.limit is None:
                     cursor.execute('''
-                        SELECT id, url FROM url_upcoming
+                        SELECT id, url FROM upcoming_urls
                         WHERE toParse = 1
                     ''')
                 else:
                     cursor.execute('''
-                        SELECT id, url FROM url_upcoming
+                        SELECT id, url FROM upcoming_urls
                         WHERE toParse = 1
                         LIMIT ?
                     ''', (remaining_limit,))
@@ -111,7 +111,7 @@ class MatchDetailsParser(BaseParser):
             conn = sqlite3.connect(self.db_path)
             cursor = conn.cursor()
             
-            table_name = "url_result" if is_past else "url_upcoming"
+            table_name = "result_urls" if is_past else "upcoming_urls"
             
             cursor.execute(f'''
                 UPDATE {table_name} SET toParse = ? WHERE id = ?
@@ -213,7 +213,7 @@ class MatchDetailsParser(BaseParser):
                 if not is_past:
                     conn = sqlite3.connect(self.db_path)
                     cursor = conn.cursor()
-                    cursor.execute("SELECT toParse FROM url_upcoming WHERE id = ?", (match_id,))
+                    cursor.execute("SELECT toParse FROM upcoming_urls WHERE id = ?", (match_id,))
                     result = cursor.fetchone()
                     conn.close()
                     

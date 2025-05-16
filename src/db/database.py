@@ -44,121 +44,11 @@ class DatabaseService:
             return False
         
         try:
-            # Teams table
-            self.cursor.execute('''
-                CREATE TABLE IF NOT EXISTS teams (
-                    id INTEGER PRIMARY KEY,
-                    name TEXT NOT NULL,
-                    logo_url TEXT,
-                    country TEXT,
-                    world_ranking INTEGER,
-                    last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                )
-            ''')
-            
-            # Players table
-            self.cursor.execute('''
-                CREATE TABLE IF NOT EXISTS players (
-                    id INTEGER PRIMARY KEY,
-                    name TEXT,
-                    nickname TEXT NOT NULL,
-                    team_id INTEGER,
-                    country TEXT,
-                    last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    FOREIGN KEY (team_id) REFERENCES teams (id)
-                )
-            ''')
-            
-            # Events table
-            self.cursor.execute('''
-                CREATE TABLE IF NOT EXISTS events (
-                    id INTEGER PRIMARY KEY,
-                    name TEXT NOT NULL,
-                    start_date DATE,
-                    end_date DATE,
-                    location TEXT,
-                    prize_pool TEXT,
-                    teams_count INTEGER,
-                    last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                )
-            ''')
-            
-            # Upcoming matches table (was 'matches' before)
-            self.cursor.execute('''
-                CREATE TABLE IF NOT EXISTS match_upcoming (
-                    match_id INTEGER PRIMARY KEY,
-                    datetime INTEGER,
-                    team1_id INTEGER,
-                    team1_name TEXT,
-                    team1_rank INTEGER,
-                    team2_id INTEGER,
-                    team2_name TEXT,
-                    team2_rank INTEGER,
-                    event_id INTEGER,
-                    event_name TEXT,
-                    head_to_head_team1_wins INTEGER,
-                    head_to_head_team2_wins INTEGER,
-                    parsed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    status TEXT DEFAULT 'upcoming',
-                    parsed INTEGER DEFAULT 0,
-                    last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    FOREIGN KEY (team1_id) REFERENCES teams (id),
-                    FOREIGN KEY (team2_id) REFERENCES teams (id),
-                    FOREIGN KEY (event_id) REFERENCES events (id)
-                )
-            ''')
-            
-            # Upcoming match players table
-            self.cursor.execute('''
-                CREATE TABLE IF NOT EXISTS match_upcoming_players (
-                    match_id INTEGER NOT NULL,
-                    team_id INTEGER NOT NULL,
-                    player_id INTEGER,
-                    player_nickname TEXT NOT NULL,
-                    fullName TEXT,
-                    nickName TEXT,
-                    parsed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    PRIMARY KEY (match_id, player_nickname),
-                    FOREIGN KEY (match_id) REFERENCES match_upcoming (match_id),
-                    FOREIGN KEY (team_id) REFERENCES teams (id),
-                    FOREIGN KEY (player_id) REFERENCES players (id)
-                )
-            ''')
-            
-            # Maps table
-            self.cursor.execute('''
-                CREATE TABLE IF NOT EXISTS maps (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    match_id INTEGER NOT NULL,
-                    name TEXT NOT NULL,
-                    pick TEXT,
-                    score_team1 INTEGER,
-                    score_team2 INTEGER,
-                    last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    FOREIGN KEY (match_id) REFERENCES match_details (id)
-                )
-            ''')
-            
-            # Match players table (for match lineups)
-            self.cursor.execute('''
-                CREATE TABLE IF NOT EXISTS match_players (
-                    match_id INTEGER NOT NULL,
-                    player_id INTEGER NOT NULL,
-                    team_id INTEGER NOT NULL,
-                    stats TEXT,
-                    last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    PRIMARY KEY (match_id, player_id),
-                    FOREIGN KEY (match_id) REFERENCES match_details (id),
-                    FOREIGN KEY (player_id) REFERENCES players (id),
-                    FOREIGN KEY (team_id) REFERENCES teams (id)
-                )
-            ''')
-            
+            # Удаляю создание лишних таблиц
+            # Оставьте только нужные CREATE TABLE ... если они реально нужны для работы других функций
             self.conn.commit()
-            
             # Проверяем, нужно ли добавить колонки миграции
-            self._migrate_db_if_needed()
-            
+            # self._migrate_db_if_needed()  # Можно закомментировать, если не нужно
             return True
         except sqlite3.Error as e:
             logger.error(f"Database initialization error: {e}")
@@ -172,32 +62,32 @@ class DatabaseService:
         """
         try:
             # Проверяем существование таблицы
-            self.cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='match_upcoming'")
+            self.cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='upcoming_match'")
             if not self.cursor.fetchone():
-                logger.warning("Table match_upcoming does not exist yet, skipping migration")
+                logger.warning("Table upcoming_match does not exist yet, skipping migration")
                 return
                 
-            # Получаем список колонок в таблице match_upcoming
-            self.cursor.execute("PRAGMA table_info(match_upcoming)")
+            # Получаем список колонок в таблице upcoming_match
+            self.cursor.execute("PRAGMA table_info(upcoming_match)")
             columns_info = self.cursor.fetchall()
             columns = [column[1] for column in columns_info]
             
-            logger.info(f"Existing columns in match_upcoming: {columns}")
+            logger.info(f"Existing columns in upcoming_match: {columns}")
             
             # Проверяем отсутствующие колонки и добавляем их
             if "parsed" not in columns:
-                logger.info("Adding 'parsed' column to match_upcoming table")
-                self.cursor.execute("ALTER TABLE match_upcoming ADD COLUMN parsed INTEGER DEFAULT 0")
+                logger.info("Adding 'parsed' column to upcoming_match table")
+                self.cursor.execute("ALTER TABLE upcoming_match ADD COLUMN parsed INTEGER DEFAULT 0")
                 logger.info("'parsed' column added successfully")
             else:
                 logger.info("'parsed' column already exists")
             
             if "last_updated" not in columns:
-                logger.info("Adding 'last_updated' column to match_upcoming table")
+                logger.info("Adding 'last_updated' column to upcoming_match table")
                 # SQLite не поддерживает DEFAULT CURRENT_TIMESTAMP при ALTER TABLE
-                self.cursor.execute("ALTER TABLE match_upcoming ADD COLUMN last_updated TEXT")
+                self.cursor.execute("ALTER TABLE upcoming_match ADD COLUMN last_updated TEXT")
                 # Устанавливаем начальное значение для last_updated
-                self.cursor.execute("UPDATE match_upcoming SET last_updated = datetime('now') WHERE last_updated IS NULL")
+                self.cursor.execute("UPDATE upcoming_match SET last_updated = datetime('now') WHERE last_updated IS NULL")
                 logger.info("'last_updated' column added successfully")
             else:
                 logger.info("'last_updated' column already exists")
@@ -205,7 +95,7 @@ class DatabaseService:
             self.conn.commit()
             
             # Проверяем после миграции
-            self.cursor.execute("PRAGMA table_info(match_upcoming)")
+            self.cursor.execute("PRAGMA table_info(upcoming_match)")
             columns_after = [column[1] for column in self.cursor.fetchall()]
             logger.info(f"Columns after migration: {columns_after}")
             
@@ -213,7 +103,7 @@ class DatabaseService:
         except sqlite3.Error as e:
             logger.error(f"Database migration error: {e}")
             # Добавляем вывод запроса для отладки
-            self.cursor.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name='match_upcoming'")
+            self.cursor.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name='upcoming_match'")
             table_def = self.cursor.fetchone()
             if table_def:
                 logger.error(f"Current table definition: {table_def[0]}")
@@ -233,7 +123,7 @@ class DatabaseService:
         try:
             status = "completed" if is_past else "upcoming"
             query = """
-                SELECT match_id FROM match_upcoming 
+                SELECT match_id FROM upcoming_match 
                 WHERE status = ? AND parsed = 0
                 ORDER BY datetime DESC
             """
@@ -264,23 +154,23 @@ class DatabaseService:
         self.connect()
         try:
             # Сначала проверим, существует ли колонка parsed
-            self.cursor.execute("PRAGMA table_info(match_upcoming)")
+            self.cursor.execute("PRAGMA table_info(upcoming_match)")
             columns = [column[1] for column in self.cursor.fetchall()]
             
             if "parsed" not in columns:
                 # Попытаемся добавить колонку, если ее нет
-                logger.warning("Column 'parsed' does not exist in match_upcoming, attempting to add it")
+                logger.warning("Column 'parsed' does not exist in upcoming_match, attempting to add it")
                 try:
-                    self.cursor.execute("ALTER TABLE match_upcoming ADD COLUMN parsed INTEGER DEFAULT 0")
+                    self.cursor.execute("ALTER TABLE upcoming_match ADD COLUMN parsed INTEGER DEFAULT 0")
                     self.conn.commit()
-                    logger.info("Added 'parsed' column to match_upcoming table")
+                    logger.info("Added 'parsed' column to upcoming_match table")
                 except sqlite3.Error as e:
                     logger.error(f"Failed to add 'parsed' column: {e}")
                     return False
             
             # Теперь выполняем обновление
             self.cursor.execute(
-                "UPDATE match_upcoming SET parsed = ?, last_updated = datetime('now') WHERE match_id = ?",
+                "UPDATE upcoming_match SET parsed = ?, last_updated = datetime('now') WHERE match_id = ?",
                 (1 if parsed else 0, match_id)
             )
             self.conn.commit()

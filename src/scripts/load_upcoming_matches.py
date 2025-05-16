@@ -34,9 +34,9 @@ def parse_arguments():
     parser.add_argument('--force', action='store_true', help='Принудительная загрузка, даже если файлы уже обработаны')
     return parser.parse_args()
 
-def create_match_upcoming_players_table(db_path):
+def create_upcoming_match_players_table(db_path):
     """
-    Создает таблицу match_upcoming_players, если она не существует
+    Создает таблицу upcoming_match_players, если она не существует
     """
     try:
         conn = sqlite3.connect(db_path)
@@ -44,23 +44,23 @@ def create_match_upcoming_players_table(db_path):
         
         # Создаем таблицу для игроков предстоящих матчей
         cursor.execute('''
-            CREATE TABLE IF NOT EXISTS match_upcoming_players (
+            CREATE TABLE IF NOT EXISTS upcoming_match_players (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 match_id INTEGER NOT NULL,
                 team_id INTEGER,
                 player_id INTEGER,
                 player_nickname TEXT,
                 team_position INTEGER,
-                FOREIGN KEY (match_id) REFERENCES url_upcoming (id)
+                FOREIGN KEY (match_id) REFERENCES upcoming_urls (id)
             )
         ''')
         
         conn.commit()
         conn.close()
-        logger.info("Таблица match_upcoming_players успешно создана/проверена")
+        logger.info("Таблица upcoming_match_players успешно создана/проверена")
         
     except Exception as e:
-        logger.error(f"Ошибка при создании таблицы match_upcoming_players: {str(e)}")
+        logger.error(f"Ошибка при создании таблицы upcoming_match_players: {str(e)}")
         raise
 
 def load_upcoming_players(db_path):
@@ -102,19 +102,19 @@ def load_upcoming_players(db_path):
                 match_id = data['match_id']
                 
                 # Проверяем, существует ли матч в базе данных
-                cursor.execute('SELECT 1 FROM url_upcoming WHERE id = ?', (match_id,))
+                cursor.execute('SELECT 1 FROM upcoming_urls WHERE id = ?', (match_id,))
                 if not cursor.fetchone():
                     logger.warning(f"Матч с ID {match_id} не найден в базе данных, пропускаем")
                     stats["error"] += 1
                     continue
                 
                 # Удаляем существующие записи для этого матча
-                cursor.execute('DELETE FROM match_upcoming_players WHERE match_id = ?', (match_id,))
+                cursor.execute('DELETE FROM upcoming_match_players WHERE match_id = ?', (match_id,))
                 
                 # Добавляем игроков
                 for player in data['players']:
                     cursor.execute('''
-                        INSERT INTO match_upcoming_players (
+                        INSERT INTO upcoming_match_players (
                             match_id, team_id, player_id, player_nickname, team_position
                         ) VALUES (?, ?, ?, ?, ?)
                     ''', (
@@ -154,7 +154,7 @@ def main():
         logger.info("Начало загрузки предстоящих матчей из JSON в базу данных")
         
         # Создаем таблицу для игроков предстоящих матчей
-        create_match_upcoming_players_table(args.db_path)
+        create_upcoming_match_players_table(args.db_path)
         
         # Загружаем предстоящие матчи
         loader = MatchesLoader(db_path=args.db_path)

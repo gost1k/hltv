@@ -9,6 +9,7 @@ CREATE_TABLES = [
     '''
     CREATE TABLE IF NOT EXISTS result_match (
         match_id INTEGER PRIMARY KEY,
+        url TEXT,
         datetime INTEGER,
         team1_id INTEGER,
         team1_name TEXT,
@@ -23,7 +24,6 @@ CREATE_TABLES = [
         demo_id INTEGER,
         head_to_head_team1_wins INTEGER,
         head_to_head_team2_wins INTEGER,
-        status TEXT,
         parsed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )
     ''',
