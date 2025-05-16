@@ -47,7 +47,7 @@ def main():
         # Создаем директорию для логов, если ее нет
         os.makedirs("logs", exist_ok=True)
         
-        # Загружаем прошедшие матчи (url_result)
+        # Загружаем прошедшие матчи (result_urls)
         matches_loader = MatchesLoader(db_path=args.db_path)
         matches_stats = matches_loader.load_past_matches_only()
         

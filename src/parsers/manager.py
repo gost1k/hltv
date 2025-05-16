@@ -105,7 +105,7 @@ class ParserManager:
             cursor = self.db.cursor
                 
             # Определяем таблицу на основе типа матча
-            table = "url_result" if is_past else "url_upcoming"
+            table = "result_urls" if is_past else "upcoming_urls"
             
             # Запрос для получения ID матчей с флагом toParse = 1
             query = f"""
@@ -147,7 +147,7 @@ class ParserManager:
             cursor = self.db.cursor
                 
             # Определяем таблицу на основе типа матча
-            table = "url_result" if is_past else "url_upcoming"
+            table = "result_urls" if is_past else "upcoming_urls"
             
             # Обновляем флаг toParse = 0
             query = f"UPDATE {table} SET toParse = 0 WHERE id = ?"

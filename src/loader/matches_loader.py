@@ -83,7 +83,7 @@ class MatchesLoader:
             
             # Create table for upcoming matches if it doesn't exist
             cursor.execute('''
-                CREATE TABLE IF NOT EXISTS url_upcoming (
+                CREATE TABLE IF NOT EXISTS upcoming_urls (
                     id INTEGER PRIMARY KEY,
                     url TEXT NOT NULL,
                     date INTEGER NOT NULL,
@@ -93,7 +93,7 @@ class MatchesLoader:
             
             # Create table for match results if it doesn't exist
             cursor.execute('''
-                CREATE TABLE IF NOT EXISTS url_result (
+                CREATE TABLE IF NOT EXISTS result_urls (
                     id INTEGER PRIMARY KEY,
                     url TEXT NOT NULL,
                     toParse INTEGER NOT NULL DEFAULT 1
@@ -130,7 +130,7 @@ class MatchesLoader:
             current_match_ids = [match['id'] for match in matches]
             
             # Get list of all IDs in database
-            cursor.execute('SELECT id FROM url_upcoming')
+            cursor.execute('SELECT id FROM upcoming_urls')
             db_match_ids = [row[0] for row in cursor.fetchall()]
             
             # Find match IDs that are in DB but not in current data
@@ -140,10 +140,10 @@ class MatchesLoader:
             deleted_count = 0
             if obsolete_ids:
                 placeholders = ','.join(['?'] * len(obsolete_ids))
-                delete_query = f'DELETE FROM url_upcoming WHERE id IN ({placeholders})'
+                delete_query = f'DELETE FROM upcoming_urls WHERE id IN ({placeholders})'
                 cursor.execute(delete_query, obsolete_ids)
                 deleted_count = cursor.rowcount
-                logger.info(f"Deleted {deleted_count} obsolete matches from url_upcoming table")
+                logger.info(f"Deleted {deleted_count} obsolete matches from upcoming_urls table")
             
             # Process each match
             new_count = 0
@@ -151,14 +151,14 @@ class MatchesLoader:
             
             for match in matches:
                 # Check if match exists in database
-                cursor.execute('SELECT toParse FROM url_upcoming WHERE id = ?', (match['id'],))
+                cursor.execute('SELECT toParse FROM upcoming_urls WHERE id = ?', (match['id'],))
                 result = cursor.fetchone()
                 
                 if result is not None:
                     # Update existing match (preserve current toParse value)
                     to_parse = result[0]
                     cursor.execute('''
-                        UPDATE url_upcoming SET date = ?, toParse = ?
+                        UPDATE upcoming_urls SET date = ?, toParse = ?
                         WHERE id = ?
                     ''', (match['date'], to_parse, match['id']))
                     updated_count += 1
@@ -166,13 +166,13 @@ class MatchesLoader:
                     # Add new match
                     to_parse = match.get('toParse', 1)  # Use value from JSON or 1 by default
                     cursor.execute('''
-                        INSERT INTO url_upcoming (id, url, date, toParse)
+                        INSERT INTO upcoming_urls (id, url, date, toParse)
                         VALUES (?, ?, ?, ?)
                     ''', (match['id'], match['url'], match['date'], to_parse))
                     new_count += 1
                 
                 # Delete duplicate entries from results table (if match moved)
-                cursor.execute('DELETE FROM url_result WHERE id = ?', (match['id'],))
+                cursor.execute('DELETE FROM result_urls WHERE id = ?', (match['id'],))
             
             conn.commit()
             conn.close()
@@ -207,7 +207,7 @@ class MatchesLoader:
             
             for match in matches:
                 # Check if match exists in database
-                cursor.execute('SELECT toParse FROM url_result WHERE id = ?', (match['id'],))
+                cursor.execute('SELECT toParse FROM result_urls WHERE id = ?', (match['id'],))
                 result = cursor.fetchone()
                 
                 if result is not None:
@@ -215,7 +215,7 @@ class MatchesLoader:
                     to_parse = result[0]
                     if to_parse != match.get('toParse', 1):
                         cursor.execute('''
-                            UPDATE url_result SET toParse = ?
+                            UPDATE result_urls SET toParse = ?
                             WHERE id = ?
                         ''', (match['toParse'], match['id']))
                     updated_count += 1
@@ -223,13 +223,13 @@ class MatchesLoader:
                     # Add new match
                     to_parse = match.get('toParse', 1)  # Use value from JSON or 1 by default
                     cursor.execute('''
-                        INSERT INTO url_result (id, url, toParse)
+                        INSERT INTO result_urls (id, url, toParse)
                         VALUES (?, ?, ?)
                     ''', (match['id'], match['url'], to_parse))
                     new_count += 1
                     
                     # Delete match from upcoming if it moved to results
-                    cursor.execute('DELETE FROM url_upcoming WHERE id = ?', (match['id'],))
+                    cursor.execute('DELETE FROM upcoming_urls WHERE id = ?', (match['id'],))
             
             conn.commit()
             conn.close()

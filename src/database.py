@@ -37,7 +37,7 @@ def init_db():
             tables = [row[0] for row in cursor.fetchall()]
             
             # Создаем таблицы только если они не существуют
-            if "url_upcoming" not in tables or "url_result" not in tables:
+            if "upcoming_urls" not in tables or "result_urls" not in tables:
                 logger.info("Необходимые таблицы не найдены, создаем новые")
                 
                 # Создаем таблицу для предстоящих матчей

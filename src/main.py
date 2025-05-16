@@ -61,6 +61,16 @@ def parse_arguments():
                       help='Skip loading match details (only with --load-past-only)')
     parser.add_argument('--skip-player-stats', action='store_true',
                       help='Skip loading player statistics (only with --load-past-only)')
+    parser.add_argument('--download-results-page', action='store_true', help='Download results page')
+    parser.add_argument('--write-db-results-list', action='store_true', help='Write results list to DB')
+    parser.add_argument('--download-result-match-page', action='store_true', help='Download result match details pages from DB')
+    parser.add_argument('--write-json-match-page', action='store_true', help='Write match details JSON to DB (was --write-db-match-page)')
+    # dev-режим для write-db-results-list
+    parser.add_argument('--dev', action='store_true', help='Development mode: limit DB writes to 3 records (only for --write-db-results-list)')
+    parser.add_argument('--download-upcoming-page', action='store_true', help='Download upcoming matches page')
+    parser.add_argument('--write-db-upcoming-list', action='store_true', help='Write upcoming matches list to DB')
+    parser.add_argument('--download-upcoming-match-page', action='store_true', help='Download upcoming match details pages from DB')
+    parser.add_argument('--write-json-upcoming-match-page', action='store_true', help='Write upcoming match details JSON to DB')
     
     return parser.parse_args()
 
@@ -89,15 +99,14 @@ def main():
         collector_manager = CollectorManager()
         
         # Handle parser commands
-        if args.parse_matches:
-            logger.info("Starting matches page parsing...")
-            matches_file = parser_manager.parse_matches()
-            logger.info(f"Matches page saved to: {matches_file}")
-            
-        if args.parse_results:
+        if args.download_results_page:
             logger.info("Starting results page parsing...")
             results_file = parser_manager.parse_results()
             logger.info(f"Results page saved to: {results_file}")
+        if args.download_upcoming_page:
+            logger.info("Starting upcoming matches page parsing...")
+            matches_file = parser_manager.parse_matches()
+            logger.info(f"Upcoming matches page saved to: {matches_file}")
             
         if args.parse_details or args.parse_results_details:
             if args.parse_details:
@@ -154,12 +163,13 @@ def main():
             if collection_stats.get('matches', {}).get('deleted', 0) > 0:
                 logger.info(f"Removed {collection_stats['matches']['deleted']} obsolete matches from database.")
             
-        if args.collect_results_matches or args.collect_results_details or args.collect_details:
+        if args.collect_results_matches or args.collect_results_details or args.collect_details or args.write_json_match_page:
             if args.collect_details:
                 logger.warning("The --collect-details command is deprecated. Please use --collect-results-matches instead.")
             if args.collect_results_details:
                 logger.warning("The --collect-results-details command is deprecated. Please use --collect-results-matches instead.")
-                
+            if args.write_json_match_page:
+                logger.info("Запущен режим write-json-match-page: будет выполнен парсинг HTML-файлов матчей из папки result и запись в БД/JSON.")
             logger.info("Collecting data from match details HTML...")
             details_stats = collector_manager.collect_results_details()
             logger.info(f"Match details collection completed: {details_stats}")
@@ -215,6 +225,33 @@ def main():
                     logger.info(f"Successfully loaded: {details_stats.get('player_stats_success', 0)}")
                     logger.info(f"Errors: {details_stats.get('player_stats_error', 0)}")
             
+            return
+        
+        if args.write_db_results_list:
+            logger.info("Collecting data from results.html (new flag)...")
+            limit = 3 if args.dev else None
+            results_stats = collector_manager.collect_results(limit=limit)
+            logger.info(f"Results list collection completed: {results_stats}")
+        if args.write_db_upcoming_list:
+            logger.info("Collecting data from matches.html (new flag)...")
+            limit = 3 if args.dev else None
+            matches_stats = collector_manager.collect_matches(limit=limit) if limit else collector_manager.collect_matches()
+            logger.info(f"Upcoming matches list collection completed: {matches_stats}")
+        
+        if args.download_result_match_page:
+            logger.info("Starting download of result match pages (past matches)...")
+            count = parser_manager.parse_match_details(limit=None, parse_past=True, parse_upcoming=False)
+            logger.info(f"Downloaded and processed {count} result match pages.")
+        
+        if args.download_upcoming_match_page:
+            logger.info("Starting download of upcoming match pages...")
+            count = parser_manager.parse_match_details(limit=None, parse_past=False, parse_upcoming=True)
+            logger.info(f"Downloaded and processed {count} upcoming match pages.")
+        
+        if args.write_json_upcoming_match_page:
+            logger.info("Запущен режим write-json-upcoming-match-page: будет выполнен парсинг HTML-файлов предстоящих матчей и сохранение в JSON.")
+            count = collector_manager.collect_upcoming_match_details()
+            logger.info(f"Upcoming match details parsing completed. Successfully parsed: {count}")
             return
         
         logger.info("HLTV Parser completed successfully")

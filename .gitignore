@@ -10,15 +10,13 @@ venv/
 env/
 ENV/
 .env
+/storage/*
 
 # IDE files
 .idea/
 .vscode/
 *.swp
 *.swo
-
-# DB
-.db
 
 
 # Log files

@@ -195,7 +195,7 @@ class UserDevBot(BaseHLTVBot):
                     m.team1_id, m.team1_name, m.team1_score, m.team1_rank,
                     m.team2_id, m.team2_name, m.team2_score, m.team2_rank,
                     m.event_id, m.event_name, m.demo_id, 'completed' as match_type
-                FROM match_details m
+                FROM result_match m
                 WHERE m.match_id = ?
             ''', (match_id,))
             
@@ -209,7 +209,7 @@ class UserDevBot(BaseHLTVBot):
                         m.team1_id, m.team1_name, 0 as team1_score, m.team1_rank,
                         m.team2_id, m.team2_name, 0 as team2_score, m.team2_rank,
                         m.event_id, m.event_name, NULL as demo_id, 'upcoming' as match_type
-                    FROM match_upcoming m
+                    FROM upcoming_match m
                     WHERE m.match_id = ?
                 ''', (match_id,))
                 
@@ -244,7 +244,7 @@ class UserDevBot(BaseHLTVBot):
                 cursor.execute('''
                     SELECT 
                         p.player_nickname as nickname, p.team_id
-                    FROM match_upcoming_players p
+                    FROM upcoming_match_players p
                     WHERE p.match_id = ?
                     ORDER BY p.team_id
                 ''', (match_id,))

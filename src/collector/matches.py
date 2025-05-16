@@ -210,7 +210,7 @@ class MatchesCollector:
             
             # Создаем таблицу для предстоящих матчей
             cursor.execute('''
-                CREATE TABLE IF NOT EXISTS url_upcoming (
+                CREATE TABLE IF NOT EXISTS upcoming_urls (
                     id INTEGER PRIMARY KEY,
                     url TEXT NOT NULL,
                     date INTEGER NOT NULL,
@@ -220,7 +220,7 @@ class MatchesCollector:
             
             # Создаем таблицу для результатов матчей
             cursor.execute('''
-                CREATE TABLE IF NOT EXISTS url_result (
+                CREATE TABLE IF NOT EXISTS result_urls (
                     id INTEGER PRIMARY KEY,
                     url TEXT NOT NULL,
                     toParse INTEGER NOT NULL DEFAULT 1
@@ -235,67 +235,39 @@ class MatchesCollector:
             logger.error(f"Ошибка при создании таблиц: {str(e)}")
     
     def _save_upcoming_matches_to_db(self, matches: list) -> dict:
-        """Сохраняет предстоящие матчи в базу данных"""
+        """Сохраняет предстоящие матчи в базу данных (upcoming_urls)"""
         if not matches:
             return {"new": 0, "updated": 0, "deleted": 0}
-            
         stats = {"new": 0, "updated": 0, "deleted": 0}
-        
         try:
             conn = sqlite3.connect(self.db_path)
             cursor = conn.cursor()
-            
-            # Получаем список всех ID матчей в текущих данных
             current_match_ids = [match['id'] for match in matches]
-            
-            # Получаем список всех ID в базе данных
-            cursor.execute('SELECT id FROM url_upcoming')
+            cursor.execute('SELECT id FROM upcoming_urls')
             db_match_ids = [row[0] for row in cursor.fetchall()]
-            
-            # Находим ID матчей, которые есть в БД, но отсутствуют в текущих данных
             obsolete_ids = [match_id for match_id in db_match_ids if match_id not in current_match_ids]
-            
-            # Удаляем устаревшие матчи
             for obsolete_id in obsolete_ids:
-                cursor.execute('DELETE FROM url_upcoming WHERE id = ?', (obsolete_id,))
+                cursor.execute('DELETE FROM upcoming_urls WHERE id = ?', (obsolete_id,))
                 stats["deleted"] += 1
-            
-            # Обрабатываем каждый матч
             for match in matches:
-                # Проверяем, существует ли матч в базе данных
-                cursor.execute('SELECT toParse FROM url_upcoming WHERE id = ?', (match['id'],))
+                cursor.execute('SELECT toParse FROM upcoming_urls WHERE id = ?', (match['id'],))
                 result = cursor.fetchone()
-                
                 if result is not None:
-                    # Обновляем существующий матч, но сохраняем значение toParse
                     current_to_parse = result[0]
                     cursor.execute('''
-                        UPDATE url_upcoming 
-                        SET url = ?, date = ?
-                        WHERE id = ?
+                        UPDATE upcoming_urls SET url = ?, date = ? WHERE id = ?
                     ''', (match['url'], match['date'], match['id']))
                     stats["updated"] += 1
                 else:
-                    # Добавляем новый матч
                     cursor.execute('''
-                        INSERT INTO url_upcoming (id, url, date, toParse)
+                        INSERT INTO upcoming_urls (id, url, date, toParse)
                         VALUES (?, ?, ?, ?)
-                    ''', (match['id'], match['url'], match['date'], 1))  # Для новых записей устанавливаем toParse=1
+                    ''', (match['id'], match['url'], match['date'], 1))
                     stats["new"] += 1
-                
-                # Удаляем дублирующиеся записи из таблицы результатов (если матч переместился)
-                cursor.execute('DELETE FROM url_result WHERE id = ?', (match['id'],))
-            
             conn.commit()
             conn.close()
-            
             logger.info(f"Сохранение предстоящих матчей завершено: новых - {stats['new']}, обновлено - {stats['updated']}, удалено - {stats['deleted']}")
-            
-            # Дополнительно сохраняем в JSON файл для совместимости с загрузчиками
-            self._save_upcoming_matches_to_json(matches)
-            
             return stats
-            
         except Exception as e:
             logger.error(f"Ошибка при сохранении предстоящих матчей в БД: {str(e)}")
             return stats
@@ -314,13 +286,12 @@ class MatchesCollector:
             # Обрабатываем каждый матч
             for match in matches:
                 # Проверяем, существует ли матч в базе данных
-                cursor.execute('SELECT toParse FROM url_result WHERE id = ?', (match['id'],))
+                cursor.execute('SELECT toParse FROM result_urls WHERE id = ?', (match['id'],))
                 result = cursor.fetchone()
-                
                 if result is not None:
                     # Обновляем существующий матч, но не меняем флаг toParse
                     cursor.execute('''
-                        UPDATE url_result 
+                        UPDATE result_urls 
                         SET url = ?
                         WHERE id = ?
                     ''', (match['url'], match['id']))
@@ -328,21 +299,17 @@ class MatchesCollector:
                 else:
                     # Добавляем новый матч с toParse=1
                     cursor.execute('''
-                        INSERT INTO url_result (id, url, toParse)
+                        INSERT INTO result_urls (id, url, toParse)
                         VALUES (?, ?, ?)
                     ''', (match['id'], match['url'], 1))
                     stats["new"] += 1
-                    
                     # Удаляем матч из предстоящих, если он перешел в результаты
-                    cursor.execute('DELETE FROM url_upcoming WHERE id = ?', (match['id'],))
+                    cursor.execute('DELETE FROM upcoming_urls WHERE id = ?', (match['id'],))
             
             conn.commit()
             conn.close()
             
             logger.info(f"Сохранение прошедших матчей завершено: новых - {stats['new']}, обновлено - {stats['updated']}")
-            
-            # Дополнительно сохраняем в JSON файл для совместимости с загрузчиками
-            self._save_past_matches_to_json(matches)
             
             return stats
             
@@ -366,7 +333,7 @@ class MatchesCollector:
             for match in matches:
                 match_copy = match.copy()
                 # Получаем актуальное значение toParse из базы
-                cursor.execute('SELECT toParse FROM url_upcoming WHERE id = ?', (match['id'],))
+                cursor.execute('SELECT toParse FROM upcoming_urls WHERE id = ?', (match['id'],))
                 result = cursor.fetchone()
                 if result:
                     match_copy['toParse'] = result[0]
@@ -409,7 +376,7 @@ class MatchesCollector:
             for match in matches:
                 match_copy = match.copy()
                 # Получаем актуальное значение toParse из базы
-                cursor.execute('SELECT toParse FROM url_result WHERE id = ?', (match['id'],))
+                cursor.execute('SELECT toParse FROM result_urls WHERE id = ?', (match['id'],))
                 result = cursor.fetchone()
                 if result:
                     match_copy['toParse'] = result[0]
@@ -458,16 +425,8 @@ class MatchesCollector:
             logger.error(f"Ошибка при сохранении прошедших матчей в JSON: {str(e)}")
             return {"saved": 0}
     
-    def collect_matches(self) -> dict:
-        """
-        Собирает данные из HTML-файла со списком матчей
-        
-        Returns:
-            dict: Статистика обработки
-        """
-        # Создаем таблицы, если их нет
-        self._create_tables()
-        
+    def collect_matches(self, limit=None) -> dict:
+        """Собирает данные из matches.html и пишет только в upcoming_urls. После успешного парсинга удаляет matches.html."""
         stats = {
             "total": 0,
             "new": 0,
@@ -475,76 +434,66 @@ class MatchesCollector:
             "deleted": 0,
             "failed": 0
         }
-        
         try:
             file_path = MATCHES_HTML_FILE
             logger.info(f"Обработка файла матчей: {file_path}")
-            
-            # Проверяем существование файла
             if not os.path.exists(file_path):
                 logger.error(f"Файл не найден: {file_path}")
                 stats["failed"] = 1
                 return stats
-                
-            # Парсим файл
             matches = self._parse_html_file(file_path)
+            if limit:
+                matches = matches[:limit]
             stats["total"] = len(matches)
             logger.info(f"Найдено предстоящих матчей: {stats['total']}")
-            
-            # Сохраняем в базу данных напрямую
             if matches:
                 result = self._save_upcoming_matches_to_db(matches)
                 stats["new"] = result["new"]
                 stats["updated"] = result["updated"]
                 stats["deleted"] = result["deleted"]
-            
+                # Удаляю файл после успешного парсинга
+                try:
+                    os.remove(file_path)
+                    logger.info(f"Файл {file_path} удалён после успешного парсинга")
+                except Exception as e:
+                    logger.warning(f"Не удалось удалить файл {file_path}: {e}")
             return stats
-            
         except Exception as e:
             logger.error(f"Ошибка при обработке матчей: {str(e)}")
             stats["failed"] = 1
             return stats
     
-    def collect_results(self) -> dict:
-        """
-        Собирает данные из HTML-файла с результатами матчей
-        
-        Returns:
-            dict: Статистика обработки
-        """
-        # Создаем таблицы, если их нет
-        self._create_tables()
-        
+    def collect_results(self, limit=None) -> dict:
+        """Собирает данные из results.html и пишет только в result_urls. После успешного парсинга удаляет results.html."""
         stats = {
             "total": 0,
             "new": 0,
             "updated": 0,
             "failed": 0
         }
-        
         try:
             file_path = RESULTS_HTML_FILE
             logger.info(f"Обработка файла результатов: {file_path}")
-            
-            # Проверяем существование файла
             if not os.path.exists(file_path):
                 logger.error(f"Файл не найден: {file_path}")
                 stats["failed"] = 1
                 return stats
-                
-            # Парсим файл
             matches = self._parse_html_file(file_path)
+            if limit:
+                matches = matches[:limit]
             stats["total"] = len(matches)
             logger.info(f"Найдено результатов матчей: {stats['total']}")
-            
-            # Сохраняем в базу данных напрямую
             if matches:
                 result = self._save_past_matches_to_db(matches)
                 stats["new"] = result["new"]
                 stats["updated"] = result["updated"]
-            
+                # Удаляю файл после успешного парсинга
+                try:
+                    os.remove(file_path)
+                    logger.info(f"Файл {file_path} удалён после успешного парсинга")
+                except Exception as e:
+                    logger.warning(f"Не удалось удалить файл {file_path}: {e}")
             return stats
-            
         except Exception as e:
             logger.error(f"Ошибка при обработке результатов: {str(e)}")
             stats["failed"] = 1
