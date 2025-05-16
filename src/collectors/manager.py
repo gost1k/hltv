@@ -89,4 +89,15 @@ class CollectorManager:
         Returns:
             dict: Statistics about the collection process
         """
-        return self.collect_match_details() 
+        return self.collect_match_details()
+    
+    def collect_upcoming_match_details(self):
+        """
+        Collect data from upcoming match HTML files and store in JSON/DB
+        Returns:
+            int: Number of successfully parsed upcoming matches
+        """
+        from src.collector.match_upcoming import MatchUpcomingCollector
+        collector = MatchUpcomingCollector()
+        stats = collector.collect()
+        return stats.get('successful_match_data', 0) 

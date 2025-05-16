@@ -50,10 +50,12 @@ CREATE_TABLES = [
     # Игроки в предстоящих матчах
     '''
     CREATE TABLE IF NOT EXISTS upcoming_match_players (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
         match_id INTEGER NOT NULL,
-        player_nickname TEXT NOT NULL,
+        player_id INTEGER,
+        player_nickname TEXT,
         team_id INTEGER,
-        PRIMARY KEY (match_id, player_nickname),
+        team_position INTEGER,
         FOREIGN KEY (match_id) REFERENCES upcoming_match (match_id)
     )
     ''',

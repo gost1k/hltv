@@ -1,6 +1,6 @@
 """
 Модуль для извлечения данных из HTML-файлов предстоящих матчей
-и сохранения их в таблицы match_upcoming и match_upcoming_players
+и сохранения их в таблицы upcoming_match и upcoming_match_players
 """
 import os
 import re
@@ -12,9 +12,17 @@ from datetime import datetime
 import time
 from src.config.constants import MATCH_UPCOMING_DIR
 from src.config.selectors import *
+import json
 
 # Настройка логирования
 logger = logging.getLogger(__name__)
+
+# Директории для JSON файлов
+JSON_OUTPUT_DIR = "storage/json"
+UPCOMING_MATCH_JSON_DIR = os.path.join(JSON_OUTPUT_DIR, "upcoming_match")
+UPCOMING_PLAYERS_JSON_DIR = os.path.join(JSON_OUTPUT_DIR, "upcoming_players")
+os.makedirs(UPCOMING_MATCH_JSON_DIR, exist_ok=True)
+os.makedirs(UPCOMING_PLAYERS_JSON_DIR, exist_ok=True)
 
 class MatchUpcomingCollector:
     """
@@ -140,8 +148,11 @@ class MatchUpcomingCollector:
                 logger.error(f"Не удалось извлечь данные матча из {file_path}")
                 return "error"
                 
-            # Сохраняем данные матча в БД
-            self._save_match_details(match_data)
+            # Добавляем дату обработки
+            match_data['parsed_at'] = datetime.now().isoformat()
+            
+            # Сохраняем детали матча в JSON
+            self._save_match_details_to_json(match_data)
             
             # Проверяем, есть ли определенные команды в матче
             # Если обе команды TBD, игроков точно нет, пропускаем сбор
@@ -159,8 +170,8 @@ class MatchUpcomingCollector:
             players_data = self._parse_player_data(soup, match_id)
             
             if players_data:
-                # Сохраняем данные игроков в БД
-                self._save_player_data(players_data)
+                # Сохраняем данные игроков в JSON
+                self._save_players_to_json(match_id, players_data)
                 
             logger.info(f"Успешно обработан файл {file_path}")
             
@@ -497,136 +508,37 @@ class MatchUpcomingCollector:
             logger.error(f"Ошибка при извлечении данных игрока в матче {match_id}: {str(e)}")
             return None
     
-    def _save_match_details(self, match_data):
+    def _save_match_details_to_json(self, match_data):
         """
-        Сохраняет данные предстоящего матча в базу данных
-        
-        Args:
-            match_data (dict): Данные матча
-            
-        Returns:
-            bool: True если успешно, False если ошибка
+        Сохраняет детали матча в JSON файл
         """
         try:
-            conn = sqlite3.connect(self.db_path)
-            cursor = conn.cursor()
-            
-            # Проверяем, существует ли уже запись для этого матча
-            cursor.execute('SELECT 1 FROM match_upcoming WHERE match_id = ?', (match_data['match_id'],))
-            exists = cursor.fetchone() is not None
-            
-            if exists:
-                # Обновляем существующую запись
-                cursor.execute('''
-                    UPDATE match_upcoming SET 
-                    datetime = ?,
-                    team1_id = ?,
-                    team1_name = ?,
-                    team1_rank = ?,
-                    team2_id = ?,
-                    team2_name = ?,
-                    team2_rank = ?,
-                    event_id = ?,
-                    event_name = ?,
-                    head_to_head_team1_wins = ?,
-                    head_to_head_team2_wins = ?,
-                    status = ?,
-                    parsed_at = CURRENT_TIMESTAMP
-                    WHERE match_id = ?
-                ''', (
-                    match_data['datetime'],
-                    match_data['team1_id'],
-                    match_data['team1_name'],
-                    match_data['team1_rank'],
-                    match_data['team2_id'],
-                    match_data['team2_name'],
-                    match_data['team2_rank'],
-                    match_data['event_id'],
-                    match_data['event_name'],
-                    match_data['head_to_head_team1_wins'],
-                    match_data['head_to_head_team2_wins'],
-                    match_data['status'],
-                    match_data['match_id']
-                ))
-                logger.info(f"Обновлены данные предстоящего матча {match_data['match_id']}")
-            else:
-                # Добавляем новую запись
-                cursor.execute('''
-                    INSERT INTO match_upcoming (
-                    match_id, datetime, team1_id, team1_name, team1_rank,
-                    team2_id, team2_name, team2_rank, event_id, event_name,
-                    head_to_head_team1_wins, head_to_head_team2_wins, status
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                ''', (
-                    match_data['match_id'],
-                    match_data['datetime'],
-                    match_data['team1_id'],
-                    match_data['team1_name'],
-                    match_data['team1_rank'],
-                    match_data['team2_id'],
-                    match_data['team2_name'],
-                    match_data['team2_rank'],
-                    match_data['event_id'],
-                    match_data['event_name'],
-                    match_data['head_to_head_team1_wins'],
-                    match_data['head_to_head_team2_wins'],
-                    match_data['status']
-                ))
-                logger.info(f"Добавлены данные предстоящего матча {match_data['match_id']}")
-            
-            conn.commit()
-            conn.close()
+            match_id = match_data['match_id']
+            json_file_path = os.path.join(UPCOMING_MATCH_JSON_DIR, f"{match_id}.json")
+            with open(json_file_path, 'w', encoding='utf-8') as f:
+                json.dump(match_data, f, ensure_ascii=False, indent=2)
+            logger.info(f"Сохранены детали матча {match_id} в файл {json_file_path}")
             return True
-            
         except Exception as e:
-            logger.error(f"Ошибка при сохранении данных матча {match_data['match_id']}: {str(e)}")
+            logger.error(f"Ошибка при сохранении деталей матча {match_data['match_id']} в JSON: {str(e)}")
             return False
     
-    def _save_player_data(self, players_data):
+    def _save_players_to_json(self, match_id, players_data):
         """
-        Сохраняет данные игроков в базу данных
-        
-        Args:
-            players_data (list): Список с данными игроков
-            
-        Returns:
-            bool: True если успешно, False если ошибка
+        Сохраняет игроков матча в JSON файл
         """
-        if not players_data:
-            logger.warning("Нет данных игроков для сохранения")
-            return False
-            
         try:
-            conn = sqlite3.connect(self.db_path)
-            cursor = conn.cursor()
-            
-            # Удаляем существующие записи для этого матча
-            match_id = players_data[0]['match_id']
-            cursor.execute('DELETE FROM match_upcoming_players WHERE match_id = ?', (match_id,))
-            
-            # Добавляем новые записи
-            for player_data in players_data:
-                cursor.execute('''
-                    INSERT INTO match_upcoming_players (
-                    match_id, team_id, player_id, player_nickname,
-                    fullName, nickName
-                    ) VALUES (?, ?, ?, ?, ?, ?)
-                ''', (
-                    player_data['match_id'],
-                    player_data['team_id'],
-                    player_data['player_id'],
-                    player_data['player_nickname'],
-                    player_data['fullName'],
-                    player_data['nickName']
-                ))
-            
-            conn.commit()
-            conn.close()
-            logger.info(f"Сохранены данные {len(players_data)} игроков для матча {match_id}")
+            json_file_path = os.path.join(UPCOMING_PLAYERS_JSON_DIR, f"{match_id}.json")
+            data = {
+                'match_id': match_id,
+                'players': players_data
+            }
+            with open(json_file_path, 'w', encoding='utf-8') as f:
+                json.dump(data, f, ensure_ascii=False, indent=2)
+            logger.info(f"Сохранены игроки для матча {match_id} в файл {json_file_path}")
             return True
-            
         except Exception as e:
-            logger.error(f"Ошибка при сохранении данных игроков: {str(e)}")
+            logger.error(f"Ошибка при сохранении игроков для матча {match_id} в JSON: {str(e)}")
             return False
 
 if __name__ == "__main__":

@@ -9,6 +9,7 @@ import logging
 import argparse
 import sqlite3
 from datetime import datetime
+import time
 
 # Добавляем корневую директорию проекта в sys.path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
@@ -144,6 +145,87 @@ def load_upcoming_players(db_path):
         logger.error(f"Ошибка при загрузке игроков предстоящих матчей: {str(e)}")
         return {"processed": 0, "success": 0, "error": len(json_files) if 'json_files' in locals() else 0}
 
+def load_upcoming_matches_from_files(db_path):
+    """
+    Загружает предстоящие матчи из отдельных JSON-файлов в storage/json/upcoming_match/
+    """
+    import glob
+    import json
+
+    matches_json_dir = "storage/json/upcoming_match"
+    if not os.path.exists(matches_json_dir):
+        logger.info(f"Директория {matches_json_dir} не существует, пропускаем загрузку матчей")
+        return {"processed": 0, "success": 0, "error": 0}
+
+    stats = {"processed": 0, "success": 0, "error": 0}
+    json_files = glob.glob(os.path.join(matches_json_dir, "*.json"))
+    logger.info(f"Найдено {len(json_files)} файлов с предстоящими матчами")
+
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
+
+    for file_path in json_files:
+        try:
+            stats["processed"] += 1
+            with open(file_path, 'r', encoding='utf-8') as f:
+                match = json.load(f)
+            cursor.execute('''
+                INSERT OR REPLACE INTO upcoming_match (
+                    match_id, datetime, team1_id, team1_name, team1_rank,
+                    team2_id, team2_name, team2_rank, event_id, event_name,
+                    head_to_head_team1_wins, head_to_head_team2_wins, status, parsed, last_updated
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, CURRENT_TIMESTAMP)
+            ''', (
+                match['match_id'],
+                match.get('datetime'),
+                match.get('team1_id'),
+                match.get('team1_name'),
+                match.get('team1_rank'),
+                match.get('team2_id'),
+                match.get('team2_name'),
+                match.get('team2_rank'),
+                match.get('event_id'),
+                match.get('event_name'),
+                match.get('head_to_head_team1_wins'),
+                match.get('head_to_head_team2_wins'),
+                match.get('status', 'upcoming')
+            ))
+            conn.commit()
+            stats["success"] += 1
+            logger.info(f"Загружен матч {match['match_id']}")
+            # Удаляем файл после успешной загрузки
+            os.remove(file_path)
+            logger.info(f"Файл {os.path.basename(file_path)} удален после загрузки")
+        except Exception as e:
+            logger.error(f"Ошибка при загрузке матча из {file_path}: {str(e)}")
+            stats["error"] += 1
+
+    conn.close()
+    return stats
+
+def cleanup_expired_upcoming_matches(db_path):
+    """
+    Удаляет устаревшие матчи (у которых datetime < текущее время) из upcoming_match
+    и связанные с ними записи из upcoming_match_players
+    """
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
+    now = int(time.time())
+    # Получаем id устаревших матчей
+    cursor.execute("SELECT match_id FROM upcoming_match WHERE datetime < ?", (now,))
+    expired_ids = [row[0] for row in cursor.fetchall()]
+    if expired_ids:
+        placeholders = ','.join(['?'] * len(expired_ids))
+        # Удаляем из upcoming_match_players
+        cursor.execute(f"DELETE FROM upcoming_match_players WHERE match_id IN ({placeholders})", expired_ids)
+        # Удаляем из upcoming_match
+        cursor.execute(f"DELETE FROM upcoming_match WHERE match_id IN ({placeholders})", expired_ids)
+        conn.commit()
+        logger.info(f"Удалено {len(expired_ids)} устаревших матчей и связанных игроков")
+    else:
+        logger.info("Нет устаревших матчей для удаления")
+    conn.close()
+
 def main():
     """
     Основная функция скрипта
@@ -152,30 +234,24 @@ def main():
     
     try:
         logger.info("Начало загрузки предстоящих матчей из JSON в базу данных")
-        
+        # Удаляем устаревшие матчи и игроков
+        cleanup_expired_upcoming_matches(args.db_path)
         # Создаем таблицу для игроков предстоящих матчей
         create_upcoming_match_players_table(args.db_path)
-        
-        # Загружаем предстоящие матчи
-        loader = MatchesLoader(db_path=args.db_path)
-        matches_stats = loader.load_upcoming_matches_only()
-        
+        # Загружаем предстоящие матчи из отдельных файлов
+        matches_stats = load_upcoming_matches_from_files(args.db_path)
         # Загружаем игроков предстоящих матчей
         players_stats = load_upcoming_players(args.db_path)
-        
         # Выводим статистику
         logger.info("======== Загрузка предстоящих матчей ========")
         logger.info(f"Обработано файлов: {matches_stats.get('processed', 0)}")
         logger.info(f"Успешно загружено: {matches_stats.get('success', 0)}")
         logger.info(f"Ошибок: {matches_stats.get('error', 0)}")
-        
         logger.info("======== Загрузка игроков предстоящих матчей ========")
         logger.info(f"Обработано файлов: {players_stats.get('processed', 0)}")
         logger.info(f"Успешно загружено: {players_stats.get('success', 0)}")
         logger.info(f"Ошибок: {players_stats.get('error', 0)}")
-        
         logger.info("Загрузка предстоящих матчей завершена")
-        
     except Exception as e:
         logger.error(f"Ошибка при выполнении скрипта: {str(e)}")
         sys.exit(1)

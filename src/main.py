@@ -243,6 +243,17 @@ def main():
             count = parser_manager.parse_match_details(limit=None, parse_past=True, parse_upcoming=False)
             logger.info(f"Downloaded and processed {count} result match pages.")
         
+        if args.download_upcoming_match_page:
+            logger.info("Starting download of upcoming match pages...")
+            count = parser_manager.parse_match_details(limit=None, parse_past=False, parse_upcoming=True)
+            logger.info(f"Downloaded and processed {count} upcoming match pages.")
+        
+        if args.write_json_upcoming_match_page:
+            logger.info("Запущен режим write-json-upcoming-match-page: будет выполнен парсинг HTML-файлов предстоящих матчей и сохранение в JSON.")
+            count = collector_manager.collect_upcoming_match_details()
+            logger.info(f"Upcoming match details parsing completed. Successfully parsed: {count}")
+            return
+        
         logger.info("HLTV Parser completed successfully")
         
     except Exception as e:
