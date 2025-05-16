@@ -206,7 +206,8 @@ def load_upcoming_matches_from_files(db_path):
 def cleanup_expired_upcoming_matches(db_path):
     """
     Удаляет устаревшие матчи (у которых datetime < текущее время) из upcoming_match
-    и связанные с ними записи из upcoming_match_players
+    и связанные с ними записи из upcoming_match_players и upcoming_match_streamers
+    Возвращает кортеж (кол-во матчей, кол-во игроков, кол-во стримов)
     """
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
@@ -214,17 +215,28 @@ def cleanup_expired_upcoming_matches(db_path):
     # Получаем id устаревших матчей
     cursor.execute("SELECT match_id FROM upcoming_match WHERE datetime < ?", (now,))
     expired_ids = [row[0] for row in cursor.fetchall()]
+    deleted_matches = len(expired_ids)
+    deleted_players = 0
+    deleted_streams = 0
     if expired_ids:
         placeholders = ','.join(['?'] * len(expired_ids))
+        # Считаем сколько игроков и стримов будет удалено
+        cursor.execute(f"SELECT COUNT(*) FROM upcoming_match_players WHERE match_id IN ({placeholders})", expired_ids)
+        deleted_players = cursor.fetchone()[0]
+        cursor.execute(f"SELECT COUNT(*) FROM upcoming_match_streamers WHERE match_id IN ({placeholders})", expired_ids)
+        deleted_streams = cursor.fetchone()[0]
         # Удаляем из upcoming_match_players
         cursor.execute(f"DELETE FROM upcoming_match_players WHERE match_id IN ({placeholders})", expired_ids)
+        # Удаляем из upcoming_match_streamers
+        cursor.execute(f"DELETE FROM upcoming_match_streamers WHERE match_id IN ({placeholders})", expired_ids)
         # Удаляем из upcoming_match
         cursor.execute(f"DELETE FROM upcoming_match WHERE match_id IN ({placeholders})", expired_ids)
         conn.commit()
-        logger.info(f"Удалено {len(expired_ids)} устаревших матчей и связанных игроков")
+        logger.info(f"Удалено {deleted_matches} устаревших матчей, {deleted_players} игроков, {deleted_streams} стримов")
     else:
         logger.info("Нет устаревших матчей для удаления")
     conn.close()
+    return deleted_matches, deleted_players, deleted_streams
 
 def create_upcoming_match_streamers_table(db_path):
     """
@@ -316,7 +328,7 @@ def main():
     try:
         logger.info("Начало загрузки предстоящих матчей из JSON в базу данных")
         # Удаляем устаревшие матчи и игроков
-        cleanup_expired_upcoming_matches(args.db_path)
+        deleted_matches, deleted_players, deleted_streams = cleanup_expired_upcoming_matches(args.db_path)
         # Создаем таблицу для игроков предстоящих матчей
         create_upcoming_match_players_table(args.db_path)
         # Загружаем предстоящие матчи из отдельных файлов
@@ -326,6 +338,10 @@ def main():
         # Загружаем стримеры предстоящих матчей
         streamers_stats = load_upcoming_streamers(args.db_path)
         # Выводим статистику
+        logger.info("======== Удалено старых записей ========")
+        logger.info(f"Матчей: {deleted_matches}")
+        logger.info(f"Игроков: {deleted_players}")
+        logger.info(f"Стримы: {deleted_streams}")
         logger.info("======== Загрузка предстоящих матчей ========")
         logger.info(f"Обработано файлов: {matches_stats.get('processed', 0)}")
         logger.info(f"Успешно загружено: {matches_stats.get('success', 0)}")
