@@ -226,6 +226,87 @@ def cleanup_expired_upcoming_matches(db_path):
         logger.info("Нет устаревших матчей для удаления")
     conn.close()
 
+def create_upcoming_match_streamers_table(db_path):
+    """
+    Создает таблицу upcoming_match_streamers, если она не существует
+    """
+    try:
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS upcoming_match_streamers (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                match_id INTEGER NOT NULL,
+                name TEXT,
+                lang TEXT,
+                url TEXT,
+                FOREIGN KEY (match_id) REFERENCES upcoming_urls (id)
+            )
+        ''')
+        conn.commit()
+        conn.close()
+        logger.info("Таблица upcoming_match_streamers успешно создана/проверена")
+    except Exception as e:
+        logger.error(f"Ошибка при создании таблицы upcoming_match_streamers: {str(e)}")
+        raise
+
+def load_upcoming_streamers(db_path):
+    """
+    Загружает список стримеров предстоящих матчей из JSON в базу данных
+    """
+    try:
+        streamers_json_dir = "storage/json/upcoming_streams"
+        if not os.path.exists(streamers_json_dir):
+            logger.info(f"Директория {streamers_json_dir} не существует, пропускаем загрузку стримеров")
+            return {"processed": 0, "success": 0, "error": 0}
+        import json
+        import glob
+        stats = {"processed": 0, "success": 0, "error": 0}
+        json_files = glob.glob(os.path.join(streamers_json_dir, "*.json"))
+        logger.info(f"Найдено {len(json_files)} файлов со стримерами предстоящих матчей")
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+        for file_path in json_files:
+            try:
+                stats["processed"] += 1
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                if 'match_id' not in data or 'streams' not in data:
+                    logger.warning(f"В файле {file_path} отсутствуют необходимые данные")
+                    stats["error"] += 1
+                    continue
+                match_id = data['match_id']
+                cursor.execute('SELECT 1 FROM upcoming_urls WHERE id = ?', (match_id,))
+                if not cursor.fetchone():
+                    logger.warning(f"Матч с ID {match_id} не найден в базе данных, пропускаем")
+                    stats["error"] += 1
+                    continue
+                cursor.execute('DELETE FROM upcoming_match_streamers WHERE match_id = ?', (match_id,))
+                for streamer in data['streams']:
+                    cursor.execute('''
+                        INSERT INTO upcoming_match_streamers (
+                            match_id, name, lang, url
+                        ) VALUES (?, ?, ?, ?)
+                    ''', (
+                        match_id,
+                        streamer.get('name'),
+                        streamer.get('lang'),
+                        streamer.get('url')
+                    ))
+                conn.commit()
+                stats["success"] += 1
+                logger.info(f"Загружены стримеры для матча {match_id}")
+                os.remove(file_path)
+                logger.info(f"Файл {os.path.basename(file_path)} удален после обработки")
+            except Exception as e:
+                logger.error(f"Ошибка при загрузке стримеров матча из {file_path}: {str(e)}")
+                stats["error"] += 1
+        conn.close()
+        return stats
+    except Exception as e:
+        logger.error(f"Ошибка при загрузке стримеров предстоящих матчей: {str(e)}")
+        return {"processed": 0, "success": 0, "error": len(json_files) if 'json_files' in locals() else 0}
+
 def main():
     """
     Основная функция скрипта
@@ -242,6 +323,8 @@ def main():
         matches_stats = load_upcoming_matches_from_files(args.db_path)
         # Загружаем игроков предстоящих матчей
         players_stats = load_upcoming_players(args.db_path)
+        # Загружаем стримеры предстоящих матчей
+        streamers_stats = load_upcoming_streamers(args.db_path)
         # Выводим статистику
         logger.info("======== Загрузка предстоящих матчей ========")
         logger.info(f"Обработано файлов: {matches_stats.get('processed', 0)}")
@@ -251,6 +334,10 @@ def main():
         logger.info(f"Обработано файлов: {players_stats.get('processed', 0)}")
         logger.info(f"Успешно загружено: {players_stats.get('success', 0)}")
         logger.info(f"Ошибок: {players_stats.get('error', 0)}")
+        logger.info("======== Загрузка стримеров предстоящих матчей ========")
+        logger.info(f"Обработано файлов: {streamers_stats.get('processed', 0)}")
+        logger.info(f"Успешно загружено: {streamers_stats.get('success', 0)}")
+        logger.info(f"Ошибок: {streamers_stats.get('error', 0)}")
         logger.info("Загрузка предстоящих матчей завершена")
     except Exception as e:
         logger.error(f"Ошибка при выполнении скрипта: {str(e)}")

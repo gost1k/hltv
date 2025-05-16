@@ -21,8 +21,10 @@ logger = logging.getLogger(__name__)
 JSON_OUTPUT_DIR = "storage/json"
 UPCOMING_MATCH_JSON_DIR = os.path.join(JSON_OUTPUT_DIR, "upcoming_match")
 UPCOMING_PLAYERS_JSON_DIR = os.path.join(JSON_OUTPUT_DIR, "upcoming_players")
+UPCOMING_STREAMERS_JSON_DIR = os.path.join(JSON_OUTPUT_DIR, "upcoming_streams")
 os.makedirs(UPCOMING_MATCH_JSON_DIR, exist_ok=True)
 os.makedirs(UPCOMING_PLAYERS_JSON_DIR, exist_ok=True)
+os.makedirs(UPCOMING_STREAMERS_JSON_DIR, exist_ok=True)
 
 class MatchUpcomingCollector:
     """
@@ -173,6 +175,11 @@ class MatchUpcomingCollector:
                 # Сохраняем данные игроков в JSON
                 self._save_players_to_json(match_id, players_data)
                 
+            # Извлекаем данные стримеров
+            streamers_data = self._parse_streamers_data(soup, match_id)
+            if streamers_data:
+                self._save_streamers_to_json(match_id, streamers_data)
+            
             logger.info(f"Успешно обработан файл {file_path}")
             
             # Удаляем файл после успешной обработки
@@ -539,6 +546,67 @@ class MatchUpcomingCollector:
             return True
         except Exception as e:
             logger.error(f"Ошибка при сохранении игроков для матча {match_id} в JSON: {str(e)}")
+            return False
+
+    def _parse_streamers_data(self, soup, match_id):
+        """
+        Извлекает данные о стримерах из HTML
+        Args:
+            soup (BeautifulSoup): HTML-документ
+            match_id (int): ID матча
+        Returns:
+            list: Список словарей с данными стримеров
+        """
+        streamers = []
+        try:
+            streams_block = soup.select_one('.streams')
+            if not streams_block:
+                logger.info(f"Блок .streams не найден для матча {match_id}")
+                return streamers
+            # Игнорируем .hltv-live
+            for stream_box in streams_block.select('.stream-box'):
+                if stream_box.select_one('.hltv-live'):
+                    continue
+                embed = stream_box.select_one('.stream-box-embed')
+                if not embed:
+                    continue
+                # Язык
+                flag_img = embed.select_one('img.flag')
+                lang = flag_img['title'] if flag_img and flag_img.has_attr('title') else None
+                # Имя
+                name = embed.get_text(strip=True)
+                # URL
+                ext = stream_box.select_one('.external-stream a')
+                url = ext['href'] if ext and ext.has_attr('href') else None
+                if url:
+                    streamers.append({
+                        'match_id': match_id,
+                        'name': name,
+                        'lang': lang,
+                        'url': url
+                    })
+            logger.info(f"Извлечено {len(streamers)} стримеров для матча {match_id}")
+            return streamers
+        except Exception as e:
+            logger.error(f"Ошибка при парсинге стримеров для матча {match_id}: {str(e)}")
+            return []
+
+    def _save_streamers_to_json(self, match_id, streamers_data):
+        """
+        Сохраняет стримеров матча в JSON файл
+        """
+        try:
+            json_file_path = os.path.join(UPCOMING_STREAMERS_JSON_DIR, f"{match_id}.json")
+            data = {
+                'match_id': match_id,
+                'streams': streamers_data
+            }
+            with open(json_file_path, 'w', encoding='utf-8') as f:
+                json.dump(data, f, ensure_ascii=False, indent=2)
+            logger.info(f"Сохранены стримеры для матча {match_id} в файл {json_file_path}")
+            return True
+        except Exception as e:
+            logger.error(f"Ошибка при сохранении стримеров для матча {match_id} в JSON: {str(e)}")
             return False
 
 if __name__ == "__main__":

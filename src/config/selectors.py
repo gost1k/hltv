@@ -109,4 +109,12 @@ COMMON = {
     # Окно принятия cookie
     'COOKIE_DIALOG': "CybotCookiebotDialog",
     'COOKIE_ACCEPT_ALL': "CybotCookiebotDialogBodyLevelButtonLevelOptinAllowAll"
-} 
+}
+
+# Селекторы для стримов
+STREAMS_BLOCK = '.streams'
+STREAM_BOX = '.stream-box'
+STREAM_BOX_EMBED = '.stream-box-embed'
+STREAM_FLAG_IMG = 'img.flag'
+STREAM_EXTERNAL_LINK = '.external-stream a'
+STREAM_HLTV_LIVE = '.hltv-live' 
