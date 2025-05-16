@@ -418,8 +418,98 @@ class UserDevBot(BaseHLTVBot):
                 reply_markup=self.markup
             )
     
-    # Здесь будет остальная логика, аналогичная user_bot
-    # В финальной версии все методы должны быть реализованы
+    async def show_completed_matches(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        keyboard = [
+            [KeyboardButton("За сегодня")],
+            [KeyboardButton("За вчера")],
+            [KeyboardButton("За 3 дня")],
+            [KeyboardButton("По событию")],
+            [KeyboardButton("Назад")]
+        ]
+        markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+        await update.message.reply_text(
+            "Выберите период для просмотра прошедших матчей:",
+            reply_markup=markup
+        )
+        await update.message.reply_text(
+            "Введите название команды, например Natus Vincere, чтобы посмотреть будущие и прошедшие матчи."
+        )
+
+    async def show_upcoming_matches(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        keyboard = [
+            [KeyboardButton("На сегодня")],
+            [KeyboardButton("На завтра")],
+            [KeyboardButton("На 3 дня")],
+            [KeyboardButton("По событию")],
+            [KeyboardButton("Назад")]
+        ]
+        markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+        await update.message.reply_text(
+            "Выберите период для просмотра предстоящих матчей:",
+            reply_markup=markup
+        )
+        await update.message.reply_text(
+            "Введите название команды, например Natus Vincere, чтобы посмотреть будущие и прошедшие матчи."
+        )
+
+    async def show_matches_for_period(self, update: Update, context: ContextTypes.DEFAULT_TYPE, days=1):
+        user = update.effective_user
+        user_info = self._get_safe_user_info(user)
+        today = datetime.now(MOSCOW_TIMEZONE)
+        end_date = datetime(today.year, today.month, today.day, 0, 0, 0, tzinfo=MOSCOW_TIMEZONE) - timedelta(days=1)
+        end_timestamp = end_date.timestamp() + 86399
+        start_date = end_date - timedelta(days=days-1)
+        start_timestamp = start_date.timestamp()
+        self.logger.info(f"{user_info} - Запрос матчей за период с {start_date.strftime('%d.%m.%Y')} по {end_date.strftime('%d.%m.%Y')}")
+        events = self.get_matches_by_date(start_timestamp, end_timestamp)
+        match_count = sum(len(event_data['matches']) for event_data in events.values()) if events else 0
+        self.logger.info(f"{user_info} - Найдено {match_count} матчей за указанный период")
+        if days == 1:
+            period_text = f"за {end_date.strftime('%d.%m.%Y')}"
+        else:
+            period_text = f"за период с {start_date.strftime('%d.%m.%Y')} по {end_date.strftime('%d.%m.%Y')}"
+        message = f"📊 <b>Результаты матчей {period_text}</b>\n\n"
+        message += self.format_matches_message(events)
+        await update.message.reply_text(message, parse_mode="HTML", reply_markup=self.markup)
+        await update.message.reply_text(
+            "Введите название команды, например Natus Vincere, чтобы посмотреть будущие и прошедшие матчи команды."
+        )
+
+    async def show_upcoming_matches_for_period(self, update: Update, context: ContextTypes.DEFAULT_TYPE, days=0):
+        user = update.effective_user
+        user_info = self._get_safe_user_info(user)
+        today = datetime.now(MOSCOW_TIMEZONE)
+        current_timestamp = today.timestamp()
+        if days == 0:
+            start_timestamp = current_timestamp
+            end_date = datetime(today.year, today.month, today.day, 23, 59, 59, tzinfo=MOSCOW_TIMEZONE)
+            end_timestamp = end_date.timestamp()
+            period_text = "на сегодня"
+            self.logger.info(f"{user_info} - Запрос предстоящих матчей на сегодня ({start_timestamp} - {end_timestamp})")
+        elif days == 1:
+            tomorrow = today + timedelta(days=1)
+            start_date = datetime(tomorrow.year, tomorrow.month, tomorrow.day, 0, 0, 0, tzinfo=MOSCOW_TIMEZONE)
+            end_date = datetime(tomorrow.year, tomorrow.month, tomorrow.day, 23, 59, 59, tzinfo=MOSCOW_TIMEZONE)
+            start_timestamp = start_date.timestamp()
+            end_timestamp = end_date.timestamp()
+            period_text = f"на завтра ({start_date.strftime('%d.%m.%Y')})"
+            self.logger.info(f"{user_info} - Запрос предстоящих матчей на завтра ({start_timestamp} - {end_timestamp})")
+        else:
+            start_date = datetime(today.year, today.month, today.day, 0, 0, 0, tzinfo=MOSCOW_TIMEZONE)
+            end_date = start_date + timedelta(days=days)
+            start_timestamp = current_timestamp
+            end_timestamp = end_date.timestamp()
+            period_text = f"на ближайшие {days} дней"
+            self.logger.info(f"{user_info} - Запрос предстоящих матчей на {days} дней ({start_timestamp} - {end_timestamp})")
+        events = self.get_upcoming_matches_by_date(start_timestamp, end_timestamp)
+        match_count = sum(len(event_data['matches']) for event_data in events.values()) if events else 0
+        self.logger.info(f"{user_info} - Найдено {match_count} предстоящих матчей за указанный период")
+        message = f"📅 <b>Предстоящие матчи {period_text}</b>\n\n"
+        message += self.format_upcoming_matches_message(events)
+        await update.message.reply_text(message, parse_mode="HTML", reply_markup=self.markup)
+        await update.message.reply_text(
+            "Введите название команды, например Natus Vincere, чтобы посмотреть будущие и прошедшие матчи команды."
+        )
 
 # Используем импорт из user_bot для сохранения идентичной логики
 from src.bots.user_bot.telegram_bot import HLTVStatsBot

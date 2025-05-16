@@ -239,6 +239,9 @@ class HLTVStatsBot:
             "Выберите период для просмотра прошедших матчей:",
             reply_markup=markup
         )
+        await update.message.reply_text(
+            "Введите название команды, например Natus Vincere, чтобы посмотреть будущие и прошедшие матчи команды."
+        )
     
     async def show_upcoming_matches(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """
@@ -256,6 +259,9 @@ class HLTVStatsBot:
         await update.message.reply_text(
             "Выберите период для просмотра предстоящих матчей:",
             reply_markup=markup
+        )
+        await update.message.reply_text(
+            "Введите название команды, например Natus Vincere, чтобы посмотреть будущие и прошедшие матчи команды."
         )
     
     async def send_yesterday_stats(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -293,6 +299,9 @@ class HLTVStatsBot:
         
         # Отправляем сообщение
         await update.message.reply_text(message, parse_mode="HTML", reply_markup=self.markup)
+        await update.message.reply_text(
+            "Введите название команды, например Natus Vincere, чтобы посмотреть будущие и прошедшие матчи команды."
+        )
     
     async def show_matches_for_period(self, update: Update, context: ContextTypes.DEFAULT_TYPE, days=1):
         """
@@ -334,6 +343,9 @@ class HLTVStatsBot:
         
         # Отправляем сообщение
         await update.message.reply_text(message, parse_mode="HTML", reply_markup=self.markup)
+        await update.message.reply_text(
+            "Введите название команды, например Natus Vincere, чтобы посмотреть будущие и прошедшие матчи команды."
+        )
     
     async def show_events_list(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """
@@ -1106,6 +1118,9 @@ class HLTVStatsBot:
         
         # Отправляем сообщение
         await update.message.reply_text(message, parse_mode="HTML", reply_markup=self.markup)
+        await update.message.reply_text(
+            "Введите название команды, например Natus Vincere, чтобы посмотреть будущие и прошедшие матчи команды."
+        )
     
     async def send_upcoming_matches(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """
