@@ -61,6 +61,12 @@ def parse_arguments():
                       help='Skip loading match details (only with --load-past-only)')
     parser.add_argument('--skip-player-stats', action='store_true',
                       help='Skip loading player statistics (only with --load-past-only)')
+    parser.add_argument('--download-results-page', action='store_true', help='Download results page')
+    parser.add_argument('--write-db-results-list', action='store_true', help='Write results list to DB')
+    parser.add_argument('--download-result-match-page', action='store_true', help='Download result match details pages from DB')
+    parser.add_argument('--write-json-match-page', action='store_true', help='Write match details JSON to DB (was --write-db-match-page)')
+    # dev-режим для write-db-results-list
+    parser.add_argument('--dev', action='store_true', help='Development mode: limit DB writes to 3 records (only for --write-db-results-list)')
     
     return parser.parse_args()
 
@@ -89,15 +95,14 @@ def main():
         collector_manager = CollectorManager()
         
         # Handle parser commands
+        if args.download_results_page:
+            logger.info("Starting results page parsing...")
+            results_file = parser_manager.parse_results()
+            logger.info(f"Results page saved to: {results_file}")
         if args.parse_matches:
             logger.info("Starting matches page parsing...")
             matches_file = parser_manager.parse_matches()
             logger.info(f"Matches page saved to: {matches_file}")
-            
-        if args.parse_results:
-            logger.info("Starting results page parsing...")
-            results_file = parser_manager.parse_results()
-            logger.info(f"Results page saved to: {results_file}")
             
         if args.parse_details or args.parse_results_details:
             if args.parse_details:
@@ -216,6 +221,12 @@ def main():
                     logger.info(f"Errors: {details_stats.get('player_stats_error', 0)}")
             
             return
+        
+        if args.write_db_results_list:
+            logger.info("Collecting data from results.html (new flag)...")
+            limit = 3 if args.dev else None
+            results_stats = collector_manager.collect_results(limit=limit)
+            logger.info(f"Results list collection completed: {results_stats}")
         
         logger.info("HLTV Parser completed successfully")
         

@@ -16,15 +16,15 @@ class CollectorManager:
     def __init__(self):
         self.db = DatabaseService()
         
-    def collect_results(self):
+    def collect_results(self, limit=None):
         """
         Collect data from results HTML files and store in database
-        
+        limit (int, optional): Limit number of records to write (for dev mode)
         Returns:
             dict: Statistics about the collection process
         """
         matches_collector = MatchesCollector()
-        stats = matches_collector.collect_results()
+        stats = matches_collector.collect_results(limit=limit) if limit else matches_collector.collect_results()
         return stats
         
     def collect_matches(self):

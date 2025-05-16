@@ -505,46 +505,38 @@ class MatchesCollector:
             stats["failed"] = 1
             return stats
     
-    def collect_results(self) -> dict:
+    def collect_results(self, limit=None) -> dict:
         """
         Собирает данные из HTML-файла с результатами матчей
-        
+        limit (int, optional): Limit number of records to write (for dev mode)
         Returns:
             dict: Статистика обработки
         """
         # Создаем таблицы, если их нет
         self._create_tables()
-        
         stats = {
             "total": 0,
             "new": 0,
             "updated": 0,
             "failed": 0
         }
-        
         try:
             file_path = RESULTS_HTML_FILE
             logger.info(f"Обработка файла результатов: {file_path}")
-            
-            # Проверяем существование файла
             if not os.path.exists(file_path):
                 logger.error(f"Файл не найден: {file_path}")
                 stats["failed"] = 1
                 return stats
-                
-            # Парсим файл
             matches = self._parse_html_file(file_path)
+            if limit:
+                matches = matches[:limit]
             stats["total"] = len(matches)
             logger.info(f"Найдено результатов матчей: {stats['total']}")
-            
-            # Сохраняем в базу данных напрямую
             if matches:
                 result = self._save_past_matches_to_db(matches)
                 stats["new"] = result["new"]
                 stats["updated"] = result["updated"]
-            
             return stats
-            
         except Exception as e:
             logger.error(f"Ошибка при обработке результатов: {str(e)}")
             stats["failed"] = 1
