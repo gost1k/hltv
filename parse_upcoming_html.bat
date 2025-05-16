@@ -1,6 +1,7 @@
 @echo off
-cd /d %~dp0
-set PYTHONPATH=%~dp0
+cd /d C:\projects\hltv-2
+
+@REM Parsing upcoming matches
 python -m src.main --parse-matches
 python -m src.main --collect-matches-list
 python -m src.main --parse-details --upcoming
