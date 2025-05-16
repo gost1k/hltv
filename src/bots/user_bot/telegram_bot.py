@@ -369,11 +369,10 @@ class HLTVStatsBot:
                 # Получаем список уникальных событий за указанный период для прошедших матчей
                 cursor.execute('''
                     SELECT DISTINCT event_id, event_name 
-                    FROM match_details
+                    FROM result_match
                     WHERE datetime BETWEEN ? AND ?
                     AND event_id IS NOT NULL
                     AND event_name IS NOT NULL
-                    AND status = 'completed'
                     ORDER BY event_name
                 ''', (start_timestamp, end_timestamp))
             else:  # MENU_UPCOMING_MATCHES
@@ -385,7 +384,7 @@ class HLTVStatsBot:
                 # Получаем список уникальных событий для предстоящих матчей
                 cursor.execute('''
                     SELECT DISTINCT event_id, event_name 
-                    FROM match_upcoming
+                    FROM upcoming_match
                     WHERE datetime BETWEEN ? AND ?
                     AND event_id IS NOT NULL
                     AND event_name IS NOT NULL
@@ -458,7 +457,7 @@ class HLTVStatsBot:
             # Проверяем, существует ли событие
             if event_type == MENU_COMPLETED_MATCHES:
                 # Для прошедших матчей
-                cursor.execute('SELECT event_name FROM match_details WHERE event_id = ? LIMIT 1', (event_id,))
+                cursor.execute('SELECT event_name FROM result_match WHERE event_id = ? LIMIT 1', (event_id,))
                 event_result = cursor.fetchone()
                 
                 if not event_result:
@@ -477,9 +476,8 @@ class HLTVStatsBot:
                         match_id, datetime, 
                         team1_id, team1_name, team1_score, 
                         team2_id, team2_name, team2_score
-                    FROM match_details
+                    FROM result_match
                     WHERE event_id = ?
-                    AND status = 'completed'
                     ORDER BY datetime
                 ''', (event_id,))
                 
@@ -506,7 +504,7 @@ class HLTVStatsBot:
                 message += self.format_matches_message(events)
             else:  # MENU_UPCOMING_MATCHES
                 # Для предстоящих матчей
-                cursor.execute('SELECT event_name FROM match_upcoming WHERE event_id = ? LIMIT 1', (event_id,))
+                cursor.execute('SELECT event_name FROM upcoming_match WHERE event_id = ? LIMIT 1', (event_id,))
                 event_result = cursor.fetchone()
                 
                 if not event_result:
@@ -527,9 +525,8 @@ class HLTVStatsBot:
                         match_id, datetime, 
                         team1_id, team1_name, team1_rank,
                         team2_id, team2_name, team2_rank
-                    FROM match_upcoming
+                    FROM upcoming_match
                     WHERE event_id = ?
-                    AND status = 'upcoming'
                     ORDER BY datetime
                 ''', (event_id,))
                 
@@ -593,7 +590,7 @@ class HLTVStatsBot:
                     m.team1_id, m.team1_name, m.team1_score, m.team1_rank,
                     m.team2_id, m.team2_name, m.team2_score, m.team2_rank,
                     m.event_id, m.event_name, m.demo_id, 'completed' as match_type
-                FROM match_details m
+                FROM result_match m
                 WHERE m.match_id = ?
             ''', (match_id,))
             
@@ -607,7 +604,7 @@ class HLTVStatsBot:
                         m.team1_id, m.team1_name, 0 as team1_score, m.team1_rank,
                         m.team2_id, m.team2_name, 0 as team2_score, m.team2_rank,
                         m.event_id, m.event_name, NULL as demo_id, 'upcoming' as match_type
-                    FROM match_upcoming m
+                    FROM upcoming_match m
                     WHERE m.match_id = ?
                 ''', (match_id,))
                 
@@ -642,7 +639,7 @@ class HLTVStatsBot:
                 cursor.execute('''
                     SELECT 
                         p.player_nickname as nickname, p.team_id
-                    FROM match_upcoming_players p
+                    FROM upcoming_match_players p
                     WHERE p.match_id = ?
                     ORDER BY p.team_id
                 ''', (match_id,))
@@ -794,9 +791,8 @@ class HLTVStatsBot:
                     team1_id, team1_name, team1_score, 
                     team2_id, team2_name, team2_score,
                     event_name, status, 'completed' as match_type
-                FROM match_details
+                FROM result_match
                 WHERE (LOWER(team1_name) = LOWER(?) OR LOWER(team2_name) = LOWER(?))
-                AND status = 'completed'
                 ORDER BY datetime DESC
                 LIMIT 10
             ''', (team_name, team_name))
@@ -810,9 +806,8 @@ class HLTVStatsBot:
                     team1_id, team1_name, 0 as team1_score, 
                     team2_id, team2_name, 0 as team2_score,
                     event_name, 'upcoming' as status, 'upcoming' as match_type
-                FROM match_upcoming
+                FROM upcoming_match
                 WHERE (LOWER(team1_name) = LOWER(?) OR LOWER(team2_name) = LOWER(?))
-                AND status = 'upcoming'
                 ORDER BY datetime ASC
                 LIMIT 10
             ''', (team_name, team_name))
@@ -932,9 +927,8 @@ class HLTVStatsBot:
                     m.team1_id, m.team1_name, m.team1_score, m.team1_rank,
                     m.team2_id, m.team2_name, m.team2_score, m.team2_rank,
                     m.event_id, m.event_name
-                FROM match_details m
-                WHERE m.status = 'completed'
-                AND m.datetime BETWEEN ? AND ?
+                FROM result_match m
+                WHERE m.datetime BETWEEN ? AND ?
                 ORDER BY m.event_id, m.datetime
             ''', (date_start, date_end))
             
@@ -1100,7 +1094,7 @@ class HLTVStatsBot:
                     m.team1_id, m.team1_name, m.team1_rank,
                     m.team2_id, m.team2_name, m.team2_rank,
                     m.event_id, m.event_name
-                FROM match_upcoming m
+                FROM upcoming_match m
                 WHERE m.datetime BETWEEN ? AND ?
                 AND m.status = 'upcoming'
                 ORDER BY m.event_id, m.datetime
