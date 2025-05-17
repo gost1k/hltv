@@ -214,7 +214,8 @@ class MatchesCollector:
                     id INTEGER PRIMARY KEY,
                     url TEXT NOT NULL,
                     date INTEGER NOT NULL,
-                    toParse INTEGER NOT NULL DEFAULT 1
+                    toParse INTEGER NOT NULL DEFAULT 1,
+                    reParse INTEGER NOT NULL DEFAULT 0
                 )
             ''')
             

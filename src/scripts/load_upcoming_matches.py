@@ -334,6 +334,26 @@ def load_upcoming_streamers(db_path):
         logger.error(f"Ошибка при загрузке стримеров предстоящих матчей: {str(e)}")
         return {"processed": 0, "success": 0, "error": len(json_files) if 'json_files' in locals() else 0}
 
+def is_team_determined(team_name):
+    undetermined_keywords = ['tbd', 'winner', 'loser']
+    if not team_name or any(keyword in team_name.lower() for keyword in undetermined_keywords):
+        return False
+    return True
+
+def update_upcoming_urls_to_parse(db_path):
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
+    # Получаем все матчи из upcoming_match
+    cursor.execute("SELECT match_id, team1_name, team2_name FROM upcoming_match")
+    rows = cursor.fetchall()
+    for match_id, team1, team2 in rows:
+        if is_team_determined(team1) and is_team_determined(team2):
+            cursor.execute("UPDATE upcoming_urls SET toParse=0, reParse=0 WHERE id=?", (match_id,))
+        else:
+            cursor.execute("UPDATE upcoming_urls SET reParse=1 WHERE id=?", (match_id,))
+    conn.commit()
+    conn.close()
+
 def main():
     """
     Основная функция скрипта
@@ -349,6 +369,8 @@ def main():
         create_upcoming_match_players_table(args.db_path)
         # Загружаем предстоящие матчи из отдельных файлов
         matches_stats = load_upcoming_matches_from_files(args.db_path)
+        # После загрузки матчей обновляем toParse в upcoming_urls
+        update_upcoming_urls_to_parse(args.db_path)
         # Загружаем игроков предстоящих матчей
         players_stats = load_upcoming_players(args.db_path)
         # Загружаем стримеры предстоящих матчей

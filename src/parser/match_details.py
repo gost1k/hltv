@@ -72,17 +72,17 @@ class MatchDetailsParser(BaseParser):
                     remaining_limit -= len(past_matches)
                 self.logger.info(f"Найдено {len(past_matches)} прошедших матчей для скачивания")
             
-            # Получаем предстоящие матчи для парсинга, у которых toParse = 1
+            # Получаем предстоящие матчи для парсинга, у которых toParse = 1 или reParse = 1
             if self.parse_upcoming and (remaining_limit is None or remaining_limit > 0):
                 if self.limit is None:
                     cursor.execute('''
                         SELECT id, url FROM upcoming_urls
-                        WHERE toParse = 1
+                        WHERE toParse = 1 OR reParse = 1
                     ''')
                 else:
                     cursor.execute('''
                         SELECT id, url FROM upcoming_urls
-                        WHERE toParse = 1
+                        WHERE toParse = 1 OR reParse = 1
                         LIMIT ?
                     ''', (remaining_limit,))
                 
@@ -246,6 +246,17 @@ class MatchDetailsParser(BaseParser):
                 f.write(html)
                 
             self.logger.info(f"Сохранена страница матча ID {match_id} в {file_path}")
+            
+            # Если reParse == 0, обновляем статус
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            cursor.execute("SELECT reParse FROM upcoming_urls WHERE id = ?", (match_id,))
+            row = cursor.fetchone()
+            reParse = row[0] if row else 0
+            conn.close()
+            if not is_past and reParse == 0:
+                self._update_match_status(match_id, is_past, 0)
+            
             return True
             
         except Exception as e:

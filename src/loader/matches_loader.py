@@ -87,7 +87,8 @@ class MatchesLoader:
                     id INTEGER PRIMARY KEY,
                     url TEXT NOT NULL,
                     date INTEGER NOT NULL,
-                    toParse INTEGER NOT NULL DEFAULT 1
+                    toParse INTEGER NOT NULL DEFAULT 1,
+                    reParse INTEGER NOT NULL DEFAULT 0
                 )
             ''')
             
@@ -158,17 +159,17 @@ class MatchesLoader:
                     # Update existing match (preserve current toParse value)
                     to_parse = result[0]
                     cursor.execute('''
-                        UPDATE upcoming_urls SET date = ?, toParse = ?
+                        UPDATE upcoming_urls SET date = ?, toParse = ?, reParse = ?
                         WHERE id = ?
-                    ''', (match['date'], to_parse, match['id']))
+                    ''', (match['date'], to_parse, 0, match['id']))
                     updated_count += 1
                 else:
                     # Add new match
                     to_parse = match.get('toParse', 1)  # Use value from JSON or 1 by default
                     cursor.execute('''
-                        INSERT INTO upcoming_urls (id, url, date, toParse)
-                        VALUES (?, ?, ?, ?)
-                    ''', (match['id'], match['url'], match['date'], to_parse))
+                        INSERT INTO upcoming_urls (id, url, date, toParse, reParse)
+                        VALUES (?, ?, ?, ?, ?)
+                    ''', (match['id'], match['url'], match['date'], to_parse, 0))
                     new_count += 1
                 
                 # Delete duplicate entries from results table (if match moved)
