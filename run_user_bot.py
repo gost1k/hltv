@@ -4,6 +4,11 @@ Run bot for users
 """
 import sys
 import os
+import logging
+
+# Отключаем подробные логи httpx/urllib3
+logging.getLogger("httpx").setLevel(logging.WARNING)
+logging.getLogger("telegram.vendor.ptb_urllib3.urllib3.connectionpool").setLevel(logging.WARNING)
 
 # Создаем директорию для логов
 if sys.platform == "win32":
