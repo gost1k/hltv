@@ -1,4 +1,8 @@
 @echo off
+
+@REM Ждем 2 минуты перед стартом основного цикла
+timeout /t 120 /nobreak >nul
+
 :loop
 cd /d C:\projects\hltv-2
 
@@ -10,5 +14,5 @@ python -m src.main --write-json-match-page
 python -m src.scripts.load_past_matches
 
 @REM Ждем 10 минут (600 секунд)
-ping -n 601 127.0.0.1 >nul
+ping -n 1801 127.0.0.1 >nul
 goto loop

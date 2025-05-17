@@ -13,5 +13,5 @@ python -m src.main --write-json-upcoming-match-page
 python -m src.scripts.load_upcoming_matches
 
 @REM Ждем 10 минут (600 секунд)
-ping -n 601 127.0.0.1 >nul
+ping -n 1801 127.0.0.1 >nul
 goto loop

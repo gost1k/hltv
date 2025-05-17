@@ -219,15 +219,16 @@ def load_upcoming_matches_from_files(db_path):
 
 def cleanup_expired_upcoming_matches(db_path):
     """
-    Удаляет устаревшие матчи (у которых datetime < текущее время) из upcoming_match
+    Удаляет устаревшие матчи (у которых datetime < текущее время - 2 часа) из upcoming_match
     и связанные с ними записи из upcoming_match_players и upcoming_match_streamers
     Возвращает кортеж (кол-во матчей, кол-во игроков, кол-во стримов)
     """
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
     now = int(time.time())
-    # Получаем id устаревших матчей
-    cursor.execute("SELECT match_id FROM upcoming_match WHERE datetime < ?", (now,))
+    two_hours_ago = now - 2 * 60 * 60
+    # Получаем id устаревших матчей (старше 2 часов)
+    cursor.execute("SELECT match_id FROM upcoming_match WHERE datetime < ?", (two_hours_ago,))
     expired_ids = [row[0] for row in cursor.fetchall()]
     deleted_matches = len(expired_ids)
     deleted_players = 0
