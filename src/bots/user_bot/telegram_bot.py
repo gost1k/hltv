@@ -1282,7 +1282,6 @@ class HLTVStatsBot:
             return
         message = "<b>Live матчи:</b>\n\n"
         keyboard = []
-        match_btn_map = {}
         for match in matches:
             t1 = match['team_names'][0] if match['team_names'] else '?'
             t2 = match['team_names'][1] if len(match['team_names']) > 1 else '?'
@@ -1298,12 +1297,24 @@ class HLTVStatsBot:
                 link = ''
             btn_text = f"Подписаться на {t1} vs {t2}"
             message += f"<b>{t1}</b> ({maps1}) {score1} - {score2} ({maps2}) <b>{t2}</b>{link}\n"
-            keyboard.append([KeyboardButton(btn_text)])
-            match_btn_map[btn_text] = match_id
-        keyboard.append([KeyboardButton("Назад")])
-        reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
-        context.user_data['live_match_btn_map'] = match_btn_map
+            keyboard.append([InlineKeyboardButton(btn_text, callback_data=f"subscribe_live:{match_id}")])
+        keyboard.append([InlineKeyboardButton("Назад", callback_data="back_to_menu")])
+        reply_markup = InlineKeyboardMarkup(keyboard)
         await update.message.reply_text(message, parse_mode="HTML", reply_markup=reply_markup, disable_web_page_preview=True)
+    
+    async def handle_callback_query(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        query = update.callback_query
+        data = query.data
+        user = query.from_user
+        if data.startswith("subscribe_live:"):
+            match_id = int(data.split(":")[1])
+            from src.scripts.live_matches_parser import handle_new_subscription
+            handle_new_subscription(match_id, user.id)
+            await query.answer("Вы подписались на live-матч!")
+            await query.edit_message_reply_markup(reply_markup=None)
+        elif data == "back_to_menu":
+            await query.answer()
+            await self.show_menu(update, context)
     
     def run(self):
         """
@@ -1324,6 +1335,8 @@ class HLTVStatsBot:
         
         # Обработчик текстовых сообщений
         application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, self.handle_message))
+        # Обработчик callback-запросов
+        application.add_handler(CallbackQueryHandler(self.handle_callback_query))
         
         # Обработчик ошибок
         application.add_error_handler(self.error)
