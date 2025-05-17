@@ -117,17 +117,29 @@ def notify_live_changes():
     subs = load_json(SUBS_JSON, default={})
     old_dict = {m['match_id']: m for m in old}
     new_dict = {m['match_id']: m for m in new}
-    # Уведомления об изменениях счёта
+    # Собираем изменения для каждого пользователя
+    user_updates = {}
+    user_wins = {}
     for match_id, match in new_dict.items():
         old_match = old_dict.get(match_id)
+        # Изменение счёта
         if old_match and (match['current_map_scores'] != old_match['current_map_scores'] or match['maps_won'] != old_match['maps_won']):
             for user_id in subs.get(str(match_id), []):
-                send_telegram_message(user_id, format_score(match))
-        # Проверяем победителя
+                user_updates.setdefault(user_id, []).append(format_score(match))
+        # Победитель
         winner = get_winner(match)
         if winner and (not old_match or get_winner(old_match) != winner):
             for user_id in subs.get(str(match_id), []):
-                send_telegram_message(user_id, f"Победа: {winner} 🏆\n{format_score(match)}")
+                user_wins.setdefault(user_id, []).append(f"Победа: {winner} 🏆\n{format_score(match)}")
+    # Отправляем объединённые сообщения
+    for user_id in set(list(user_updates.keys()) + list(user_wins.keys())):
+        msgs = []
+        if user_id in user_updates:
+            msgs.extend(user_updates[user_id])
+        if user_id in user_wins:
+            msgs.extend(user_wins[user_id])
+        if msgs:
+            send_telegram_message(user_id, '\n'.join(msgs))
     # Уведомления о завершении матчей
     finished = set(old_dict) - set(new_dict)
     for match_id in finished:
@@ -188,13 +200,15 @@ def main_loop():
         matches = parse_live_matches(html)
         save_json(LIVE_JSON, matches)
         notify_live_changes()
-        logger.info(f"Обновлено live-матчей: {len(matches)}")
         subs = load_json(SUBS_JSON, default={})
         has_live = bool(matches)
         has_subs = any(subs.values())
+        subs_count = sum(len(u) for u in subs.values())
         if has_live and has_subs:
+            next_update = 60
+            logger.info(f"Обновлено live-матчей: {len(matches)} | Подписчиков: {subs_count} | Следующее обновление через {next_update} сек.")
             subscriber_event.clear()
-            subscriber_event.wait(timeout=60)
+            subscriber_event.wait(timeout=next_update)
         else:
             now = datetime.now()
             next_minute = (now.minute // 10 + 1) * 10
@@ -205,9 +219,10 @@ def main_loop():
                 next_hour = now.hour
             next_time = now.replace(hour=next_hour, minute=next_minute, second=0, microsecond=0)
             wait = (next_time - now).total_seconds()
-            logger.info(f"Следующее обновление через {int(wait)} секунд")
+            next_update = int(max(60, wait))
+            logger.info(f"Обновлено live-матчей: {len(matches)} | Подписчиков: {subs_count} | Следующее обновление через {next_update} сек.")
             subscriber_event.clear()
-            subscriber_event.wait(timeout=max(60, wait))
+            subscriber_event.wait(timeout=next_update)
 
 if __name__ == "__main__":
     main_loop() 
