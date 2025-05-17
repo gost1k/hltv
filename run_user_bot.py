@@ -5,18 +5,20 @@ Run bot for users
 import sys
 import os
 import logging
-import io
 
-sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
-sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8')
-
-# Отключаем подробные логи httpx/urllib3
-logging.getLogger("httpx").setLevel(logging.WARNING)
-logging.getLogger("telegram.vendor.ptb_urllib3.urllib3.connectionpool").setLevel(logging.WARNING)
-
-# Создаем директорию для логов
+# Создаем директорию для логов (если нужно)
 if sys.platform == "win32":
     os.makedirs("logs", exist_ok=True)
+
+# Основная настройка логгера: пишем в файл с utf-8
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(levelname)s - %(message)s",
+    handlers=[
+        logging.FileHandler("logs/bot.log", encoding="utf-8"),
+        # logging.StreamHandler(sys.stdout)  # Если нужно видеть логи в консоли, раскомментируйте
+    ]
+)
 
 from src.bots.start_user_bot import main
 
