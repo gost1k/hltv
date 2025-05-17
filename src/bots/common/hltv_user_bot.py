@@ -141,7 +141,7 @@ class HLTVUserBot:
             today = datetime.now(self.MOSCOW_TIMEZONE)
             date_str = today.strftime('%d.%m.%Y')
             self.logger.info(BOT_TEXTS['log']['period_matches_request'].format(user_info=user_info, start=date_str, end=date_str))
-            await self.send_today_stats(update, context)
+            await self.show_matches_for_period(update, context, 1)
             return
         elif message_text == "За вчера":
             today = datetime.now(self.MOSCOW_TIMEZONE)
@@ -440,7 +440,6 @@ class HLTVUserBot:
                     match_text = f"{team1_name} vs {team2_name}"
                     context.user_data['match_mapping'][match_text] = match_id
                     keyboard.append([KeyboardButton(match_text)])
-                self.logger.info(f"Отправляю клавиатуру: {keyboard}")
                 await update.message.reply_text(message, parse_mode="HTML")
                 await update.message.reply_text("Выберите матч для подробной информации:", reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True))
                 return
