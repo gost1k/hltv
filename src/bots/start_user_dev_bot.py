@@ -30,7 +30,7 @@ def setup_logging(config):
     return logging.getLogger(__name__)
 
 from src.bots.config import load_config
-from src.bots.user_dev_bot.telegram_bot import UserDevBot
+from src.bots.common.hltv_user_bot import HLTVUserBot
 
 # Загружаем конфигурацию
 config = load_config('user_dev')
@@ -40,26 +40,28 @@ logger = setup_logging(config)
 
 def main():
     """
-    Основная функция для запуска бота
+    Main function to start the bot
     """
     try:
-        # Проверяем конфигурацию
+        # Check config
         if config['token'] == "YOUR_BOT_TOKEN_HERE":
-            logger.error("Не указан токен бота в конфигурационном файле src/bots/config/user_dev_bot_config.json")
-            logger.info("Пожалуйста, укажите токен бота, полученный от @BotFather в Telegram")
+            logger.error("No bot token specified in config file src/bots/config/user_dev_bot_config.json")
+            logger.info("Please specify the bot token obtained from @BotFather in Telegram")
             sys.exit(1)
         
-        # Запускаем бота
-        logger.info(f"Запуск бота с базой данных: {config['hltv_db_path']}")
+        # Start the bot
+        logger.info(f"Starting bot with database: {config['hltv_db_path']}")
         
-        # Создаем экземпляр бота и запускаем его
-        bot = UserDevBot(
+        # Create and run the bot instance
+        bot = HLTVUserBot(
             token=config['token'],
-            db_path=config['hltv_db_path']
+            db_path=config['hltv_db_path'],
+            log_file=config['log_file'],
+            config_name='user_dev'
         )
         bot.run()
     except Exception as e:
-        logger.error(f"Ошибка при запуске бота: {str(e)}")
+        logger.error(f"Error starting bot: {str(e)}")
         sys.exit(1)
 
 if __name__ == "__main__":

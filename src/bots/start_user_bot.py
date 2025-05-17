@@ -30,7 +30,7 @@ def setup_logging(config):
     return logging.getLogger(__name__)
 
 from src.bots.config import load_config
-from src.bots.user_bot.telegram_bot import HLTVStatsBot
+from src.bots.common.hltv_user_bot import HLTVUserBot
 
 # Загружаем конфигурацию
 config = load_config('user')
@@ -53,9 +53,11 @@ def main():
         logger.info(f"Запуск бота с базой данных: {config['hltv_db_path']}")
         
         # Создаем экземпляр бота и запускаем его
-        bot = HLTVStatsBot(
+        bot = HLTVUserBot(
             token=config['token'],
-            db_path=config['hltv_db_path']
+            db_path=config['hltv_db_path'],
+            log_file=config['log_file'],
+            config_name='user'
         )
         bot.run()
     except Exception as e:

@@ -73,6 +73,9 @@ BOT_TEXTS = {
         'back_to_menu': "{user_info} - Возврат в главное меню",
         'match_details_request': "{user_info} - Запрос статистики матча ID {match_id}",
         'matches_for_event_request': "{user_info} - Запрос матчей события ID {event_id}",
+        'live_matches_request': "{user_info} - Запрос live матчей",
+        'subscribe_live': "{user_info} - Подписка на live-матч {match_id}",
+        'unsubscribe_live': "{user_info} - Отписка от live-матча {match_id}",
         # ... другие шаблоны логов ...
     },
     'match_details_header': "<b>⏰ {datetime}</b>\n<b>🏆 {event_name}</b>\n\n",
@@ -93,5 +96,8 @@ BOT_TEXTS = {
     'completed_event_matches_header': "📊 <b>Результаты матчей события {event_name}</b>\n\n",
     'error_streamers': "Ошибка при получении стримеров для матча {match_id}: {error}",
     'error_getting_matches_period': "Ошибка при получении матчей за период: {error}",
+    'period_text_single': "Матчи за",
+    'period_text_range': "Матчи за период с",
+    'today_stats_title': "Статистика матчей за {date}",
     # ... остальные шаблоны ...
 } 

@@ -29,12 +29,6 @@ class HLTVUserBot:
 
         # Настройка логирования для этого класса
         self.logger = logging.getLogger(__name__)
-        if not self.logger.handlers:
-            console_handler = logging.StreamHandler(sys.stdout)
-            console_handler.setLevel(logging.INFO)
-            formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
-            console_handler.setFormatter(formatter)
-            self.logger.addHandler(console_handler)
         self.logger.info(BOT_TEXTS['log']['init'].format(config_name=config_name))
 
         # Кнопки меню
@@ -48,6 +42,8 @@ class HLTVUserBot:
             [KeyboardButton(self.MENU_LIVE_MATCHES)]
         ]
         self.markup = ReplyKeyboardMarkup(self.menu_keyboard, resize_keyboard=True)
+        self.live_keyboard = [[KeyboardButton("Назад")]]
+        self.live_markup = ReplyKeyboardMarkup(self.live_keyboard, resize_keyboard=True)
         self._last_ok_log = 0
         self._ok_log_interval = 5 * 60  # 5 минут
 
@@ -90,12 +86,20 @@ class HLTVUserBot:
         message_text = update.message.text
         user = update.effective_user
         user_info = self._get_safe_user_info(user)
-        self.logger.info(BOT_TEXTS['log']['message'].format(user_info=user_info, message_text=message_text))
+        period_buttons = [
+            "За сегодня", "За вчера", "За 3 дня",
+            "На сегодня", "На завтра", "На 3 дня",
+            "По событию", "Назад",
+            self.MENU_COMPLETED_MATCHES, self.MENU_UPCOMING_MATCHES, self.MENU_LIVE_MATCHES
+        ]
+        if message_text not in period_buttons:
+            self.logger.info(BOT_TEXTS['log']['message'].format(user_info=user_info, message_text=message_text))
         context.user_data['last_button'] = message_text
         if message_text.startswith("/subscribe_live "):
             try:
                 match_id = int(message_text.split(" ")[1])
                 handle_new_subscription(match_id, user.id)
+                self.logger.info(BOT_TEXTS['log']['subscribe_live'].format(user_info=user_info, match_id=match_id))
                 await update.message.reply_text(BOT_TEXTS['subscribe_success'].format(match_id=match_id))
             except Exception as e:
                 await update.message.reply_text(BOT_TEXTS['subscribe_error'])
@@ -112,6 +116,7 @@ class HLTVUserBot:
                     save_json(SUBS_JSON, subs)
                     from src.scripts.live_matches_parser import subscriber_event
                     subscriber_event.set()
+                    self.logger.info(BOT_TEXTS['log']['unsubscribe_live'].format(user_info=user_info, match_id=match_id))
                     await update.message.reply_text(BOT_TEXTS['unsubscribe_success'].format(match_id=match_id))
                 else:
                     await update.message.reply_text(BOT_TEXTS['not_subscribed'])
@@ -127,15 +132,24 @@ class HLTVUserBot:
             context.user_data['showing_menu'] = self.MENU_UPCOMING_MATCHES
             await self.show_upcoming_matches(update, context)
         elif message_text == self.MENU_LIVE_MATCHES:
+            self.logger.info(BOT_TEXTS['log']['live_matches_request'].format(user_info=user_info))
             await self.show_live_matches(update, context)
         elif message_text == "За сегодня":
-            self.logger.info(BOT_TEXTS['log']['today_stats_request'].format(user_info=user_info))
+            today = datetime.now(self.MOSCOW_TIMEZONE)
+            date_str = today.strftime('%d.%m.%Y')
+            self.logger.info(f"{user_info} - Сообщение: 'За сегодня' (период с {date_str} по {date_str})")
             await self.send_today_stats(update, context)
         elif message_text == "За вчера":
-            self.logger.info(BOT_TEXTS['log']['yesterday_stats_request'].format(user_info=user_info))
+            today = datetime.now(self.MOSCOW_TIMEZONE)
+            end_date = datetime(today.year, today.month, today.day, 0, 0, 0, tzinfo=self.MOSCOW_TIMEZONE) - timedelta(days=1)
+            date_str = end_date.strftime('%d.%m.%Y')
+            self.logger.info(f"{user_info} - Сообщение: 'За вчера' (период с {date_str} по {date_str})")
             await self.show_matches_for_period(update, context, 1)
         elif message_text == "За 3 дня":
-            self.logger.info(BOT_TEXTS['log']['period_matches_request'].format(user_info=user_info, start=start_date.strftime('%d.%m.%Y'), end=end_date.strftime('%d.%m.%Y')))
+            today = datetime.now(self.MOSCOW_TIMEZONE)
+            end_date = datetime(today.year, today.month, today.day, 0, 0, 0, tzinfo=self.MOSCOW_TIMEZONE) - timedelta(days=1)
+            start_date = end_date - timedelta(days=2)
+            self.logger.info(f"{user_info} - Сообщение: 'За 3 дня' (период с {start_date.strftime('%d.%m.%Y')} по {end_date.strftime('%d.%m.%Y')})")
             await self.show_matches_for_period(update, context, 3)
         elif message_text == "На сегодня":
             self.logger.info(BOT_TEXTS['log']['upcoming_matches_request'].format(user_info=user_info, days=0))
@@ -170,6 +184,9 @@ class HLTVUserBot:
                     BOT_TEXTS['errors']['unknown_match_id'],
                     reply_markup=self.markup
                 )
+        elif 'live_match_mapping' in context.user_data and message_text in context.user_data['live_match_mapping']:
+            match_id = context.user_data['live_match_mapping'][message_text]
+            await self.show_live_match_details(update, context, match_id)
         else:
             await self.find_matches_by_team(update, context, message_text)
 
@@ -186,7 +203,8 @@ class HLTVUserBot:
         application = Application.builder().token(self.token).build()
         application.add_handler(CommandHandler("start", self.start))
         application.add_handler(CommandHandler("help", self.help))
-        # TODO: добавить остальные хендлеры
+        application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, self.handle_message))
+        application.add_handler(CallbackQueryHandler(self.handle_callback_query))
         application.add_error_handler(self.error)
         loop = asyncio.get_event_loop()
         loop.create_task(self.periodic_ok_log())
@@ -245,9 +263,6 @@ class HLTVUserBot:
         match_count = sum(len(event_data['matches']) for event_data in events.values()) if events else 0
         self.logger.info(BOT_TEXTS['log']['found_matches_today'].format(user_info=user_info, count=match_count))
         await update.message.reply_text(message, parse_mode="HTML", reply_markup=self.markup)
-        await update.message.reply_text(
-            BOT_TEXTS['input_team']
-        )
 
     async def show_matches_for_period(self, update: Update, context: ContextTypes.DEFAULT_TYPE, days=1):
         user = update.effective_user
@@ -257,7 +272,6 @@ class HLTVUserBot:
         end_timestamp = end_date.timestamp() + 86399
         start_date = end_date - timedelta(days=days-1)
         start_timestamp = start_date.timestamp()
-        self.logger.info(BOT_TEXTS['log']['period_matches_request'].format(user_info=user_info, start=start_date.strftime('%d.%m.%Y'), end=end_date.strftime('%d.%m.%Y')))
         events = self.get_matches_by_date(start_timestamp, end_timestamp)
         match_count = sum(len(event_data['matches']) for event_data in events.values()) if events else 0
         
@@ -268,9 +282,6 @@ class HLTVUserBot:
         message = f"📊 <b>{period_text}</b>\n\n"
         message += self.format_matches_message(events)
         await update.message.reply_text(message, parse_mode="HTML", reply_markup=self.markup)
-        await update.message.reply_text(
-            BOT_TEXTS['input_team']
-        )
 
     async def show_events_list(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Определяем, какой тип событий запрашивается (прошедшие или предстоящие)
@@ -727,7 +738,6 @@ class HLTVUserBot:
         message = f"📅 <b>Предстоящие матчи {period_text}</b>\n\n"
         message += self.format_upcoming_matches_message(events)
         await update.message.reply_text(message, parse_mode="HTML", reply_markup=self.markup)
-        await update.message.reply_text(BOT_TEXTS['input_team'])
 
     async def send_upcoming_matches(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         user = update.effective_user
@@ -821,20 +831,52 @@ class HLTVUserBot:
                 callback = f"subscribe_live:{match_id}"
             message += f"<b>{t1}</b> ({maps1}) {score1} - {score2} ({maps2}) <b>{t2}</b>{link}\n"
             keyboard.append([InlineKeyboardButton(btn_text, callback_data=callback)])
+        keyboard.append([InlineKeyboardButton("Назад", callback_data="back_to_menu")])
         reply_markup = InlineKeyboardMarkup(keyboard)
         if hasattr(update, 'message') and update.message:
             await update.message.reply_text(message, parse_mode="HTML", reply_markup=reply_markup, disable_web_page_preview=True)
         else:
             await context.bot.send_message(chat_id=user_id, text=message, parse_mode="HTML", reply_markup=reply_markup, disable_web_page_preview=True)
 
+    async def show_live_match_details(self, update: Update, context: ContextTypes.DEFAULT_TYPE, match_id):
+        matches = load_json(LIVE_JSON, default=[])
+        subs = load_json(SUBS_JSON, default={})
+        user_id = update.effective_user.id
+        match = next((m for m in matches if m['match_id'] == match_id), None)
+        if not match:
+            await update.message.reply_text(BOT_TEXTS['match_not_found'].format(match_id=match_id), reply_markup=self.markup)
+            return
+        t1 = match['team_names'][0] if match['team_names'] else '?'
+        t2 = match['team_names'][1] if len(match['team_names']) > 1 else '?'
+        score1 = match['current_map_scores'][0] if match['current_map_scores'] else '?'
+        score2 = match['current_map_scores'][1] if len(match['current_map_scores']) > 1 else '?'
+        maps1 = match['maps_won'][0] if match['maps_won'] else '0'
+        maps2 = match['maps_won'][1] if len(match['maps_won']) > 1 else '0'
+        match_url = match.get('match_url')
+        link = f' <a href="{match_url}">🌐</a>' if match_url else ''
+        message = f"<b>{t1}</b> ({maps1}) {score1} - {score2} ({maps2}) <b>{t2}</b>{link}\n"
+        subscribed = str(match_id) in subs and user_id in subs[str(match_id)]
+        if subscribed:
+            btn_text = f"Отписаться от {t1} vs {t2}"
+            callback = f"unsubscribe_live:{match_id}"
+        else:
+            btn_text = f"Подписаться на {t1} vs {t2}"
+            callback = f"subscribe_live:{match_id}"
+        keyboard = [[InlineKeyboardButton(btn_text, callback_data=callback)],
+                    [InlineKeyboardButton("Назад", callback_data="back_to_live_list")]]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        await update.message.reply_text(message, parse_mode="HTML", reply_markup=reply_markup, disable_web_page_preview=True)
+
     async def handle_callback_query(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         query = update.callback_query
         data = query.data
         user = query.from_user
+        user_info = self._get_safe_user_info(user)
         matches = load_json(LIVE_JSON, default=[])
         if data.startswith("subscribe_live:"):
             match_id = int(data.split(":")[1])
             handle_new_subscription(match_id, user.id)
+            self.logger.info(BOT_TEXTS['log']['subscribe_live'].format(user_info=user_info, match_id=match_id))
             subs = load_json(SUBS_JSON, default={})
             user_subs = [int(mid) for mid, users in subs.items() if user.id in users]
             match_names = []
@@ -860,6 +902,7 @@ class HLTVUserBot:
                 save_json(SUBS_JSON, subs)
                 from src.scripts.live_matches_parser import subscriber_event
                 subscriber_event.set()
+                self.logger.info(BOT_TEXTS['log']['unsubscribe_live'].format(user_info=user_info, match_id=match_id))
             subs = load_json(SUBS_JSON, default={})
             user_subs = [int(mid) for mid, users in subs.items() if user.id in users]
             match_names = []
@@ -874,6 +917,13 @@ class HLTVUserBot:
                 await query.message.reply_text(msg)
             else:
                 await context.bot.send_message(chat_id=query.from_user.id, text=msg)
+        elif data == "back_to_live_list":
+            await query.answer()
+            await self.show_live_matches(update, context)
         elif data == "back_to_menu":
             await query.answer()
-            await self.show_menu(update, context)
+            if query.message:
+                await self.show_menu(update, context)
+            else:
+                user_id = query.from_user.id
+                await context.bot.send_message(chat_id=user_id, text=BOT_TEXTS['menu'], reply_markup=self.markup)
