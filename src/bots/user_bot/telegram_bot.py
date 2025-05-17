@@ -846,6 +846,24 @@ class HLTVStatsBot:
             else:
                 message += "<i>Нет данных о составах команд для этого матча.</i>"
             
+            # --- Новый блок: Стримы для будущих матчей ---
+            if match_type == 'upcoming':
+                try:
+                    conn2 = sqlite3.connect(self.db_path)
+                    conn2.row_factory = sqlite3.Row
+                    cursor2 = conn2.cursor()
+                    cursor2.execute('SELECT name, lang, url FROM upcoming_match_streamers WHERE match_id = ?', (match_id,))
+                    streams = cursor2.fetchall()
+                    conn2.close()
+                    if streams:
+                        message += '\n<b>Где посмотреть:</b>\n'
+                        for s in streams:
+                            lang = f" ({s['lang']})" if s['lang'] else ''
+                            message += f"• <a href=\"{s['url']}\">{s['name']}{lang}</a>\n"
+                except Exception as e:
+                    self.logger.error(f"Ошибка при получении стримеров для матча {match_id}: {str(e)}")
+            # --- Конец блока ---
+            
             # Отправляем сообщение
             await update.message.reply_text(message, parse_mode="HTML", reply_markup=self.markup)
             
