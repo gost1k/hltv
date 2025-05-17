@@ -14,7 +14,7 @@ import tempfile
 import traceback
 
 from src.bots.config import load_config
-from src.scripts.live_matches_parser import handle_new_subscription
+from src.scripts.live_matches_parser import handle_new_subscription, load_json, save_json, SUBS_JSON, LIVE_JSON, subscriber_event
 
 # Загружаем конфигурацию
 config = load_config('user')
@@ -180,7 +180,6 @@ class HLTVStatsBot:
         if message_text.startswith("/unsubscribe_live "):
             try:
                 match_id = int(message_text.split(" ")[1])
-                from src.scripts.live_matches_parser import load_json, save_json, SUBS_JSON
                 subs = load_json(SUBS_JSON, default={})
                 match_id_str = str(match_id)
                 if match_id_str in subs and user.id in subs[match_id_str]:
@@ -188,6 +187,8 @@ class HLTVStatsBot:
                     if not subs[match_id_str]:
                         subs.pop(match_id_str)
                     save_json(SUBS_JSON, subs)
+                    from src.scripts.live_matches_parser import subscriber_event
+                    subscriber_event.set()
                     await update.message.reply_text(f"Вы отписались от live-матча {match_id}")
                 else:
                     await update.message.reply_text("Вы не были подписаны на этот матч.")
@@ -1273,15 +1274,15 @@ class HLTVStatsBot:
     
     async def show_live_matches(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """
-        Показывает список live-матчей с возможностью подписки
+        Показывает список live-матчей с возможностью подписки и отписки
         """
-        from src.scripts.live_matches_parser import load_json, LIVE_JSON, handle_new_subscription
         matches = load_json(LIVE_JSON, default=[])
+        user_id = update.effective_user.id
+        message = "<b>Live матчи:</b>\n\n"
+        keyboard = []
         if not matches:
             await update.message.reply_text("Сейчас нет live-матчей.", reply_markup=self.markup)
             return
-        message = "<b>Live матчи:</b>\n\n"
-        keyboard = []
         for match in matches:
             t1 = match['team_names'][0] if match['team_names'] else '?'
             t2 = match['team_names'][1] if len(match['team_names']) > 1 else '?'
@@ -1292,12 +1293,18 @@ class HLTVStatsBot:
             match_id = match['match_id']
             match_url = match.get('match_url')
             if match_url:
-                link = f' <a href="{match_url}">🌐</a>'
+                link = f' <a href=\"{match_url}\">🌐</a>'
             else:
                 link = ''
             btn_text = f"Подписаться на {t1} vs {t2}"
+            subscribed = str(match_id) in subs and user_id in subs[str(match_id)]
+            if subscribed:
+                btn_text = f"Отписаться от {t1} vs {t2}"
+                callback = f"unsubscribe_live:{match_id}"
+            else:
+                callback = f"subscribe_live:{match_id}"
             message += f"<b>{t1}</b> ({maps1}) {score1} - {score2} ({maps2}) <b>{t2}</b>{link}\n"
-            keyboard.append([InlineKeyboardButton(btn_text, callback_data=f"subscribe_live:{match_id}")])
+            keyboard.append([InlineKeyboardButton(btn_text, callback_data=callback)])
         keyboard.append([InlineKeyboardButton("Назад", callback_data="back_to_menu")])
         reply_markup = InlineKeyboardMarkup(keyboard)
         await update.message.reply_text(message, parse_mode="HTML", reply_markup=reply_markup, disable_web_page_preview=True)
@@ -1306,12 +1313,49 @@ class HLTVStatsBot:
         query = update.callback_query
         data = query.data
         user = query.from_user
+        matches = load_json(LIVE_JSON, default=[])
         if data.startswith("subscribe_live:"):
             match_id = int(data.split(":")[1])
-            from src.scripts.live_matches_parser import handle_new_subscription
             handle_new_subscription(match_id, user.id)
-            await query.answer("Вы подписались на live-матч!")
-            await query.edit_message_reply_markup(reply_markup=None)
+            # Найти матч для инфо
+            match = next((m for m in matches if m['match_id'] == match_id), None)
+            if match:
+                t1 = match['team_names'][0] if match['team_names'] else '?'
+                t2 = match['team_names'][1] if len(match['team_names']) > 1 else '?'
+                match_url = match.get('match_url')
+                msg = f"Вы подписались на матч <b>{t1}</b> vs <b>{t2}</b>!"
+                if match_url:
+                    msg += f"\n<a href=\"{match_url}\">Ссылка на HLTV</a>"
+                await query.answer("Подписка оформлена!", show_alert=True)
+                await query.message.reply_text(msg, parse_mode="HTML", disable_web_page_preview=True)
+            else:
+                await query.answer("Подписка оформлена!", show_alert=True)
+            await self.show_live_matches(update, context)
+        elif data.startswith("unsubscribe_live:"):
+            match_id = int(data.split(":")[1])
+            subs = load_json(SUBS_JSON, default={})
+            match_id_str = str(match_id)
+            if match_id_str in subs and user.id in subs[match_id_str]:
+                subs[match_id_str].remove(user.id)
+                if not subs[match_id_str]:
+                    subs.pop(match_id_str)
+                save_json(SUBS_JSON, subs)
+                from src.scripts.live_matches_parser import subscriber_event
+                subscriber_event.set()
+            # Найти матч для инфо
+            match = next((m for m in matches if m['match_id'] == match_id), None)
+            if match:
+                t1 = match['team_names'][0] if match['team_names'] else '?'
+                t2 = match['team_names'][1] if len(match['team_names']) > 1 else '?'
+                match_url = match.get('match_url')
+                msg = f"Вы отписались от матча <b>{t1}</b> vs <b>{t2}</b>."
+                if match_url:
+                    msg += f"\n<a href=\"{match_url}\">Ссылка на HLTV</a>"
+                await query.answer("Отписка выполнена!", show_alert=True)
+                await query.message.reply_text(msg, parse_mode="HTML", disable_web_page_preview=True)
+            else:
+                await query.answer("Отписка выполнена!", show_alert=True)
+            await self.show_live_matches(update, context)
         elif data == "back_to_menu":
             await query.answer()
             await self.show_menu(update, context)

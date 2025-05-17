@@ -151,7 +151,7 @@ def notify_live_changes():
     for match_id in finished:
         last_state = old_dict[match_id]
         for user_id in subs.get(str(match_id), []):
-            send_telegram_message(user_id, f"Матч завершён. Итог: {format_score(last_state)}")
+            send_telegram_message(user_id, f"Матч завершён. Итог:\n{format_score(last_state)}")
         subs.pop(str(match_id), None)
     save_json(SUBS_JSON, subs)
     save_json(PREV_JSON, new)
