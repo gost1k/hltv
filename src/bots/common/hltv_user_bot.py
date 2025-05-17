@@ -14,6 +14,8 @@ import tempfile
 import traceback
 import asyncio
 import time
+import uuid
+import re
 
 from src.bots.config import load_config
 from src.scripts.live_matches_parser import handle_new_subscription, load_json, save_json, SUBS_JSON, LIVE_JSON, subscriber_event
@@ -531,10 +533,11 @@ class HLTVUserBot:
                 ''', (match_id,))
                 player_stats = cursor.fetchall()
             conn.close()
-            match_datetime = datetime.fromtimestamp(match['datetime'], tz=self.MOSCOW_TIMEZONE).strftime('%d.%m.%Y %H:%M')
+            match_datetime = datetime.fromtimestamp(match['datetime'], tz=self.MOSCOW_TIMEZONE)
             team1_name = match['team1_name']
             team2_name = match['team2_name']
-            message = BOT_TEXTS['match_details_header'].format(datetime=match_datetime, event_name=match['event_name'])
+            event_name = match['event_name']
+            message = BOT_TEXTS['match_details_header'].format(datetime=match_datetime.strftime('%d.%m.%Y %H:%M'), event_name=event_name)
             if match_type == 'completed':
                 team1_score = match['team1_score']
                 team2_score = match['team2_score']
@@ -632,7 +635,27 @@ class HLTVUserBot:
                             message += f"• <a href=\"{s['url']}\">{s['name']}{lang}</a>\n"
                 except Exception as e:
                     self.logger.error(BOT_TEXTS['error_streamers'].format(match_id=match_id, error=str(e)))
-            await update.message.reply_text(message, parse_mode="HTML", reply_markup=self.markup)
+            # Кнопки для будущих матчей
+            reply_markup = self.markup
+            if match_type == 'upcoming':
+                from telegram import InlineKeyboardMarkup, InlineKeyboardButton
+                import urllib.parse
+                # Формируем ссылку для Google Calendar
+                start_utc = match_datetime.strftime('%Y%m%dT%H%M%SZ')
+                end_utc = (match_datetime + timedelta(hours=2)).strftime('%Y%m%dT%H%M%SZ')
+                summary = f"Матч {team1_name} vs {team2_name}"
+                details = f"Турнир: {event_name}" if event_name else "HLTV.org"
+                url = (
+                    "https://calendar.google.com/calendar/render?action=TEMPLATE"
+                    f"&text={urllib.parse.quote(summary)}"
+                    f"&dates={start_utc}/{end_utc}"
+                    f"&details={urllib.parse.quote(details)}"
+                )
+                calendar_keyboard = InlineKeyboardMarkup([
+                    [InlineKeyboardButton("Добавить в Google Календарь", url=url)]
+                ])
+                reply_markup = calendar_keyboard
+            await update.message.reply_text(message, parse_mode="HTML", reply_markup=reply_markup)
         except Exception as e:
             self.logger.error(BOT_TEXTS['error_getting_matches_period'].format(error=str(e)))
             await update.message.reply_text(BOT_TEXTS['error_getting_match'], reply_markup=self.markup)
@@ -996,3 +1019,56 @@ class HLTVUserBot:
             else:
                 user_id = query.from_user.id
                 await context.bot.send_message(chat_id=user_id, text=BOT_TEXTS['menu'], reply_markup=self.markup)
+        elif data.startswith("add_to_calendar:"):
+            await query.answer()
+            match_id = int(data.split(":")[1])
+            await self.send_ics_file(update, context, match_id)
+
+    async def send_ics_file(self, update: Update, context: ContextTypes.DEFAULT_TYPE, match_id):
+        """Генерирует и отправляет минималистичный .ics-файл для будущего матча (Android-friendly, CRLF)"""
+        import tempfile
+        from telegram import InputFile
+        import uuid
+        import re
+        try:
+            conn = sqlite3.connect(self.db_path)
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            cursor.execute('''
+                SELECT m.match_id, m.datetime, m.team1_name, m.team2_name
+                FROM upcoming_match m WHERE m.match_id = ?
+            ''', (match_id,))
+            match = cursor.fetchone()
+            conn.close()
+            if not match:
+                await update.effective_message.reply_text("Match not found")
+                return
+            def to_ascii(text):
+                return re.sub(r'[^\x00-\x7F]+', '', str(text))
+            dt = datetime.utcfromtimestamp(match['datetime'])
+            dt_end = dt + timedelta(hours=2)
+            team1 = to_ascii(match['team1_name'])
+            team2 = to_ascii(match['team2_name'])
+            summary = f"Матч {team1} vs {team2}"
+            uid = f"{match['match_id']}@hltv"
+            dtstamp = datetime.utcnow().strftime('%Y%m%dT%H%M%SZ')
+            ics_content = (
+                f"BEGIN:VCALENDAR\r\n"
+                f"VERSION:2.0\r\n"
+                f"BEGIN:VEVENT\r\n"
+                f"UID:{uid}\r\n"
+                f"DTSTAMP:{dtstamp}\r\n"
+                f"SUMMARY:{summary}\r\n"
+                f"DTSTART:{dt.strftime('%Y%m%dT%H%M%SZ')}\r\n"
+                f"DTEND:{dt_end.strftime('%Y%m%dT%H%M%SZ')}\r\n"
+                f"END:VEVENT\r\n"
+                f"END:VCALENDAR\r\n"
+            )
+            with tempfile.NamedTemporaryFile('w+', suffix='.ics', delete=False, encoding='utf-8') as tmp:
+                tmp.write(ics_content)
+                tmp.flush()
+                tmp.seek(0)
+                await update.effective_message.reply_document(InputFile(tmp.name, filename=f"event.ics"), caption="Add this match to your calendar!")
+        except Exception as e:
+            self.logger.error(f"Ошибка при генерации .ics: {str(e)}")
+            await update.effective_message.reply_text("Error generating calendar file")
