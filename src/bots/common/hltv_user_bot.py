@@ -324,7 +324,6 @@ class HLTVUserBot:
             keyboard.append([KeyboardButton(match_text)])
         reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
         await update.message.reply_text(message, parse_mode="HTML")
-        await update.message.reply_text("Выберите матч для подробной информации:", reply_markup=reply_markup)
 
     async def show_events_list(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Определяем, какой тип событий запрашивается (прошедшие или предстоящие)
@@ -441,7 +440,6 @@ class HLTVUserBot:
                     context.user_data['match_mapping'][match_text] = match_id
                     keyboard.append([KeyboardButton(match_text)])
                 await update.message.reply_text(message, parse_mode="HTML")
-                await update.message.reply_text("Выберите матч для подробной информации:", reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True))
                 return
             else:
                 # Ветка для будущих матчей по событию
@@ -488,7 +486,6 @@ class HLTVUserBot:
                     context.user_data['match_mapping'][match_text] = match_id
                     keyboard.append([KeyboardButton(match_text)])
                 await update.message.reply_text(message, parse_mode="HTML")
-                await update.message.reply_text("Выберите матч для подробной информации:", reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True))
                 return
         except Exception as e:
             self.logger.error(f"Ошибка при получении матчей события {event_id}: {str(e)}")
@@ -701,7 +698,6 @@ class HLTVUserBot:
             keyboard = [[KeyboardButton(BOT_TEXTS['back'])]] + keyboard
             reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
             await update.message.reply_text(matches_list, parse_mode="HTML")
-            await update.message.reply_text("Выберите матч для подробной информации:", reply_markup=reply_markup)
         except Exception as e:
             self.logger.error(f"Ошибка при поиске матчей команды: {str(e)}")
             await update.message.reply_text(BOT_TEXTS['error_search_team'], reply_markup=self.markup)
@@ -812,7 +808,6 @@ class HLTVUserBot:
             keyboard.append([KeyboardButton(match_text)])
         reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
         await update.message.reply_text(message, parse_mode="HTML")
-        await update.message.reply_text("Выберите матч для подробной информации:", reply_markup=reply_markup)
 
     async def send_upcoming_matches(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         user = update.effective_user
