@@ -350,7 +350,8 @@ def update_upcoming_urls_to_parse(db_path):
         if is_team_determined(team1) and is_team_determined(team2):
             cursor.execute("UPDATE upcoming_urls SET toParse=0, reParse=0 WHERE id=?", (match_id,))
         else:
-            cursor.execute("UPDATE upcoming_urls SET reParse=1 WHERE id=?", (match_id,))
+            next_update = int(time.time()) + 6*3600
+            cursor.execute("UPDATE upcoming_urls SET reParse=1, next_update=? WHERE id=?", (next_update, match_id))
     conn.commit()
     conn.close()
 

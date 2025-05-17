@@ -74,17 +74,20 @@ class MatchDetailsParser(BaseParser):
             
             # Получаем предстоящие матчи для парсинга, у которых toParse = 1 или reParse = 1
             if self.parse_upcoming and (remaining_limit is None or remaining_limit > 0):
+                now = int(time.time())
                 if self.limit is None:
                     cursor.execute('''
                         SELECT id, url FROM upcoming_urls
-                        WHERE toParse = 1 OR reParse = 1
-                    ''')
+                        WHERE toParse = 1
+                           OR (reParse = 1 AND (next_update IS NULL OR next_update <= ?))
+                    ''', (now,))
                 else:
                     cursor.execute('''
                         SELECT id, url FROM upcoming_urls
-                        WHERE toParse = 1 OR reParse = 1
+                        WHERE toParse = 1
+                           OR (reParse = 1 AND (next_update IS NULL OR next_update <= ?))
                         LIMIT ?
-                    ''', (remaining_limit,))
+                    ''', (now, remaining_limit))
                 
                 upcoming_matches = [{"id": row[0], "url": row[1], "is_past": False} for row in cursor.fetchall()]
                 matches.extend(upcoming_matches)
