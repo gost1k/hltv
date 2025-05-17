@@ -1344,7 +1344,6 @@ class HLTVStatsBot:
                 await query.message.reply_text(msg)
             else:
                 await context.bot.send_message(chat_id=query.from_user.id, text=msg)
-            await self.show_live_matches(update, context)
         elif data.startswith("unsubscribe_live:"):
             match_id = int(data.split(":")[1])
             subs = load_json(SUBS_JSON, default={})
@@ -1374,7 +1373,6 @@ class HLTVStatsBot:
                 await query.message.reply_text(msg)
             else:
                 await context.bot.send_message(chat_id=query.from_user.id, text=msg)
-            await self.show_live_matches(update, context)
         elif data == "back_to_menu":
             await query.answer()
             await self.show_menu(update, context)
