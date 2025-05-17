@@ -551,7 +551,6 @@ class HLTVStatsBot:
                 message = f"📊 <b>Результаты матчей события {event_name}</b>\n\n"
                 message += self.format_matches_message(events)
             else:  # MENU_UPCOMING_MATCHES
-                # Для предстоящих матчей
                 cursor.execute('SELECT event_name FROM upcoming_match WHERE event_id = ? LIMIT 1', (event_id,))
                 event_result = cursor.fetchone()
                 
@@ -591,43 +590,37 @@ class HLTVStatsBot:
                     )
                     return
                 
-                # Создаем событие для форматирования
-                events = {
-                    event_id: {
-                        'name': event_name,
-                        'matches': [dict(match) for match in matches]
-                    }
-                }
-                
-                # Форматируем сообщение
+                # Формируем сообщение по каждому матчу отдельно, добавляя стримы по match_id
                 message = f"📅 <b>Предстоящие матчи события {event_name}</b>\n\n"
-                message += self.format_upcoming_matches_message(events)
-            
-            # Добавляем информацию о стримах для предстоящих матчей
-            ics_button_markup = None
-            ics_file_path = None
-            if event_type == 'upcoming':
-                try:
-                    conn2 = sqlite3.connect(self.db_path)
-                    conn2.row_factory = sqlite3.Row
-                    cursor2 = conn2.cursor()
-                    cursor2.execute('SELECT name, lang, url FROM upcoming_match_streamers WHERE match_id = ?', (event_id,))
-                    streams = cursor2.fetchall()
-                    conn2.close()
-                    if streams:
-                        message += '\n<b>Где посмотреть:</b>\n'
-                        for s in streams:
-                            lang = f" ({s['lang']})" if s['lang'] else ''
-                            message += f"• <a href=\"{s['url']}\">{s['name']}{lang}</a>\n"
-                except Exception as e:
-                    self.logger.error(f"Ошибка при получении стримеров для матча {event_id}: {str(e)}")
-            # Отправляем сообщение
-            reply_markup = ics_button_markup if ics_button_markup else self.markup
-            if hasattr(update, 'message') and update.message:
-                await update.message.reply_text(message, parse_mode="HTML", reply_markup=reply_markup)
-            else:
-                user_id = update.effective_user.id
-                await context.bot.send_message(chat_id=user_id, text=message, parse_mode="HTML", reply_markup=reply_markup)
+                for match in matches:
+                    match_id = match['match_id']
+                    match_datetime = datetime.fromtimestamp(match['datetime'], tz=MOSCOW_TIMEZONE).strftime('%d.%m.%Y %H:%M')
+                    team1_name = match['team1_name']
+                    team2_name = match['team2_name']
+                    message += f"<b>{match_datetime}</b>: <code>{team1_name}</code> vs <code>{team2_name}</code>\n"
+                    # Добавляем стримы для этого матча
+                    try:
+                        conn2 = sqlite3.connect(self.db_path)
+                        conn2.row_factory = sqlite3.Row
+                        cursor2 = conn2.cursor()
+                        cursor2.execute('SELECT name, lang, url FROM upcoming_match_streamers WHERE match_id = ?', (match_id,))
+                        streams = cursor2.fetchall()
+                        conn2.close()
+                        if streams:
+                            message += '\n<b>Где посмотреть:</b>\n'
+                            for s in streams:
+                                lang = f" ({s['lang']})" if s['lang'] else ''
+                                message += f"• <a href=\"{s['url']}\">{s['name']}{lang}</a>\n"
+                    except Exception as e:
+                        self.logger.error(f"Ошибка при получении стримеров для матча {match_id}: {str(e)}")
+                    message += '\n'
+                # Отправляем сообщение
+                reply_markup = self.markup
+                if hasattr(update, 'message') and update.message:
+                    await update.message.reply_text(message, parse_mode="HTML", reply_markup=reply_markup)
+                else:
+                    user_id = update.effective_user.id
+                    await context.bot.send_message(chat_id=user_id, text=message, parse_mode="HTML", reply_markup=reply_markup)
             
         except Exception as e:
             self.logger.error(f"Ошибка при получении матчей события {event_id}: {str(e)}")
