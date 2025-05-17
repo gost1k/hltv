@@ -908,6 +908,7 @@ class HLTVUserBot:
         user_id = update.effective_user.id
         # Формируем подробный список live-матчей
         message = BOT_TEXTS['live_matches_header']
+        inline_keyboard = []
         for match in matches:
             t1 = match['team_names'][0] if match['team_names'] else '?'
             t2 = match['team_names'][1] if len(match['team_names']) > 1 else '?'
@@ -915,15 +916,27 @@ class HLTVUserBot:
             score2 = match['current_map_scores'][1] if len(match['current_map_scores']) > 1 else '?'
             maps1 = match['maps_won'][0] if match['maps_won'] else '0'
             maps2 = match['maps_won'][1] if len(match['maps_won']) > 1 else '0'
-            # match_url = match.get('match_url')
-            # link = f' <a href="{match_url}">🌐</a>' if match_url else ''
+            match_id = match['match_id']
             message += f"<b>{t1}</b> ({maps1}) {score1} - {score2} ({maps2}) <b>{t2}</b>\n"
+            # Кнопка подписки/отписки
+            subs = load_json(SUBS_JSON, default={})
+            subscribed = str(match_id) in subs and user_id in subs[str(match_id)]
+            if subscribed:
+                btn_text = f"Отписаться от {t1} vs {t2}"
+                callback = f"unsubscribe_live:{match_id}"
+            else:
+                btn_text = f"Подписаться на {t1} vs {t2}"
+                callback = f"subscribe_live:{match_id}"
+            inline_keyboard.append([InlineKeyboardButton(btn_text, callback_data=callback)])
+        inline_keyboard.append([InlineKeyboardButton("Назад", callback_data="back_to_menu")])
+        reply_markup = InlineKeyboardMarkup(inline_keyboard)
+        await update.message.reply_text(message + "\nВыберите матч для подробностей или подпишитесь:", reply_markup=reply_markup, parse_mode="HTML", disable_web_page_preview=True)
+        # Обычная клавиатура для подробностей (оставляем как есть)
         live_match_mapping = {}
         keyboard = []
         if not matches:
             await update.message.reply_text(BOT_TEXTS['live_no_matches'], reply_markup=self.markup)
             return
-        # Открываем соединение с базой один раз
         conn = sqlite3.connect(self.db_path)
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
@@ -940,10 +953,9 @@ class HLTVUserBot:
         conn.close()
         keyboard.insert(0, [KeyboardButton("Назад")])
         context.user_data['live_match_mapping'] = live_match_mapping
-        # fallback_live_match_mapping больше не нужен
         context.user_data['fallback_live_match_mapping'] = {}
-        reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
-        await update.message.reply_text(message + "\nВыберите матч для подробностей:", reply_markup=reply_markup, parse_mode="HTML", disable_web_page_preview=True)
+        reply_markup_kb = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+        await update.message.reply_text("\nВыберите матч для подробностей:", reply_markup=reply_markup_kb)
 
     async def handle_callback_query(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         query = update.callback_query
