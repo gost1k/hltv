@@ -143,14 +143,14 @@ class HLTVUserBot:
             today = datetime.now(self.MOSCOW_TIMEZONE)
             date_str = today.strftime('%d.%m.%Y')
             self.logger.info(BOT_TEXTS['log']['period_matches_request'].format(user_info=user_info, start=date_str, end=date_str))
-            await self.show_matches_for_period(update, context, 1)
+            await self.show_matches_for_period(update, context, days=1, for_today=True)
             return
         elif message_text == "За вчера":
             today = datetime.now(self.MOSCOW_TIMEZONE)
             end_date = datetime(today.year, today.month, today.day, 0, 0, 0, tzinfo=self.MOSCOW_TIMEZONE) - timedelta(days=1)
             date_str = end_date.strftime('%d.%m.%Y')
             self.logger.info(BOT_TEXTS['log']['period_matches_request'].format(user_info=user_info, start=date_str, end=date_str))
-            await self.show_matches_for_period(update, context, 1)
+            await self.show_matches_for_period(update, context, days=1, for_today=False)
             return
         elif message_text == "За 3 дня":
             today = datetime.now(self.MOSCOW_TIMEZONE)
@@ -294,19 +294,23 @@ class HLTVUserBot:
         self.logger.info(BOT_TEXTS['log']['found_matches_today'].format(user_info=user_info, count=match_count))
         await update.message.reply_text(message, parse_mode="HTML", reply_markup=self.markup)
 
-    async def show_matches_for_period(self, update: Update, context: ContextTypes.DEFAULT_TYPE, days=1):
+    async def show_matches_for_period(self, update: Update, context: ContextTypes.DEFAULT_TYPE, days=1, for_today=False):
         user = update.effective_user
         user_info = self._get_safe_user_info(user)
         today = datetime.now(self.MOSCOW_TIMEZONE)
-        end_date = datetime(today.year, today.month, today.day, 0, 0, 0, tzinfo=self.MOSCOW_TIMEZONE) - timedelta(days=1)
-        end_timestamp = end_date.timestamp() + 86399
-        start_date = end_date - timedelta(days=days-1)
+        if for_today:
+            start_date = datetime(today.year, today.month, today.day, 0, 0, 0, tzinfo=self.MOSCOW_TIMEZONE)
+            end_date = datetime(today.year, today.month, today.day, 23, 59, 59, tzinfo=self.MOSCOW_TIMEZONE)
+        else:
+            end_date = datetime(today.year, today.month, today.day, 0, 0, 0, tzinfo=self.MOSCOW_TIMEZONE) - timedelta(days=1)
+            start_date = end_date.replace(hour=0, minute=0, second=0)
+            end_date = end_date.replace(hour=23, minute=59, second=59)
         start_timestamp = start_date.timestamp()
+        end_timestamp = end_date.timestamp()
         events = self.get_matches_by_date(start_timestamp, end_timestamp)
         match_count = sum(len(event_data['matches']) for event_data in events.values()) if events else 0
-        
         if days == 1:
-            period_text = f"{BOT_TEXTS['period_text_single']} {end_date.strftime('%d.%m.%Y')}"
+            period_text = f"{BOT_TEXTS['period_text_single']} {start_date.strftime('%d.%m.%Y')}"
         else:
             period_text = f"{BOT_TEXTS['period_text_range']} {start_date.strftime('%d.%m.%Y')} по {end_date.strftime('%d.%m.%Y')}"
         message = f"📊 <b>{period_text}</b>\n\n"
