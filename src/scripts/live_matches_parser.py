@@ -73,13 +73,19 @@ def parse_live_matches(html):
             current_map_scores = [span.text.strip() for span in match_wrapper.find_all('span', class_='current-map-score')]
             # Счёт по картам (число в скобках)
             maps_won = [span.text.strip() for span in match_wrapper.find_all('span', attrs={'data-livescore-maps-won-for': True})]
+            # Ссылка на матч
+            match_a = match_wrapper.find('div', class_='match').find('a', href=True)
+            match_url = None
+            if match_a and match_a['href']:
+                match_url = f'https://www.hltv.org{match_a["href"]}'
             matches.append({
                 'match_id': match_id,
                 'event_name': event_name,
                 'bo_type': bo_type,
                 'team_names': team_names,
                 'current_map_scores': current_map_scores,
-                'maps_won': maps_won
+                'maps_won': maps_won,
+                'match_url': match_url
             })
         except Exception as e:
             logger.warning(f"Ошибка парсинга live-матча: {e}")

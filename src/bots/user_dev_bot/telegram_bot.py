@@ -547,14 +547,19 @@ class UserDevBot(BaseHLTVBot):
             maps1 = match['maps_won'][0] if match['maps_won'] else '0'
             maps2 = match['maps_won'][1] if len(match['maps_won']) > 1 else '0'
             match_id = match['match_id']
+            match_url = match.get('match_url')
+            if match_url:
+                link = f' <a href="{match_url}">🌐</a>'
+            else:
+                link = ''
             btn_text = f"Подписаться на {t1} vs {t2}"
-            message += f"<b>{t1}</b> {score1} ({maps1})  -  {score2} ({maps2}) <b>{t2}</b>\n"
+            message += f"<b>{t1}</b> ({maps1}) {score1} - {score2} ({maps2}) <b>{t2}</b>{link}\n"
             keyboard.append([KeyboardButton(btn_text)])
             match_btn_map[btn_text] = match_id
         keyboard.append([KeyboardButton("Назад")])
         reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
         context.user_data['live_match_btn_map'] = match_btn_map
-        await update.message.reply_text(message, parse_mode="HTML", reply_markup=reply_markup)
+        await update.message.reply_text(message, parse_mode="HTML", reply_markup=reply_markup, disable_web_page_preview=True)
 
 # Используем импорт из user_bot для сохранения идентичной логики
 from src.bots.user_bot.telegram_bot import HLTVStatsBot

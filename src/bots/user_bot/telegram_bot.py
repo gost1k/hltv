@@ -1275,13 +1275,14 @@ class HLTVStatsBot:
         """
         Показывает список live-матчей с возможностью подписки
         """
-        from src.scripts.live_matches_parser import load_json, LIVE_JSON
+        from src.scripts.live_matches_parser import load_json, LIVE_JSON, handle_new_subscription
         matches = load_json(LIVE_JSON, default=[])
         if not matches:
             await update.message.reply_text("Сейчас нет live-матчей.", reply_markup=self.markup)
             return
         message = "<b>Live матчи:</b>\n\n"
         keyboard = []
+        match_btn_map = {}
         for match in matches:
             t1 = match['team_names'][0] if match['team_names'] else '?'
             t2 = match['team_names'][1] if len(match['team_names']) > 1 else '?'
@@ -1290,11 +1291,19 @@ class HLTVStatsBot:
             maps1 = match['maps_won'][0] if match['maps_won'] else '0'
             maps2 = match['maps_won'][1] if len(match['maps_won']) > 1 else '0'
             match_id = match['match_id']
-            message += f"<b>{t1}</b> {score1} ({maps1})  -  {score2} ({maps2}) <b>{t2}</b>\n"
-            keyboard.append([KeyboardButton(f"Подписаться на {t1} vs {t2} (ID {match_id})")])
+            match_url = match.get('match_url')
+            if match_url:
+                link = f' <a href="{match_url}">🌐</a>'
+            else:
+                link = ''
+            btn_text = f"Подписаться на {t1} vs {t2}"
+            message += f"<b>{t1}</b> ({maps1}) {score1} - {score2} ({maps2}) <b>{t2}</b>{link}\n"
+            keyboard.append([KeyboardButton(btn_text)])
+            match_btn_map[btn_text] = match_id
         keyboard.append([KeyboardButton("Назад")])
         reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
-        await update.message.reply_text(message, parse_mode="HTML", reply_markup=reply_markup)
+        context.user_data['live_match_btn_map'] = match_btn_map
+        await update.message.reply_text(message, parse_mode="HTML", reply_markup=reply_markup, disable_web_page_preview=True)
     
     def run(self):
         """
