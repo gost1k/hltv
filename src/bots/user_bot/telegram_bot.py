@@ -611,9 +611,7 @@ class HLTVStatsBot:
                     conn2 = sqlite3.connect(self.db_path)
                     conn2.row_factory = sqlite3.Row
                     cursor2 = conn2.cursor()
-                    cursor2.execute('''
-                        SELECT name, lang, url FROM upcoming_match_streamers WHERE match_id = ?
-                    ''', (event_id,))
+                    cursor2.execute('SELECT name, lang, url FROM upcoming_match_streamers WHERE match_id = ?', (event_id,))
                     streams = cursor2.fetchall()
                     conn2.close()
                     if streams:
