@@ -624,7 +624,12 @@ class HLTVStatsBot:
                 except Exception as e:
                     self.logger.error(f"Ошибка при получении стримеров для матча {event_id}: {str(e)}")
             # Отправляем сообщение
-            await update.message.reply_text(message, parse_mode="HTML", reply_markup=ics_button_markup if ics_button_markup else self.markup)
+            reply_markup = ics_button_markup if ics_button_markup else self.markup
+            if hasattr(update, 'message') and update.message:
+                await update.message.reply_text(message, parse_mode="HTML", reply_markup=reply_markup)
+            else:
+                user_id = update.effective_user.id
+                await context.bot.send_message(chat_id=user_id, text=message, parse_mode="HTML", reply_markup=reply_markup)
             
         except Exception as e:
             self.logger.error(f"Ошибка при получении матчей события {event_id}: {str(e)}")
@@ -1307,7 +1312,10 @@ class HLTVStatsBot:
             message += f"<b>{t1}</b> ({maps1}) {score1} - {score2} ({maps2}) <b>{t2}</b>{link}\n"
             keyboard.append([InlineKeyboardButton(btn_text, callback_data=callback)])
         reply_markup = InlineKeyboardMarkup(keyboard)
-        await update.message.reply_text(message, parse_mode="HTML", reply_markup=reply_markup, disable_web_page_preview=True)
+        if hasattr(update, 'message') and update.message:
+            await update.message.reply_text(message, parse_mode="HTML", reply_markup=reply_markup, disable_web_page_preview=True)
+        else:
+            await context.bot.send_message(chat_id=user_id, text=message, parse_mode="HTML", reply_markup=reply_markup, disable_web_page_preview=True)
     
     async def handle_callback_query(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         query = update.callback_query
