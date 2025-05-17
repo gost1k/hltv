@@ -167,7 +167,8 @@ class BaseParser(ABC):
                 try:
                     self.driver.add_cookie(cookie)
                 except Exception as e:
-                    self.logger.warning(f"Failed to add cookie: {str(e)}")
+                    msg = str(e).splitlines()[0]  # Только первая строка ошибки
+                    self.logger.warning(f"Failed to add cookie: {msg}")
                     
             self.logger.info("Cookies loaded successfully")
             return True

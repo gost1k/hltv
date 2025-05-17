@@ -25,6 +25,8 @@ config = load_config('user_dev')
 # Настройка логгера
 logger = logging.getLogger(__name__)
 
+MENU_LIVE_MATCHES = "Live матчи"
+
 class UserDevBot(BaseHLTVBot):
     """
     Телеграм-бот для отображения статистики HLTV (версия для разработчиков)
@@ -42,8 +44,9 @@ class UserDevBot(BaseHLTVBot):
         
         # Создаем клавиатуру с кнопками меню
         self.menu_keyboard = [
-            [KeyboardButton(MENU_COMPLETED_MATCHES)],
-            [KeyboardButton(MENU_UPCOMING_MATCHES)]
+            [KeyboardButton(MENU_LIVE_MATCHES)],
+            [KeyboardButton(MENU_UPCOMING_MATCHES)],
+            [KeyboardButton(MENU_COMPLETED_MATCHES)]
         ]
         self.markup = ReplyKeyboardMarkup(self.menu_keyboard, resize_keyboard=True)
         
@@ -111,8 +114,19 @@ class UserDevBot(BaseHLTVBot):
         user_info = self._get_safe_user_info(user)
         self.logger.info(f"{user_info} - Сообщение: '{message_text}'")
         
-        # Сохраняем текст нажатой кнопки для последующего определения типа действий
         context.user_data['last_button'] = message_text
+
+        # --- Исправленный блок для live-подписки ---
+        if 'live_match_btn_map' in context.user_data and message_text in context.user_data['live_match_btn_map']:
+            from src.scripts.live_matches_parser import handle_new_subscription
+            match_id = context.user_data['live_match_btn_map'][message_text]
+            try:
+                handle_new_subscription(match_id, user.id)
+                await update.message.reply_text(f"Вы подписались на live-матч {message_text[15:]}", reply_markup=self.markup)
+            except Exception as e:
+                await update.message.reply_text("Ошибка: не удалось подписаться на live-матч.", reply_markup=self.markup)
+            return
+        # --- конец исправления ---
         
         if message_text == MENU_COMPLETED_MATCHES:
             self.logger.info(f"{user_info} - Запрос прошедших матчей")
@@ -122,6 +136,8 @@ class UserDevBot(BaseHLTVBot):
             self.logger.info(f"{user_info} - Запрос предстоящих матчей")
             context.user_data['showing_menu'] = MENU_UPCOMING_MATCHES
             await self.show_upcoming_matches(update, context)
+        elif message_text == MENU_LIVE_MATCHES:
+            await self.show_live_matches(update, context)
         elif message_text == "За сегодня":
             self.logger.info(f"{user_info} - Запрос матчей за сегодня")
             await self.send_today_stats(update, context)
@@ -510,6 +526,35 @@ class UserDevBot(BaseHLTVBot):
         await update.message.reply_text(
             "Введите название команды, например Natus Vincere, чтобы посмотреть будущие и прошедшие матчи команды."
         )
+
+    async def show_live_matches(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """
+        Показывает список live-матчей с возможностью подписки
+        """
+        from src.scripts.live_matches_parser import load_json, LIVE_JSON, handle_new_subscription
+        matches = load_json(LIVE_JSON, default=[])
+        if not matches:
+            await update.message.reply_text("Сейчас нет live-матчей.", reply_markup=self.markup)
+            return
+        message = "<b>Live матчи:</b>\n\n"
+        keyboard = []
+        match_btn_map = {}
+        for match in matches:
+            t1 = match['team_names'][0] if match['team_names'] else '?'
+            t2 = match['team_names'][1] if len(match['team_names']) > 1 else '?'
+            score1 = match['current_map_scores'][0] if match['current_map_scores'] else '?'
+            score2 = match['current_map_scores'][1] if len(match['current_map_scores']) > 1 else '?'
+            maps1 = match['maps_won'][0] if match['maps_won'] else '0'
+            maps2 = match['maps_won'][1] if len(match['maps_won']) > 1 else '0'
+            match_id = match['match_id']
+            btn_text = f"Подписаться на {t1} vs {t2}"
+            message += f"<b>{t1}</b> {score1} ({maps1})  -  {score2} ({maps2}) <b>{t2}</b>\n"
+            keyboard.append([KeyboardButton(btn_text)])
+            match_btn_map[btn_text] = match_id
+        keyboard.append([KeyboardButton("Назад")])
+        reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+        context.user_data['live_match_btn_map'] = match_btn_map
+        await update.message.reply_text(message, parse_mode="HTML", reply_markup=reply_markup)
 
 # Используем импорт из user_bot для сохранения идентичной логики
 from src.bots.user_bot.telegram_bot import HLTVStatsBot

@@ -14,6 +14,7 @@ import tempfile
 import traceback
 
 from src.bots.config import load_config
+from src.scripts.live_matches_parser import handle_new_subscription
 
 # Загружаем конфигурацию
 config = load_config('user')
@@ -28,6 +29,7 @@ DB_PATH = config['hltv_db_path']
 # Кнопки меню
 MENU_UPCOMING_MATCHES = "Будущие матчи"
 MENU_COMPLETED_MATCHES = "Прошедшие матчи"
+MENU_LIVE_MATCHES = "Live матчи"
 
 # Определяем московское время (UTC+3)
 MOSCOW_TIMEZONE = timezone(timedelta(hours=3))
@@ -64,7 +66,8 @@ class HLTVStatsBot:
         # Создаем клавиатуру с кнопками меню
         self.menu_keyboard = [
             [KeyboardButton(MENU_COMPLETED_MATCHES)],
-            [KeyboardButton(MENU_UPCOMING_MATCHES)]
+            [KeyboardButton(MENU_UPCOMING_MATCHES)],
+            [KeyboardButton(MENU_LIVE_MATCHES)]
         ]
         self.markup = ReplyKeyboardMarkup(self.menu_keyboard, resize_keyboard=True)
         
@@ -164,14 +167,44 @@ class HLTVStatsBot:
         # Сохраняем текст нажатой кнопки для последующего определения типа действий
         context.user_data['last_button'] = message_text
         
+        # Подписка на live-матч
+        if message_text.startswith("/subscribe_live "):
+            try:
+                match_id = int(message_text.split(" ")[1])
+                handle_new_subscription(match_id, user.id)
+                await update.message.reply_text(f"Вы подписались на live-матч {match_id}")
+            except Exception as e:
+                await update.message.reply_text("Ошибка: не удалось подписаться на live-матч.")
+            return
+        # Отписка от live-матча
+        if message_text.startswith("/unsubscribe_live "):
+            try:
+                match_id = int(message_text.split(" ")[1])
+                from src.scripts.live_matches_parser import load_json, save_json, SUBS_JSON
+                subs = load_json(SUBS_JSON, default={})
+                match_id_str = str(match_id)
+                if match_id_str in subs and user.id in subs[match_id_str]:
+                    subs[match_id_str].remove(user.id)
+                    if not subs[match_id_str]:
+                        subs.pop(match_id_str)
+                    save_json(SUBS_JSON, subs)
+                    await update.message.reply_text(f"Вы отписались от live-матча {match_id}")
+                else:
+                    await update.message.reply_text("Вы не были подписаны на этот матч.")
+            except Exception as e:
+                await update.message.reply_text("Ошибка: не удалось отписаться от live-матча.")
+            return
+        
         if message_text == MENU_COMPLETED_MATCHES:
             self.logger.info(f"{user_info} - Запрос прошедших матчей")
             context.user_data['showing_menu'] = MENU_COMPLETED_MATCHES
             await self.show_completed_matches(update, context)
         elif message_text == MENU_UPCOMING_MATCHES:
-            self.logger.info(f"{user_info} - Запрос предстоящих матчей")
+            self.logger.info(f"{user_info} - Запрос будущих матчей")
             context.user_data['showing_menu'] = MENU_UPCOMING_MATCHES
             await self.show_upcoming_matches(update, context)
+        elif message_text == MENU_LIVE_MATCHES:
+            await self.show_live_matches(update, context)
         elif message_text == "За сегодня":
             self.logger.info(f"{user_info} - Запрос матчей за сегодня")
             await self.send_today_stats(update, context)
@@ -1237,6 +1270,31 @@ class HLTVStatsBot:
             message += "\n"
         
         return message
+    
+    async def show_live_matches(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """
+        Показывает список live-матчей с возможностью подписки
+        """
+        from src.scripts.live_matches_parser import load_json, LIVE_JSON
+        matches = load_json(LIVE_JSON, default=[])
+        if not matches:
+            await update.message.reply_text("Сейчас нет live-матчей.", reply_markup=self.markup)
+            return
+        message = "<b>Live матчи:</b>\n\n"
+        keyboard = []
+        for match in matches:
+            t1 = match['team_names'][0] if match['team_names'] else '?'
+            t2 = match['team_names'][1] if len(match['team_names']) > 1 else '?'
+            score1 = match['current_map_scores'][0] if match['current_map_scores'] else '?'
+            score2 = match['current_map_scores'][1] if len(match['current_map_scores']) > 1 else '?'
+            maps1 = match['maps_won'][0] if match['maps_won'] else '0'
+            maps2 = match['maps_won'][1] if len(match['maps_won']) > 1 else '0'
+            match_id = match['match_id']
+            message += f"<b>{t1}</b> {score1} ({maps1})  -  {score2} ({maps2}) <b>{t2}</b>\n"
+            keyboard.append([KeyboardButton(f"Подписаться на {t1} vs {t2} (ID {match_id})")])
+        keyboard.append([KeyboardButton("Назад")])
+        reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+        await update.message.reply_text(message, parse_mode="HTML", reply_markup=reply_markup)
     
     def run(self):
         """
