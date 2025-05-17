@@ -7,7 +7,7 @@ import os
 import logging
 import sqlite3
 from datetime import datetime, timedelta, timezone
-from telegram import Update, ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton
+from telegram import Update, ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardRemove
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes, CallbackQueryHandler
 import sys
 import tempfile
@@ -37,9 +37,9 @@ class HLTVUserBot:
         self.MENU_LIVE_MATCHES = "Live матчи"
         self.MOSCOW_TIMEZONE = timezone(timedelta(hours=3))
         self.menu_keyboard = [
-            [KeyboardButton(self.MENU_COMPLETED_MATCHES)],
+            [KeyboardButton(self.MENU_LIVE_MATCHES)],
             [KeyboardButton(self.MENU_UPCOMING_MATCHES)],
-            [KeyboardButton(self.MENU_LIVE_MATCHES)]
+            [KeyboardButton(self.MENU_COMPLETED_MATCHES)]
         ]
         self.markup = ReplyKeyboardMarkup(self.menu_keyboard, resize_keyboard=True)
         self.live_keyboard = [[KeyboardButton("Назад")]]
@@ -82,8 +82,8 @@ class HLTVUserBot:
         await update.message.reply_text(BOT_TEXTS['menu'], reply_markup=self.markup)
 
     async def handle_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        # Перенесённая логика из user_bot/telegram_bot.py
         message_text = update.message.text
+        self.logger.info(f"handle_message called, message_text: {message_text}")
         user = update.effective_user
         user_info = self._get_safe_user_info(user)
         period_buttons = [
@@ -127,60 +127,76 @@ class HLTVUserBot:
             self.logger.info(BOT_TEXTS['log']['completed_matches_request'].format(user_info=user_info))
             context.user_data['showing_menu'] = self.MENU_COMPLETED_MATCHES
             await self.show_completed_matches(update, context)
+            return
         elif message_text == self.MENU_UPCOMING_MATCHES:
             self.logger.info(BOT_TEXTS['log']['upcoming_matches_request'].format(user_info=user_info))
             context.user_data['showing_menu'] = self.MENU_UPCOMING_MATCHES
             await self.show_upcoming_matches(update, context)
+            return
         elif message_text == self.MENU_LIVE_MATCHES:
             self.logger.info(BOT_TEXTS['log']['live_matches_request'].format(user_info=user_info))
             await self.show_live_matches(update, context)
+            return
         elif message_text == "За сегодня":
             today = datetime.now(self.MOSCOW_TIMEZONE)
             date_str = today.strftime('%d.%m.%Y')
             self.logger.info(BOT_TEXTS['log']['period_matches_request'].format(user_info=user_info, start=date_str, end=date_str))
             await self.send_today_stats(update, context)
+            return
         elif message_text == "За вчера":
             today = datetime.now(self.MOSCOW_TIMEZONE)
             end_date = datetime(today.year, today.month, today.day, 0, 0, 0, tzinfo=self.MOSCOW_TIMEZONE) - timedelta(days=1)
             date_str = end_date.strftime('%d.%m.%Y')
             self.logger.info(BOT_TEXTS['log']['period_matches_request'].format(user_info=user_info, start=date_str, end=date_str))
             await self.show_matches_for_period(update, context, 1)
+            return
         elif message_text == "За 3 дня":
             today = datetime.now(self.MOSCOW_TIMEZONE)
             end_date = datetime(today.year, today.month, today.day, 0, 0, 0, tzinfo=self.MOSCOW_TIMEZONE) - timedelta(days=1)
             start_date = end_date - timedelta(days=2)
             self.logger.info(BOT_TEXTS['log']['period_matches_request'].format(user_info=user_info, start=start_date.strftime('%d.%m.%Y'), end=end_date.strftime('%d.%m.%Y')))
             await self.show_matches_for_period(update, context, 3)
+            return
         elif message_text == "На сегодня":
             today = datetime.now(self.MOSCOW_TIMEZONE)
             date_str = today.strftime('%d.%m.%Y')
             self.logger.info(BOT_TEXTS['log']['period_matches_request'].format(user_info=user_info, start=date_str, end=date_str))
             await self.show_upcoming_matches_for_period(update, context, 0)
+            return
         elif message_text == "На завтра":
             tomorrow = datetime.now(self.MOSCOW_TIMEZONE) + timedelta(days=1)
             date_str = tomorrow.strftime('%d.%m.%Y')
             self.logger.info(BOT_TEXTS['log']['period_matches_request'].format(user_info=user_info, start=date_str, end=date_str))
             await self.show_upcoming_matches_for_period(update, context, 1)
+            return
         elif message_text == "На 3 дня":
             today = datetime.now(self.MOSCOW_TIMEZONE)
             start_date = today
             end_date = today + timedelta(days=2)
             self.logger.info(BOT_TEXTS['log']['period_matches_request'].format(user_info=user_info, start=start_date.strftime('%d.%m.%Y'), end=end_date.strftime('%d.%m.%Y')))
             await self.show_upcoming_matches_for_period(update, context, 3)
+            return
         elif message_text == "По событию":
             self.logger.info(BOT_TEXTS['log']['events_list_request'].format(user_info=user_info))
             await self.show_events_list(update, context)
+            return
         elif message_text == "Назад":
             self.logger.info(BOT_TEXTS['log']['back_to_menu'].format(user_info=user_info))
             await self.show_menu(update, context)
-        elif 'match_mapping' in context.user_data and message_text in context.user_data['match_mapping']:
+            return
+        elif 'match_mapping' in context.user_data:
+            self.logger.info(f"match_mapping: {context.user_data['match_mapping']}")
+            self.logger.info(f"message_text: {message_text}")
+        if 'match_mapping' in context.user_data and message_text in context.user_data['match_mapping']:
             match_id = context.user_data['match_mapping'][message_text]
             self.logger.info(BOT_TEXTS['log']['match_details_request'].format(user_info=user_info, match_id=match_id))
             await self.show_match_details(update, context, match_id)
+            return
         elif 'event_mapping' in context.user_data and message_text in context.user_data['event_mapping']:
             event_id = context.user_data['event_mapping'][message_text]
             self.logger.info(BOT_TEXTS['log']['matches_for_event_request'].format(user_info=user_info, event_id=event_id))
             await self.show_matches_for_event(update, context, event_id)
+            return
         elif "(" in message_text and ")" in message_text:
             try:
                 match_id_text = message_text.split("(")[-1].split(")")[0].strip()
@@ -219,11 +235,11 @@ class HLTVUserBot:
 
     async def show_completed_matches(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         keyboard = [
+            [KeyboardButton("Назад")],
             [KeyboardButton("За сегодня")],
             [KeyboardButton("За вчера")],
             [KeyboardButton("За 3 дня")],
             [KeyboardButton("По событию")],
-            [KeyboardButton(BOT_TEXTS['back'])]
         ]
         markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
         await update.message.reply_text(
@@ -236,11 +252,11 @@ class HLTVUserBot:
 
     async def show_upcoming_matches(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         keyboard = [
+            [KeyboardButton("Назад")],
             [KeyboardButton("На сегодня")],
             [KeyboardButton("На завтра")],
             [KeyboardButton("На 3 дня")],
             [KeyboardButton("По событию")],
-            [KeyboardButton(BOT_TEXTS['back'])]
         ]
         markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
         await update.message.reply_text(
@@ -288,7 +304,27 @@ class HLTVUserBot:
             period_text = f"{BOT_TEXTS['period_text_range']} {start_date.strftime('%d.%m.%Y')} по {end_date.strftime('%d.%m.%Y')}"
         message = f"📊 <b>{period_text}</b>\n\n"
         message += self.format_matches_message(events)
-        await update.message.reply_text(message, parse_mode="HTML", reply_markup=self.markup)
+        keyboard = [[KeyboardButton('Назад')]]
+        if 'match_mapping' not in context.user_data:
+            context.user_data['match_mapping'] = {}
+        # Собираем все матчи из events
+        all_matches = []
+        for event_data in events.values():
+            all_matches.extend(event_data['matches'])
+        for match in all_matches:
+            team1_name = match['team1_name']
+            team2_name = match['team2_name']
+            match_id = match['match_id']
+            # Если есть счёт, это завершённый матч
+            if 'team1_score' in match and 'team2_score' in match:
+                match_text = f"{team1_name} {match['team1_score']}:{match['team2_score']} {team2_name}"
+            else:
+                match_text = f"{team1_name} vs {team2_name}"
+            context.user_data['match_mapping'][match_text] = match_id
+            keyboard.append([KeyboardButton(match_text)])
+        reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+        await update.message.reply_text(message, parse_mode="HTML")
+        await update.message.reply_text("Выберите матч для подробной информации:", reply_markup=reply_markup)
 
     async def show_events_list(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Определяем, какой тип событий запрашивается (прошедшие или предстоящие)
@@ -365,7 +401,8 @@ class HLTVUserBot:
                 cursor.execute('SELECT event_name FROM result_match WHERE event_id = ? LIMIT 1', (event_id,))
                 event_result = cursor.fetchone()
                 if not event_result:
-                    await update.message.reply_text(BOT_TEXTS['event_not_found'], reply_markup=self.markup)
+                    message = BOT_TEXTS['event_not_found']
+                    await update.message.reply_text(message, reply_markup=self.markup)
                     conn.close()
                     return
                 event_name = event_result['event_name']
@@ -378,7 +415,8 @@ class HLTVUserBot:
                 matches = cursor.fetchall()
                 conn.close()
                 if not matches:
-                    await update.message.reply_text(BOT_TEXTS['no_matches_event_completed'].format(event_name=event_name), reply_markup=self.markup)
+                    message = BOT_TEXTS['no_matches_event_completed'].format(event_name=event_name)
+                    await update.message.reply_text(message, reply_markup=self.markup)
                     return
                 events = {
                     event_id: {
@@ -388,16 +426,36 @@ class HLTVUserBot:
                 }
                 message = BOT_TEXTS['upcoming_event_matches_header'].format(event_name=event_name)
                 message += self.format_matches_message(events)
+                # Формируем клавиатуру выбора матча
+                keyboard = [[KeyboardButton('Назад')]]
+                if 'match_mapping' not in context.user_data:
+                    context.user_data['match_mapping'] = {}
+                else:
+                    self.logger.info("Перезаписываю match_mapping для новых матчей по событию")
+                    context.user_data['match_mapping'].clear()
+                for match in matches:
+                    team1_name = match['team1_name']
+                    team2_name = match['team2_name']
+                    match_id = match['match_id']
+                    match_text = f"{team1_name} vs {team2_name}"
+                    context.user_data['match_mapping'][match_text] = match_id
+                    keyboard.append([KeyboardButton(match_text)])
+                self.logger.info(f"Отправляю клавиатуру: {keyboard}")
+                await update.message.reply_text(message, parse_mode="HTML")
+                await update.message.reply_text("Выберите матч для подробной информации:", reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True))
+                return
             else:
+                # Ветка для будущих матчей по событию
                 cursor.execute('SELECT event_name FROM upcoming_match WHERE event_id = ? LIMIT 1', (event_id,))
                 event_result = cursor.fetchone()
                 if not event_result:
-                    await update.message.reply_text(BOT_TEXTS['event_not_found'], reply_markup=self.markup)
+                    message = BOT_TEXTS['event_not_found']
+                    await update.message.reply_text(message, reply_markup=self.markup)
                     conn.close()
                     return
                 event_name = event_result['event_name']
                 cursor.execute('''
-                    SELECT match_id, datetime, team1_id, team1_name, team1_rank, team2_id, team2_name, team2_rank
+                    SELECT match_id, datetime, team1_id, team1_name, team2_id, team2_name
                     FROM upcoming_match
                     WHERE event_id = ?
                     ORDER BY datetime
@@ -405,39 +463,34 @@ class HLTVUserBot:
                 matches = cursor.fetchall()
                 conn.close()
                 if not matches:
-                    await update.message.reply_text(BOT_TEXTS['no_matches_event_upcoming'].format(event_name=event_name), reply_markup=self.markup)
+                    message = BOT_TEXTS['no_matches_event_upcoming'].format(event_name=event_name)
+                    await update.message.reply_text(message, reply_markup=self.markup)
                     return
+                # Формируем текст и клавиатуру
                 message = BOT_TEXTS['upcoming_event_matches_header'].format(event_name=event_name)
                 for match in matches:
-                    match_id = match['match_id']
                     match_datetime = datetime.fromtimestamp(match['datetime'], tz=self.MOSCOW_TIMEZONE).strftime('%d.%m.%Y %H:%M')
                     team1_name = match['team1_name']
                     team2_name = match['team2_name']
                     message += f"<b>{match_datetime}</b>: <code>{team1_name}</code> vs <code>{team2_name}</code>\n"
-                    # Добавляем стримы для этого матча
-                    try:
-                        conn2 = sqlite3.connect(self.db_path)
-                        conn2.row_factory = sqlite3.Row
-                        cursor2 = conn2.cursor()
-                        cursor2.execute('SELECT name, lang, url FROM upcoming_match_streamers WHERE match_id = ?', (match_id,))
-                        streams = cursor2.fetchall()
-                        conn2.close()
-                        if streams:
-                            message += BOT_TEXTS['where_to_watch']
-                            for s in streams:
-                                lang = f" ({s['lang']})" if s['lang'] else ''
-                                message += f"• <a href=\"{s['url']}\">{s['name']}{lang}</a>\n"
-                    except Exception as e:
-                        self.logger.error(BOT_TEXTS['error_streamers'].format(match_id=match_id, error=str(e)))
-                    message += '\n'
-                reply_markup = self.markup
-                if hasattr(update, 'message') and update.message:
-                    await update.message.reply_text(message, parse_mode="HTML", reply_markup=reply_markup)
+                # Удаляем старую клавиатуру
+                await update.message.reply_text("...", reply_markup=ReplyKeyboardRemove())
+                # Клавиатура выбора матча
+                keyboard = [[KeyboardButton('Назад')]]
+                if 'match_mapping' not in context.user_data:
+                    context.user_data['match_mapping'] = {}
                 else:
-                    user_id = update.effective_user.id
-                    await context.bot.send_message(chat_id=user_id, text=message, parse_mode="HTML", reply_markup=reply_markup)
+                    context.user_data['match_mapping'].clear()
+                for match in matches:
+                    team1_name = match['team1_name']
+                    team2_name = match['team2_name']
+                    match_id = match['match_id']
+                    match_text = f"{team1_name} vs {team2_name}"
+                    context.user_data['match_mapping'][match_text] = match_id
+                    keyboard.append([KeyboardButton(match_text)])
+                await update.message.reply_text(message, parse_mode="HTML")
+                await update.message.reply_text("Выберите матч для подробной информации:", reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True))
                 return
-            await update.message.reply_text(message, parse_mode="HTML", reply_markup=self.markup)
         except Exception as e:
             self.logger.error(f"Ошибка при получении матчей события {event_id}: {str(e)}")
             await update.message.reply_text(BOT_TEXTS['error_getting_event'], reply_markup=self.markup)
@@ -520,7 +573,7 @@ class HLTVUserBot:
                 if match['head_to_head_team1_wins'] is not None and match['head_to_head_team2_wins'] is not None:
                     message += BOT_TEXTS['h2h_header']
                     message += BOT_TEXTS['h2h_line'].format(team=match['team1_name'], wins=match['head_to_head_team1_wins'])
-                    message += BOT_TEXTS['h2h_line'].format(team=match['team2_name'], wins=match['head_to_head_team2_wins']) + '\n'
+                    message += BOT_TEXTS['h2h_line'].format(team=match['team2_name'], wins=match['head_to_head_team2_wins'])
             if match_type == 'completed' and match['demo_id']:
                 demo_url = f"https://www.hltv.org/download/demo/{match['demo_id']}"
                 message += BOT_TEXTS['demo_link'].format(url=demo_url)
@@ -646,10 +699,10 @@ class HLTVUserBot:
                     match_text = f"{team1_name} {team1_score}:{team2_score} {team2_name}"
                     context.user_data['match_mapping'][match_text] = match_id
                     keyboard.append([KeyboardButton(match_text)])
-            keyboard.append([KeyboardButton(BOT_TEXTS['back'])])
+            keyboard = [[KeyboardButton(BOT_TEXTS['back'])]] + keyboard
             reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
             await update.message.reply_text(matches_list, parse_mode="HTML")
-            await update.message.reply_text(BOT_TEXTS['choose_match'], reply_markup=reply_markup)
+            await update.message.reply_text("Выберите матч для подробной информации:", reply_markup=reply_markup)
         except Exception as e:
             self.logger.error(f"Ошибка при поиске матчей команды: {str(e)}")
             await update.message.reply_text(BOT_TEXTS['error_search_team'], reply_markup=self.markup)
@@ -744,7 +797,23 @@ class HLTVUserBot:
         self.logger.info(BOT_TEXTS['log']['found_matches_period'].format(user_info=user_info, count=match_count))
         message = f"📅 <b>Предстоящие матчи {period_text}</b>\n\n"
         message += self.format_upcoming_matches_message(events)
-        await update.message.reply_text(message, parse_mode="HTML", reply_markup=self.markup)
+        # Формируем клавиатуру выбора матча
+        keyboard = [[KeyboardButton('Назад')]]
+        if 'match_mapping' not in context.user_data:
+            context.user_data['match_mapping'] = {}
+        all_matches = []
+        for event_data in events.values():
+            all_matches.extend(event_data['matches'])
+        for match in all_matches:
+            team1_name = match['team1_name']
+            team2_name = match['team2_name']
+            match_id = match['match_id']
+            match_text = f"{team1_name} vs {team2_name}"
+            context.user_data['match_mapping'][match_text] = match_id
+            keyboard.append([KeyboardButton(match_text)])
+        reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+        await update.message.reply_text(message, parse_mode="HTML")
+        await update.message.reply_text("Выберите матч для подробной информации:", reply_markup=reply_markup)
 
     async def send_upcoming_matches(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         user = update.effective_user
@@ -874,6 +943,7 @@ class HLTVUserBot:
 
     async def handle_callback_query(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         query = update.callback_query
+        self.logger.info(f"handle_callback_query called, data: {query.data}")
         data = query.data
         user = query.from_user
         user_info = self._get_safe_user_info(user)

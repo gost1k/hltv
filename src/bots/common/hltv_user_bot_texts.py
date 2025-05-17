@@ -76,7 +76,7 @@ BOT_TEXTS = {
         'live_matches_request': "{user_info} - Requested live matches",
         'subscribe_live': "{user_info} - Subscribed to live match {match_id}",
         'unsubscribe_live': "{user_info} - Unsubscribed from live match {match_id}",
-        # ... другие шаблоны логов ...
+        'search_team': "User: {user_info} - Search for team: {team_name}",
     },
     'match_details_header': "<b>⏰ {datetime}</b>\n<b>🏆 {event_name}</b>\n\n",
     'match_score': "{team1} {score1} : {score2} {team2}\n\n",
@@ -99,5 +99,5 @@ BOT_TEXTS = {
     'period_text_single': "Матчи за",
     'period_text_range': "Матчи за период с",
     'today_stats_title': "Статистика матчей за {date}",
-    # ... остальные шаблоны ...
+    'search_team': "Введите название команды для поиска:",
 } 
