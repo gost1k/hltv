@@ -2,6 +2,7 @@ from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.common.by import By
 from webdriver_manager.chrome import ChromeDriverManager
 
 class SimpleHTMLParser:
@@ -32,6 +33,18 @@ class SimpleHTMLParser:
         WebDriverWait(self.driver, timeout).until(
             lambda d: d.execute_script('return document.readyState') == 'complete'
         )
+        # Ждём появления хотя бы одного непустого счёта
+        def scores_loaded(drv):
+            scores = drv.find_elements(By.CSS_SELECTOR, '.liveMatches .current-map-score')
+            for s in scores:
+                text = s.text.strip()
+                if text and any(c.isdigit() for c in text):
+                    return True
+            return False
+        try:
+            WebDriverWait(self.driver, timeout).until(scores_loaded)
+        except Exception:
+            pass  # Если не дождались, всё равно возвращаем страницу
         html = self.driver.page_source
         self.driver.quit()
         return html 
