@@ -1277,6 +1277,7 @@ class HLTVStatsBot:
         Показывает список live-матчей с возможностью подписки и отписки
         """
         matches = load_json(LIVE_JSON, default=[])
+        subs = load_json(SUBS_JSON, default={})
         user_id = update.effective_user.id
         message = "<b>Live матчи:</b>\n\n"
         keyboard = []
