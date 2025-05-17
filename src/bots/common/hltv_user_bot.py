@@ -137,28 +137,35 @@ class HLTVUserBot:
         elif message_text == "За сегодня":
             today = datetime.now(self.MOSCOW_TIMEZONE)
             date_str = today.strftime('%d.%m.%Y')
-            self.logger.info(f"{user_info} - Сообщение: 'За сегодня' (период с {date_str} по {date_str})")
+            self.logger.info(BOT_TEXTS['log']['period_matches_request'].format(user_info=user_info, start=date_str, end=date_str))
             await self.send_today_stats(update, context)
         elif message_text == "За вчера":
             today = datetime.now(self.MOSCOW_TIMEZONE)
             end_date = datetime(today.year, today.month, today.day, 0, 0, 0, tzinfo=self.MOSCOW_TIMEZONE) - timedelta(days=1)
             date_str = end_date.strftime('%d.%m.%Y')
-            self.logger.info(f"{user_info} - Сообщение: 'За вчера' (период с {date_str} по {date_str})")
+            self.logger.info(BOT_TEXTS['log']['period_matches_request'].format(user_info=user_info, start=date_str, end=date_str))
             await self.show_matches_for_period(update, context, 1)
         elif message_text == "За 3 дня":
             today = datetime.now(self.MOSCOW_TIMEZONE)
             end_date = datetime(today.year, today.month, today.day, 0, 0, 0, tzinfo=self.MOSCOW_TIMEZONE) - timedelta(days=1)
             start_date = end_date - timedelta(days=2)
-            self.logger.info(f"{user_info} - Сообщение: 'За 3 дня' (период с {start_date.strftime('%d.%m.%Y')} по {end_date.strftime('%d.%m.%Y')})")
+            self.logger.info(BOT_TEXTS['log']['period_matches_request'].format(user_info=user_info, start=start_date.strftime('%d.%m.%Y'), end=end_date.strftime('%d.%m.%Y')))
             await self.show_matches_for_period(update, context, 3)
         elif message_text == "На сегодня":
-            self.logger.info(BOT_TEXTS['log']['upcoming_matches_request'].format(user_info=user_info, days=0))
+            today = datetime.now(self.MOSCOW_TIMEZONE)
+            date_str = today.strftime('%d.%m.%Y')
+            self.logger.info(BOT_TEXTS['log']['period_matches_request'].format(user_info=user_info, start=date_str, end=date_str))
             await self.show_upcoming_matches_for_period(update, context, 0)
         elif message_text == "На завтра":
-            self.logger.info(BOT_TEXTS['log']['upcoming_matches_request'].format(user_info=user_info, days=1))
+            tomorrow = datetime.now(self.MOSCOW_TIMEZONE) + timedelta(days=1)
+            date_str = tomorrow.strftime('%d.%m.%Y')
+            self.logger.info(BOT_TEXTS['log']['period_matches_request'].format(user_info=user_info, start=date_str, end=date_str))
             await self.show_upcoming_matches_for_period(update, context, 1)
         elif message_text == "На 3 дня":
-            self.logger.info(BOT_TEXTS['log']['upcoming_matches_request'].format(user_info=user_info, days=3))
+            today = datetime.now(self.MOSCOW_TIMEZONE)
+            start_date = today
+            end_date = today + timedelta(days=2)
+            self.logger.info(BOT_TEXTS['log']['period_matches_request'].format(user_info=user_info, start=start_date.strftime('%d.%m.%Y'), end=end_date.strftime('%d.%m.%Y')))
             await self.show_upcoming_matches_for_period(update, context, 3)
         elif message_text == "По событию":
             self.logger.info(BOT_TEXTS['log']['events_list_request'].format(user_info=user_info))
@@ -750,7 +757,6 @@ class HLTVUserBot:
             conn = sqlite3.connect(self.db_path)
             conn.row_factory = sqlite3.Row
             cursor = conn.cursor()
-            self.logger.info(f"Запрос предстоящих матчей за период от {date_start} до {date_end}")
             cursor.execute('''
                 SELECT m.match_id, m.datetime, m.team1_id, m.team1_name, m.team1_rank,
                        m.team2_id, m.team2_name, m.team2_rank, m.event_id, m.event_name
@@ -759,7 +765,6 @@ class HLTVUserBot:
                 ORDER BY m.event_id, m.datetime
             ''', (date_start, date_end))
             matches = cursor.fetchall()
-            self.logger.info(f"Найдено {len(matches)} предстоящих матчей в БД")
             events = {}
             for match in matches:
                 event_id = match['event_id']
