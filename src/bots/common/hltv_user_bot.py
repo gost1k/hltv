@@ -211,7 +211,12 @@ class HLTVUserBot:
                 )
         elif 'live_match_mapping' in context.user_data and message_text in context.user_data['live_match_mapping']:
             match_id = context.user_data['live_match_mapping'][message_text]
+            await self.show_match_details(update, context, match_id)
+            return
+        elif 'fallback_live_match_mapping' in context.user_data and message_text in context.user_data['fallback_live_match_mapping']:
+            match_id = context.user_data['fallback_live_match_mapping'][message_text]
             await self.show_live_match_details(update, context, match_id)
+            return
         else:
             await self.find_matches_by_team(update, context, message_text)
 
@@ -896,13 +901,9 @@ class HLTVUserBot:
 
     async def show_live_matches(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         matches = load_json(LIVE_JSON, default=[])
-        subs = load_json(SUBS_JSON, default={})
         user_id = update.effective_user.id
+        # Формируем подробный список live-матчей
         message = BOT_TEXTS['live_matches_header']
-        keyboard = []
-        if not matches:
-            await update.message.reply_text(BOT_TEXTS['live_no_matches'], reply_markup=self.markup)
-            return
         for match in matches:
             t1 = match['team_names'][0] if match['team_names'] else '?'
             t2 = match['team_names'][1] if len(match['team_names']) > 1 else '?'
@@ -910,53 +911,35 @@ class HLTVUserBot:
             score2 = match['current_map_scores'][1] if len(match['current_map_scores']) > 1 else '?'
             maps1 = match['maps_won'][0] if match['maps_won'] else '0'
             maps2 = match['maps_won'][1] if len(match['maps_won']) > 1 else '0'
-            match_id = match['match_id']
-            match_url = match.get('match_url')
-            link = f' <a href="{match_url}">🌐</a>' if match_url else ''
-            btn_text = f"Подписаться на {t1} vs {t2}"
-            subscribed = str(match_id) in subs and user_id in subs[str(match_id)]
-            if subscribed:
-                btn_text = f"Отписаться от {t1} vs {t2}"
-                callback = f"unsubscribe_live:{match_id}"
-            else:
-                callback = f"subscribe_live:{match_id}"
-            message += f"<b>{t1}</b> ({maps1}) {score1} - {score2} ({maps2}) <b>{t2}</b>{link}\n"
-            keyboard.append([InlineKeyboardButton(btn_text, callback_data=callback)])
-        keyboard.append([InlineKeyboardButton("Назад", callback_data="back_to_menu")])
-        reply_markup = InlineKeyboardMarkup(keyboard)
-        if hasattr(update, 'message') and update.message:
-            await update.message.reply_text(message, parse_mode="HTML", reply_markup=reply_markup, disable_web_page_preview=True)
-        else:
-            await context.bot.send_message(chat_id=user_id, text=message, parse_mode="HTML", reply_markup=reply_markup, disable_web_page_preview=True)
-
-    async def show_live_match_details(self, update: Update, context: ContextTypes.DEFAULT_TYPE, match_id):
-        matches = load_json(LIVE_JSON, default=[])
-        subs = load_json(SUBS_JSON, default={})
-        user_id = update.effective_user.id
-        match = next((m for m in matches if m['match_id'] == match_id), None)
-        if not match:
-            await update.message.reply_text(BOT_TEXTS['match_not_found'].format(match_id=match_id), reply_markup=self.markup)
+            # match_url = match.get('match_url')
+            # link = f' <a href="{match_url}">🌐</a>' if match_url else ''
+            message += f"<b>{t1}</b> ({maps1}) {score1} - {score2} ({maps2}) <b>{t2}</b>\n"
+        live_match_mapping = {}
+        keyboard = []
+        if not matches:
+            await update.message.reply_text(BOT_TEXTS['live_no_matches'], reply_markup=self.markup)
             return
-        t1 = match['team_names'][0] if match['team_names'] else '?'
-        t2 = match['team_names'][1] if len(match['team_names']) > 1 else '?'
-        score1 = match['current_map_scores'][0] if match['current_map_scores'] else '?'
-        score2 = match['current_map_scores'][1] if len(match['current_map_scores']) > 1 else '?'
-        maps1 = match['maps_won'][0] if match['maps_won'] else '0'
-        maps2 = match['maps_won'][1] if len(match['maps_won']) > 1 else '0'
-        match_url = match.get('match_url')
-        link = f' <a href="{match_url}">🌐</a>' if match_url else ''
-        message = f"<b>{t1}</b> ({maps1}) {score1} - {score2} ({maps2}) <b>{t2}</b>{link}\n"
-        subscribed = str(match_id) in subs and user_id in subs[str(match_id)]
-        if subscribed:
-            btn_text = f"Отписаться от {t1} vs {t2}"
-            callback = f"unsubscribe_live:{match_id}"
-        else:
-            btn_text = f"Подписаться на {t1} vs {t2}"
-            callback = f"subscribe_live:{match_id}"
-        keyboard = [[InlineKeyboardButton(btn_text, callback_data=callback)],
-                    [InlineKeyboardButton("Назад", callback_data="back_to_live_list")]]
-        reply_markup = InlineKeyboardMarkup(keyboard)
-        await update.message.reply_text(message, parse_mode="HTML", reply_markup=reply_markup, disable_web_page_preview=True)
+        # Открываем соединение с базой один раз
+        conn = sqlite3.connect(self.db_path)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        for match in matches:
+            match_id = match['match_id']
+            t1 = match['team_names'][0] if match['team_names'] else '?'
+            t2 = match['team_names'][1] if len(match['team_names']) > 1 else '?'
+            match_text = f"{t1} vs {t2}"
+            cursor.execute('SELECT team1_name, team2_name FROM upcoming_match WHERE match_id = ?', (match_id,))
+            db_match = cursor.fetchone()
+            if db_match:
+                live_match_mapping[match_text] = match_id
+                keyboard.append([KeyboardButton(match_text)])
+        conn.close()
+        keyboard.insert(0, [KeyboardButton("Назад")])
+        context.user_data['live_match_mapping'] = live_match_mapping
+        # fallback_live_match_mapping больше не нужен
+        context.user_data['fallback_live_match_mapping'] = {}
+        reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+        await update.message.reply_text(message + "\nВыберите матч для подробностей:", reply_markup=reply_markup, parse_mode="HTML", disable_web_page_preview=True)
 
     async def handle_callback_query(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         query = update.callback_query
@@ -1072,3 +1055,20 @@ class HLTVUserBot:
         except Exception as e:
             self.logger.error(f"Ошибка при генерации .ics: {str(e)}")
             await update.effective_message.reply_text("Error generating calendar file")
+
+    async def show_live_match_details(self, update: Update, context: ContextTypes.DEFAULT_TYPE, match_id):
+        matches = load_json(LIVE_JSON, default=[])
+        match = next((m for m in matches if m['match_id'] == match_id), None)
+        if not match:
+            await update.message.reply_text(BOT_TEXTS['match_not_found'].format(match_id=match_id), reply_markup=self.markup)
+            return
+        t1 = match['team_names'][0] if match['team_names'] else '?'
+        t2 = match['team_names'][1] if len(match['team_names']) > 1 else '?'
+        score1 = match['current_map_scores'][0] if match['current_map_scores'] else '?'
+        score2 = match['current_map_scores'][1] if len(match['current_map_scores']) > 1 else '?'
+        maps1 = match['maps_won'][0] if match['maps_won'] else '0'
+        maps2 = match['maps_won'][1] if len(match['maps_won']) > 1 else '0'
+        match_url = match.get('match_url')
+        link = f' <a href="{match_url}">🌐</a>' if match_url else ''
+        message = f"<b>{t1}</b> ({maps1}) {score1} - {score2} ({maps2}) <b>{t2}</b>\n"
+        await update.message.reply_text(message, parse_mode="HTML", reply_markup=self.markup, disable_web_page_preview=True)
