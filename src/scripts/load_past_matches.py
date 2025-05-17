@@ -7,6 +7,8 @@ import os
 import sys
 import logging
 import argparse
+import json
+from src.utils.telegram_log_handler import TelegramLogHandler
 
 # Добавляем корневую директорию проекта в sys.path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
@@ -26,6 +28,15 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+with open("src/bots/config/dev_bot_config.json", encoding="utf-8") as f:
+    dev_bot_config = json.load(f)
+dev_bot_token = dev_bot_config["token"]
+telegram_handler = TelegramLogHandler(dev_bot_token, chat_id="7146832422")
+telegram_handler.setLevel(logging.INFO)
+formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
+telegram_handler.setFormatter(formatter)
+logger.addHandler(telegram_handler)
+
 def parse_arguments():
     """Парсинг аргументов командной строки"""
     parser = argparse.ArgumentParser(description='Загрузка прошедших матчей из JSON в базу данных')
@@ -42,6 +53,7 @@ def main():
     args = parse_arguments()
     
     try:
+        logger.info("Загрузка ПРОШЕДШИХ матчей", extra={"telegram_firstline": True})
         logger.info("Начало загрузки деталей матчей и статистики игроков из JSON в базу данных")
         # Создаем директорию для логов, если ее нет
         os.makedirs("logs", exist_ok=True)
@@ -80,6 +92,10 @@ def main():
     except Exception as e:
         logger.error(f"Ошибка при выполнении скрипта: {str(e)}")
         sys.exit(1)
+    finally:
+        for handler in logger.handlers:
+            if hasattr(handler, 'send_buffer'):
+                handler.send_buffer()
 
 if __name__ == "__main__":
     main() 

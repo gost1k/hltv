@@ -10,6 +10,7 @@ import argparse
 import sqlite3
 from datetime import datetime
 import time
+from src.utils.telegram_log_handler import TelegramLogHandler
 
 # Добавляем корневую директорию проекта в sys.path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
@@ -27,6 +28,19 @@ logging.basicConfig(
     ]
 )
 logger = logging.getLogger(__name__)
+
+# Получить токен dev_bot из конфига
+import json
+with open("src/bots/config/dev_bot_config.json", encoding="utf-8") as f:
+    dev_bot_config = json.load(f)
+dev_bot_token = dev_bot_config["token"]
+
+# Указать user_id нужного пользователя (7146832422)
+telegram_handler = TelegramLogHandler(dev_bot_token, chat_id="7146832422")
+telegram_handler.setLevel(logging.INFO)
+formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
+telegram_handler.setFormatter(formatter)
+logger.addHandler(telegram_handler)
 
 def parse_arguments():
     """Парсинг аргументов командной строки"""
@@ -58,7 +72,7 @@ def create_upcoming_match_players_table(db_path):
         
         conn.commit()
         conn.close()
-        logger.info("Таблица upcoming_match_players успешно создана/проверена")
+        logger.info("Таблица upcoming_match_players успешно создана/проверена", extra={"no_telegram": True})
         
     except Exception as e:
         logger.error(f"Ошибка при создании таблицы upcoming_match_players: {str(e)}")
@@ -82,7 +96,7 @@ def load_upcoming_players(db_path):
         
         # Получаем все JSON-файлы в директории
         json_files = glob.glob(os.path.join(players_json_dir, "*.json"))
-        logger.info(f"Найдено {len(json_files)} файлов с игроками предстоящих матчей")
+        logger.info(f"Найдено {len(json_files)} файлов с игроками предстоящих матчей", extra={"no_telegram": True})
         
         conn = sqlite3.connect(db_path)
         cursor = conn.cursor()
@@ -159,7 +173,7 @@ def load_upcoming_matches_from_files(db_path):
 
     stats = {"processed": 0, "success": 0, "error": 0}
     json_files = glob.glob(os.path.join(matches_json_dir, "*.json"))
-    logger.info(f"Найдено {len(json_files)} файлов с предстоящими матчами")
+    logger.info(f"Найдено {len(json_files)} файлов с предстоящими матчами", extra={"no_telegram": True})
 
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
@@ -234,7 +248,7 @@ def cleanup_expired_upcoming_matches(db_path):
         conn.commit()
         logger.info(f"Удалено {deleted_matches} устаревших матчей, {deleted_players} игроков, {deleted_streams} стримов")
     else:
-        logger.info("Нет устаревших матчей для удаления")
+        logger.info("Нет устаревших матчей для удаления", extra={"no_telegram": True})
     conn.close()
     return deleted_matches, deleted_players, deleted_streams
 
@@ -275,7 +289,7 @@ def load_upcoming_streamers(db_path):
         import glob
         stats = {"processed": 0, "success": 0, "error": 0}
         json_files = glob.glob(os.path.join(streamers_json_dir, "*.json"))
-        logger.info(f"Найдено {len(json_files)} файлов со стримерами предстоящих матчей")
+        logger.info(f"Найдено {len(json_files)} файлов со стримерами предстоящих матчей", extra={"no_telegram": True})
         conn = sqlite3.connect(db_path)
         cursor = conn.cursor()
         for file_path in json_files:
@@ -326,7 +340,8 @@ def main():
     args = parse_arguments()
     
     try:
-        logger.info("Начало загрузки предстоящих матчей из JSON в базу данных")
+        logger.info("Загрузка БУДУЩИХ матчей", extra={"telegram_firstline": True})
+        logger.info("Начало загрузки предстоящих матчей из JSON в базу данных", extra={"no_telegram": True})
         # Удаляем устаревшие матчи и игроков
         deleted_matches, deleted_players, deleted_streams = cleanup_expired_upcoming_matches(args.db_path)
         # Создаем таблицу для игроков предстоящих матчей
@@ -358,6 +373,10 @@ def main():
     except Exception as e:
         logger.error(f"Ошибка при выполнении скрипта: {str(e)}")
         sys.exit(1)
+    finally:
+        for handler in logger.handlers:
+            if hasattr(handler, 'send_buffer'):
+                handler.send_buffer()
 
 if __name__ == "__main__":
     main() 
