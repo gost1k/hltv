@@ -21,6 +21,13 @@ from src.bots.config import load_config
 from src.scripts.live_matches_parser import handle_new_subscription, load_json, save_json, SUBS_JSON, LIVE_JSON, subscriber_event
 from src.bots.common.hltv_user_bot_texts import BOT_TEXTS
 
+# Отключаем лишние логи Telegram API и httpx/urllib3
+logging.getLogger("httpx").setLevel(logging.WARNING)
+logging.getLogger("telegram.vendor.ptb_urllib3.urllib3.connectionpool").setLevel(logging.WARNING)
+logging.getLogger("telegram.ext._application").setLevel(logging.WARNING)
+logging.getLogger("telegram.ext._updater").setLevel(logging.WARNING)
+logging.getLogger("urllib3").setLevel(logging.WARNING)
+
 # Класс HLTVUserBot будет содержать всю бизнес-логику user-бота
 class HLTVUserBot:
     def __init__(self, token, db_path, log_file, config_name='user'):
@@ -660,10 +667,21 @@ class HLTVUserBot:
                     f"&dates={start_utc}/{end_utc}"
                     f"&details={urllib.parse.quote(details)}"
                 )
-                calendar_keyboard = InlineKeyboardMarkup([
-                    [InlineKeyboardButton("Добавить в Google Календарь", url=url)]
-                ])
-                reply_markup = calendar_keyboard
+                # Проверяем, есть ли отложенная подписка
+                subs_data = self.load_subs_json()
+                user_id = update.effective_user.id
+                match_id_str = str(match_id)
+                if match_id_str in subs_data['upcoming_live'] and user_id in subs_data['upcoming_live'][match_id_str]:
+                    calendar_keyboard = [
+                        [InlineKeyboardButton("Добавить в Google Календарь", url=url)],
+                        [InlineKeyboardButton("Отписаться от Live", callback_data=f"unsubscribe_future_live:{match_id}")]
+                    ]
+                else:
+                    calendar_keyboard = [
+                        [InlineKeyboardButton("Добавить в Google Календарь", url=url)],
+                        [InlineKeyboardButton("Подписаться на Live", callback_data=f"subscribe_future_live:{match_id}")]
+                    ]
+                reply_markup = InlineKeyboardMarkup(calendar_keyboard)
             await update.message.reply_text(message, parse_mode="HTML", reply_markup=reply_markup)
         except Exception as e:
             self.logger.error(BOT_TEXTS['error_getting_matches_period'].format(error=str(e)))
@@ -909,6 +927,7 @@ class HLTVUserBot:
         # Формируем подробный список live-матчей
         message = BOT_TEXTS['live_matches_header']
         inline_keyboard = []
+        subs_data = self.load_subs_json()
         for match in matches:
             t1 = match['team_names'][0] if match['team_names'] else '?'
             t2 = match['team_names'][1] if len(match['team_names']) > 1 else '?'
@@ -919,8 +938,7 @@ class HLTVUserBot:
             match_id = match['match_id']
             message += f"<b>{t1}</b> ({maps1}) {score1} - {score2} ({maps2}) <b>{t2}</b>\n"
             # Кнопка подписки/отписки
-            subs = load_json(SUBS_JSON, default={})
-            subscribed = str(match_id) in subs and user_id in subs[str(match_id)]
+            subscribed = str(match_id) in subs_data['live'] and user_id in subs_data['live'][str(match_id)]
             if subscribed:
                 btn_text = f"Отписаться от {t1} vs {t2}"
                 callback = f"unsubscribe_live:{match_id}"
@@ -931,31 +949,56 @@ class HLTVUserBot:
         inline_keyboard.append([InlineKeyboardButton("Назад", callback_data="back_to_menu")])
         reply_markup = InlineKeyboardMarkup(inline_keyboard)
         await update.message.reply_text(message + "\nВыберите матч для подробностей или подпишитесь:", reply_markup=reply_markup, parse_mode="HTML", disable_web_page_preview=True)
-        # Обычная клавиатура для подробностей (оставляем как есть)
+
+        # Обычная клавиатура для выбора live-матча (только те, что есть в базе upcoming_match)
         live_match_mapping = {}
-        keyboard = []
-        if not matches:
-            await update.message.reply_text(BOT_TEXTS['live_no_matches'], reply_markup=self.markup)
-            return
-        conn = sqlite3.connect(self.db_path)
-        conn.row_factory = sqlite3.Row
-        cursor = conn.cursor()
-        for match in matches:
-            match_id = match['match_id']
-            t1 = match['team_names'][0] if match['team_names'] else '?'
-            t2 = match['team_names'][1] if len(match['team_names']) > 1 else '?'
-            match_text = f"{t1} vs {t2}"
-            cursor.execute('SELECT team1_name, team2_name FROM upcoming_match WHERE match_id = ?', (match_id,))
-            db_match = cursor.fetchone()
-            if db_match:
-                live_match_mapping[match_text] = match_id
-                keyboard.append([KeyboardButton(match_text)])
-        conn.close()
-        keyboard.insert(0, [KeyboardButton("Назад")])
+        keyboard = [[KeyboardButton("Назад")]]
+        if matches:
+            conn = sqlite3.connect(self.db_path)
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            for match in matches:
+                match_id = match['match_id']
+                t1 = match['team_names'][0] if match['team_names'] else '?'
+                t2 = match['team_names'][1] if len(match['team_names']) > 1 else '?'
+                match_text = f"{t1} vs {t2}"
+                cursor.execute('SELECT team1_name, team2_name FROM upcoming_match WHERE match_id = ?', (match_id,))
+                db_match = cursor.fetchone()
+                if db_match:
+                    live_match_mapping[match_text] = match_id
+                    keyboard.append([KeyboardButton(match_text)])
+            conn.close()
         context.user_data['live_match_mapping'] = live_match_mapping
         context.user_data['fallback_live_match_mapping'] = {}
         reply_markup_kb = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
-        await update.message.reply_text("\nВыберите матч для подробностей:", reply_markup=reply_markup_kb)
+    
+        await update.message.reply_text("Выберите live-матч для подробностей:", reply_markup=reply_markup_kb)
+
+        # --- Сообщение о будущих Live матчах и кнопки отписки ---
+        user_future_matches = []
+        for match_id_str, users in subs_data['upcoming_live'].items():
+            if user_id in users:
+                user_future_matches.append(int(match_id_str))
+        if user_future_matches:
+            conn = sqlite3.connect(self.db_path)
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            q_marks = ','.join(['?'] * len(user_future_matches))
+            cursor.execute(f'SELECT match_id, datetime, team1_name, team2_name FROM upcoming_match WHERE match_id IN ({q_marks})', tuple(user_future_matches))
+            rows = cursor.fetchall()
+            conn.close()
+            if rows:
+                msg = '<b>Ваши подписки на будущие live-матчи:</b>\n\n'
+                inline_keyboard = []
+                for row in rows:
+                    dt = datetime.fromtimestamp(row['datetime'], tz=self.MOSCOW_TIMEZONE).strftime('%d.%m.%Y %H:%M')
+                    t1 = row['team1_name']
+                    t2 = row['team2_name']
+                    match_id = row['match_id']
+                    msg += f"<b>{dt}</b>: <code>{t1}</code> vs <code>{t2}</code>\n"
+                    inline_keyboard.append([InlineKeyboardButton(f"Отписаться от Live: {t1} vs {t2}", callback_data=f"unsubscribe_future_live:{match_id}")])
+                reply_markup = InlineKeyboardMarkup(inline_keyboard)
+                await update.message.reply_text(msg, parse_mode="HTML", reply_markup=reply_markup)
 
     async def handle_callback_query(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         query = update.callback_query
@@ -964,12 +1007,18 @@ class HLTVUserBot:
         user = query.from_user
         user_info = self._get_safe_user_info(user)
         matches = load_json(LIVE_JSON, default=[])
+        subs_data = self.load_subs_json()
         if data.startswith("subscribe_live:"):
             match_id = int(data.split(":")[1])
-            handle_new_subscription(match_id, user.id)
-            self.logger.info(BOT_TEXTS['log']['subscribe_live'].format(user_info=user_info, match_id=match_id))
-            subs = load_json(SUBS_JSON, default={})
-            user_subs = [int(mid) for mid, users in subs.items() if user.id in users]
+            match_id_str = str(match_id)
+            if match_id_str not in subs_data['live']:
+                subs_data['live'][match_id_str] = []
+            if user.id not in subs_data['live'][match_id_str]:
+                subs_data['live'][match_id_str].append(user.id)
+                self.save_subs_json(subs_data)
+                from src.scripts.live_matches_parser import subscriber_event
+                subscriber_event.set()
+            user_subs = [int(mid) for mid, users in subs_data['live'].items() if user.id in users]
             match_names = []
             for m in matches:
                 if m['match_id'] in user_subs:
@@ -984,18 +1033,15 @@ class HLTVUserBot:
                 await context.bot.send_message(chat_id=query.from_user.id, text=msg)
         elif data.startswith("unsubscribe_live:"):
             match_id = int(data.split(":")[1])
-            subs = load_json(SUBS_JSON, default={})
             match_id_str = str(match_id)
-            if match_id_str in subs and user.id in subs[match_id_str]:
-                subs[match_id_str].remove(user.id)
-                if not subs[match_id_str]:
-                    subs.pop(match_id_str)
-                save_json(SUBS_JSON, subs)
+            if match_id_str in subs_data['live'] and user.id in subs_data['live'][match_id_str]:
+                subs_data['live'][match_id_str].remove(user.id)
+                if not subs_data['live'][match_id_str]:
+                    subs_data['live'].pop(match_id_str)
+                self.save_subs_json(subs_data)
                 from src.scripts.live_matches_parser import subscriber_event
                 subscriber_event.set()
-                self.logger.info(BOT_TEXTS['log']['unsubscribe_live'].format(user_info=user_info, match_id=match_id))
-            subs = load_json(SUBS_JSON, default={})
-            user_subs = [int(mid) for mid, users in subs.items() if user.id in users]
+            user_subs = [int(mid) for mid, users in subs_data['live'].items() if user.id in users]
             match_names = []
             for m in matches:
                 if m['match_id'] in user_subs:
@@ -1008,69 +1054,64 @@ class HLTVUserBot:
                 await query.message.reply_text(msg)
             else:
                 await context.bot.send_message(chat_id=query.from_user.id, text=msg)
-        elif data == "back_to_live_list":
-            await query.answer()
-            await self.show_live_matches(update, context)
-        elif data == "back_to_menu":
-            await query.answer()
-            if query.message:
-                await self.show_menu(update, context)
-            else:
-                user_id = query.from_user.id
-                await context.bot.send_message(chat_id=user_id, text=BOT_TEXTS['menu'], reply_markup=self.markup)
-        elif data.startswith("add_to_calendar:"):
-            await query.answer()
+        elif data.startswith("subscribe_future_live:"):
             match_id = int(data.split(":")[1])
-            await self.send_ics_file(update, context, match_id)
-
-    async def send_ics_file(self, update: Update, context: ContextTypes.DEFAULT_TYPE, match_id):
-        """Генерирует и отправляет минималистичный .ics-файл для будущего матча (Android-friendly, CRLF)"""
-        import tempfile
-        from telegram import InputFile
-        import uuid
-        import re
-        try:
+            match_id_str = str(match_id)
+            if match_id_str not in subs_data['upcoming_live']:
+                subs_data['upcoming_live'][match_id_str] = []
+            if user.id not in subs_data['upcoming_live'][match_id_str]:
+                subs_data['upcoming_live'][match_id_str].append(user.id)
+                self.save_subs_json(subs_data)
+            # Получаем инфу о матче для сообщения
             conn = sqlite3.connect(self.db_path)
             conn.row_factory = sqlite3.Row
             cursor = conn.cursor()
-            cursor.execute('''
-                SELECT m.match_id, m.datetime, m.team1_name, m.team2_name
-                FROM upcoming_match m WHERE m.match_id = ?
-            ''', (match_id,))
-            match = cursor.fetchone()
+            cursor.execute('SELECT team1_name, team2_name, datetime FROM upcoming_match WHERE match_id = ?', (match_id,))
+            row = cursor.fetchone()
             conn.close()
-            if not match:
-                await update.effective_message.reply_text("Match not found")
-                return
-            def to_ascii(text):
-                return re.sub(r'[^\x00-\x7F]+', '', str(text))
-            dt = datetime.utcfromtimestamp(match['datetime'])
-            dt_end = dt + timedelta(hours=2)
-            team1 = to_ascii(match['team1_name'])
-            team2 = to_ascii(match['team2_name'])
-            summary = f"Матч {team1} vs {team2}"
-            uid = f"{match['match_id']}@hltv"
-            dtstamp = datetime.utcnow().strftime('%Y%m%dT%H%M%SZ')
-            ics_content = (
-                f"BEGIN:VCALENDAR\r\n"
-                f"VERSION:2.0\r\n"
-                f"BEGIN:VEVENT\r\n"
-                f"UID:{uid}\r\n"
-                f"DTSTAMP:{dtstamp}\r\n"
-                f"SUMMARY:{summary}\r\n"
-                f"DTSTART:{dt.strftime('%Y%m%dT%H%M%SZ')}\r\n"
-                f"DTEND:{dt_end.strftime('%Y%m%dT%H%M%SZ')}\r\n"
-                f"END:VEVENT\r\n"
-                f"END:VCALENDAR\r\n"
-            )
-            with tempfile.NamedTemporaryFile('w+', suffix='.ics', delete=False, encoding='utf-8') as tmp:
-                tmp.write(ics_content)
-                tmp.flush()
-                tmp.seek(0)
-                await update.effective_message.reply_document(InputFile(tmp.name, filename=f"event.ics"), caption="Add this match to your calendar!")
-        except Exception as e:
-            self.logger.error(f"Ошибка при генерации .ics: {str(e)}")
-            await update.effective_message.reply_text("Error generating calendar file")
+            if row:
+                t1 = row['team1_name']
+                t2 = row['team2_name']
+                dt = datetime.fromtimestamp(row['datetime'], tz=self.MOSCOW_TIMEZONE).strftime('%d.%m.%Y %H:%M')
+                msg = f"Вы успешно подписались на будущий матч {t1} vs {t2} в {dt}, когда матч начнется, вы начнете получать уведомления."
+            else:
+                msg = "Вы подписались на уведомление о начале Live этого матча! Как только матч начнётся, вы получите уведомление."
+            await query.answer()
+            if query.message:
+                await query.message.reply_text(msg)
+            else:
+                await context.bot.send_message(chat_id=query.from_user.id, text=msg)
+        elif data.startswith("unsubscribe_future_live:"):
+            match_id = int(data.split(":")[1])
+            match_id_str = str(match_id)
+            if match_id_str in subs_data['upcoming_live'] and user.id in subs_data['upcoming_live'][match_id_str]:
+                subs_data['upcoming_live'][match_id_str].remove(user.id)
+                if not subs_data['upcoming_live'][match_id_str]:
+                    subs_data['upcoming_live'].pop(match_id_str)
+                self.save_subs_json(subs_data)
+            await query.answer()
+            msg = "Вы отписались от уведомления о начале Live этого матча."
+            if query.message:
+                await query.message.reply_text(msg)
+            else:
+                await context.bot.send_message(chat_id=query.from_user.id, text=msg)
+
+    def load_subs_json(self):
+        subs_path = os.path.join(os.path.dirname(__file__), '../../../storage/json/live/live_subscribers.json')
+        data = load_json(subs_path, default=None)
+        if not data or not isinstance(data, dict):
+            if data is None or data == {}:
+                return {"live": {}, "upcoming_live": {}}
+            return {"live": {}, "upcoming_live": data}
+        if "live" not in data:
+            data["live"] = {}
+        if "upcoming_live" not in data:
+            data["upcoming_live"] = {}
+        return data
+
+    def save_subs_json(self, data):
+        subs_path = os.path.join(os.path.dirname(__file__), '../../../storage/json/live/live_subscribers.json')
+        save_json(subs_path, data)
 
     async def show_live_match_details(self, update: Update, context: ContextTypes.DEFAULT_TYPE, match_id):
         matches = load_json(LIVE_JSON, default=[])

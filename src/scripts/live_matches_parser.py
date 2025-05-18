@@ -20,6 +20,7 @@ PREV_JSON = "storage/json/live/live_matches_prev.json"
 SUBS_JSON = "storage/json/live/live_subscribers.json"
 HTML_DIR = "storage/html/live"
 HTML_PATH = os.path.join(HTML_DIR, "live_matches.html")
+FUTURE_SUBS_JSON = "storage/json/live/live_subscribers.json"
 
 # Настройка логирования
 logging.basicConfig(
@@ -197,6 +198,45 @@ def download_live_page():
     finally:
         pass  # SimpleHTMLParser сам закрывает драйвер
 
+# --- Вспомогательные функции для новой структуры ---
+def load_subs_json():
+    data = load_json(FUTURE_SUBS_JSON, default=None)
+    if not data or not isinstance(data, dict):
+        # Миграция старого формата
+        if data is None or data == {}:
+            return {"live": {}, "upcoming_live": {}}
+        # Старый формат: просто словарь матчей
+        return {"live": {}, "upcoming_live": data}
+    if "live" not in data:
+        data["live"] = {}
+    if "upcoming_live" not in data:
+        data["upcoming_live"] = {}
+    return data
+
+def save_subs_json(data):
+    save_json(FUTURE_SUBS_JSON, data)
+
+# --- Перенос отложенных подписчиков ---
+def move_future_subscribers_to_live(live_matches):
+    """
+    Переносит подписчиков на будущие матчи в live-подписчики, если матч стал live.
+    """
+    data = load_subs_json()
+    changed = False
+    live_ids = {str(m['match_id']) for m in live_matches}
+    for match_id in list(data["upcoming_live"].keys()):
+        if match_id in live_ids:
+            users = data["upcoming_live"].pop(match_id)
+            if match_id not in data["live"]:
+                data["live"][match_id] = []
+            for user_id in users:
+                if user_id not in data["live"][match_id]:
+                    data["live"][match_id].append(user_id)
+                    changed = True
+            changed = True
+    if changed:
+        save_subs_json(data)
+
 # --- Основной цикл ---
 def main_loop():
     while True:
@@ -204,17 +244,24 @@ def main_loop():
         with open(html_path, "r", encoding="utf-8") as f:
             html = f.read()
         matches = parse_live_matches(html)
+        # Переносим отложенных подписчиков, если матч стал live
+        move_future_subscribers_to_live(matches)
+        # Логируем подписчиков
+        data = load_subs_json()
+        total_live = sum(len(u) for u in data["live"].values())
+        total_upcoming = sum(len(u) for u in data["upcoming_live"].values())
+        # (логирование только после вычисления next_update)
         save_json(LIVE_JSON, matches)
         notify_live_changes()
-        subs = load_json(SUBS_JSON, default={})
         has_live = bool(matches)
-        has_subs = any(subs.values())
-        subs_count = sum(len(u) for u in subs.values())
+        has_subs = total_live > 0
         if has_live and has_subs:
             next_update = 60
-            logger.info(f"Обновлено live-матчей: {len(matches)} | Подписчиков: {subs_count} | Следующее обновление через {next_update} сек.")
+            logger.info(f"Обновлено Live: {len(matches)} | Live смотрят: {total_live} | Live будут смотреть: {total_upcoming} | Обновление через: {next_update} сек")
             subscriber_event.clear()
             subscriber_event.wait(timeout=next_update)
+            if subscriber_event.is_set():
+                logger.info("Сработал триггер подписчика: обновление запущено немедленно.")
         else:
             now = datetime.now()
             next_minute = (now.minute // 10 + 1) * 10
@@ -226,9 +273,11 @@ def main_loop():
             next_time = now.replace(hour=next_hour, minute=next_minute, second=0, microsecond=0)
             wait = (next_time - now).total_seconds()
             next_update = int(max(60, wait))
-            logger.info(f"Обновлено live-матчей: {len(matches)} | Подписчиков: {subs_count} | Следующее обновление через {next_update} сек.")
+            logger.info(f"Обновлено Live: {len(matches)} | Live смотрят: {total_live} | Live будут смотреть: {total_upcoming} | Обновление через: {next_update} сек")
             subscriber_event.clear()
             subscriber_event.wait(timeout=next_update)
+            if subscriber_event.is_set():
+                logger.info("Сработал триггер подписчика: обновление запущено немедленно.")
 
 if __name__ == "__main__":
     main_loop() 
