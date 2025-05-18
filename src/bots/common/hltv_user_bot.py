@@ -935,9 +935,18 @@ class HLTVUserBot:
         return message
 
     async def show_live_matches(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        # Универсально получаем user_id для Update и CallbackQuery
+        user_id = None
+        if hasattr(update, "effective_user") and update.effective_user:
+            user_id = update.effective_user.id
+        elif hasattr(update, "from_user") and update.from_user:
+            user_id = update.from_user.id
+        elif hasattr(update, "callback_query") and update.callback_query and update.callback_query.from_user:
+            user_id = update.callback_query.from_user.id
+        else:
+            raise ValueError("Не удалось определить пользователя для show_live_matches")
         subs_data = self.load_subs_json()
         matches = load_json(LIVE_JSON, default=[])
-        user_id = update.effective_user.id
         move_future_subscribers_to_live(matches)
         subs_data = self.load_subs_json()  # обновить после переноса
         live_match_mapping = {}
@@ -983,9 +992,8 @@ class HLTVUserBot:
         context.user_data['live_match_mapping'] = live_match_mapping
         context.user_data['upcoming_match_mapping'] = upcoming_match_mapping
         reply_markup_kb = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
-        # await update.message.reply_text("", reply_markup=reply_markup_kb)
         # Новое: сообщение 'Live матчи' перед списком live-матчей
-        await update.message.reply_text("Live матчи")
+        await update.message.reply_text("=== LIVE матчи ===", reply_markup=reply_markup_kb)
         # --- Inline-кнопки для live-матчей ---
         live_message = BOT_TEXTS['live_matches_header']
         for match in matches:
@@ -1021,7 +1029,8 @@ class HLTVUserBot:
             rows = cursor.fetchall()
             conn.close()
             if rows:
-                msg = '<b>Ваши подписки на будущие live-матчи:</b>\n\n'
+                await update.message.reply_text("=== Ваши подписки на будущие LIVE-матчи ===", reply_markup=reply_markup_kb)
+                msg = ''
                 future_inline_keyboard = []
                 for row in rows:
                     dt = datetime.fromtimestamp(row['datetime'], tz=self.MOSCOW_TIMEZONE).strftime('%d.%m.%Y %H:%M')
@@ -1056,25 +1065,25 @@ class HLTVUserBot:
             sub_type, match_id = data.split(":")[0].split("_")[-1], int(data.split(":")[1])
             subscribe_user(match_id, user_id, sub_type, section="live")
             await query.answer("Подписка оформлена!")
-            await self.show_live_matches(query, context)
+            await query.message.reply_text("Вы успешно подписались на live-матч!")
             return
         elif data.startswith("unsubscribe_live:"):
             match_id = int(data.split(":")[1])
             unsubscribe_user(match_id, user_id, section="live")
             await query.answer("Вы отписались от матча!")
-            await self.show_live_matches(query, context)
+            await query.message.reply_text("Вы успешно отписались от live-матча!")
             return
         elif data.startswith("subscribe_upcoming_"):
             sub_type, match_id = data.split(":")[0].split("_")[-1], int(data.split(":")[1])
             subscribe_user(match_id, user_id, sub_type, section="upcoming_live")
             await query.answer("Подписка оформлена!")
-            await self.show_live_matches(query, context)
+            await query.message.reply_text("Вы успешно подписались на будущий live-матч!")
             return
         elif data.startswith("unsubscribe_upcoming:"):
             match_id = int(data.split(":")[1])
             unsubscribe_user(match_id, user_id, section="upcoming_live")
             await query.answer("Вы отписались от будущего матча!")
-            await self.show_live_matches(query, context)
+            await query.message.reply_text("Вы успешно отписались от будущего live-матча!")
             return
 
     def load_subs_json(self):
