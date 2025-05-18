@@ -355,6 +355,28 @@ def update_upcoming_urls_to_parse(db_path):
     conn.commit()
     conn.close()
 
+def send_telegram_report(stats, logger):
+    # stats: dict с ключами
+    #   deleted_matches, deleted_players, deleted_streams
+    #   matches_processed, matches_success, matches_error
+    #   players_processed, players_success, players_error
+    #   streamers_processed, streamers_success, streamers_error
+    all_values = [
+        stats.get('deleted_matches', 0), stats.get('deleted_players', 0), stats.get('deleted_streams', 0),
+        stats.get('matches_processed', 0), stats.get('matches_success', 0), stats.get('matches_error', 0),
+        stats.get('players_processed', 0), stats.get('players_success', 0), stats.get('players_error', 0),
+        stats.get('streamers_processed', 0), stats.get('streamers_success', 0), stats.get('streamers_error', 0)
+    ]
+    if all(v == 0 for v in all_values):
+        logger.info("Загрузка БУДУЩИХ матчей (Обновлений нету)", extra={"telegram_firstline": True})
+    else:
+        msg = ["Загрузка БУДУЩИХ матчей"]
+        msg.append(f"Удалено - {stats.get('deleted_matches', 0)}/{stats.get('deleted_players', 0)}/{stats.get('deleted_streams', 0)}")
+        msg.append(f"Матчей - {stats.get('matches_processed', 0)}/{stats.get('matches_success', 0)}/{stats.get('matches_error', 0)}")
+        msg.append(f"Игроков - {stats.get('players_processed', 0)}/{stats.get('players_success', 0)}/{stats.get('players_error', 0)}")
+        msg.append(f"Стримеров - {stats.get('streamers_processed', 0)}/{stats.get('streamers_success', 0)}/{stats.get('streamers_error', 0)}")
+        logger.info("\n".join(msg), extra={"telegram_firstline": True})
+
 def main():
     """
     Основная функция скрипта
@@ -377,22 +399,10 @@ def main():
         # Загружаем стримеры предстоящих матчей
         streamers_stats = load_upcoming_streamers(args.db_path)
         # Выводим статистику
-        logger.info("======== Удалено старых записей ========")
-        logger.info(f"Матчей: {deleted_matches}")
-        logger.info(f"Игроков: {deleted_players}")
-        logger.info(f"Стримы: {deleted_streams}")
-        logger.info("======== Загрузка предстоящих матчей ========")
-        logger.info(f"Обработано файлов: {matches_stats.get('processed', 0)}")
-        logger.info(f"Успешно загружено: {matches_stats.get('success', 0)}")
-        logger.info(f"Ошибок: {matches_stats.get('error', 0)}")
-        logger.info("======== Загрузка игроков предстоящих матчей ========")
-        logger.info(f"Обработано файлов: {players_stats.get('processed', 0)}")
-        logger.info(f"Успешно загружено: {players_stats.get('success', 0)}")
-        logger.info(f"Ошибок: {players_stats.get('error', 0)}")
-        logger.info("======== Загрузка стримеров предстоящих матчей ========")
-        logger.info(f"Обработано файлов: {streamers_stats.get('processed', 0)}")
-        logger.info(f"Успешно загружено: {streamers_stats.get('success', 0)}")
-        logger.info(f"Ошибок: {streamers_stats.get('error', 0)}")
+        send_telegram_report({"deleted_matches": deleted_matches, "deleted_players": deleted_players, "deleted_streams": deleted_streams,
+                             "matches_processed": matches_stats.get('processed', 0), "matches_success": matches_stats.get('success', 0), "matches_error": matches_stats.get('error', 0),
+                             "players_processed": players_stats.get('processed', 0), "players_success": players_stats.get('success', 0), "players_error": players_stats.get('error', 0),
+                             "streamers_processed": streamers_stats.get('processed', 0), "streamers_success": streamers_stats.get('success', 0), "streamers_error": streamers_stats.get('error', 0)}, logger)
         logger.info("Загрузка предстоящих матчей завершена")
     except Exception as e:
         logger.error(f"Ошибка при выполнении скрипта: {str(e)}")

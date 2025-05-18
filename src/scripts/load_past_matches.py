@@ -46,6 +46,25 @@ def parse_arguments():
     parser.add_argument('--skip-player-stats', action='store_true', help='Пропустить загрузку статистики игроков')
     return parser.parse_args()
 
+def send_telegram_report(stats, logger):
+    # stats: dict с ключами
+    #   match_details_processed, match_details_success, match_details_error
+    #   player_stats_processed, player_stats_success, player_stats_error
+    #   maps_processed, maps_success, maps_error
+    all_values = [
+        stats.get('match_details_processed', 0), stats.get('match_details_success', 0), stats.get('match_details_error', 0),
+        stats.get('player_stats_processed', 0), stats.get('player_stats_success', 0), stats.get('player_stats_error', 0),
+        stats.get('maps_processed', 0), stats.get('maps_success', 0), stats.get('maps_error', 0)
+    ]
+    if all(v == 0 for v in all_values):
+        logger.info("Загрузка ПРОШЕДШИХ матчей (Обновлений нету)", extra={"telegram_firstline": True})
+    else:
+        msg = ["Загрузка ПРОШЕДШИХ матчей"]
+        msg.append(f"Матчей: {stats.get('match_details_processed', 0)}/{stats.get('match_details_success', 0)}/{stats.get('match_details_error', 0)}")
+        msg.append(f"Игроков: {stats.get('player_stats_processed', 0)}/{stats.get('player_stats_success', 0)}/{stats.get('player_stats_error', 0)}")
+        msg.append(f"Карты: {stats.get('maps_processed', 0)}/{stats.get('maps_success', 0)}/{stats.get('maps_error', 0)}")
+        logger.info("\n".join(msg), extra={"telegram_firstline": True})
+
 def main():
     """
     Основная функция скрипта
@@ -54,39 +73,32 @@ def main():
     
     try:
         logger.info("Загрузка ПРОШЕДШИХ матчей", extra={"telegram_firstline": True})
-        logger.info("Начало загрузки деталей матчей и статистики игроков из JSON в базу данных")
+        logger.info("Начало загрузки деталей матчей и статистики игроков из JSON в базу данных", extra={"no_telegram": True})
         # Создаем директорию для логов, если ее нет
         os.makedirs("logs", exist_ok=True)
         
         # Загружаем детали матчей и статистику игроков, если не пропущено
+        details_stats = {"match_details_processed": 0, "match_details_success": 0, "match_details_error": 0,
+                         "player_stats_processed": 0, "player_stats_success": 0, "player_stats_error": 0,
+                         "maps_processed": 0, "maps_success": 0, "maps_error": 0}
         if not args.skip_match_details or not args.skip_player_stats:
             details_loader = MatchDetailsLoader(db_path=args.db_path)
-            
-            # Используем специальный метод для загрузки, передавая флаги
-            details_stats = details_loader.load_match_details_and_stats(
+            details_stats_raw = details_loader.load_match_details_and_stats(
                 skip_match_details=args.skip_match_details,
                 skip_player_stats=args.skip_player_stats
             )
-            
-            # Выводим статистику только для деталей и игроков
-            if not args.skip_match_details:
-                logger.info("======== Загрузка деталей матчей ========")
-                logger.info(f"Обработано файлов: {details_stats.get('match_details_processed', 0)}")
-                logger.info(f"Успешно загружено: {details_stats.get('match_details_success', 0)}")
-                logger.info(f"Ошибок: {details_stats.get('match_details_error', 0)}")
-            
-            if not args.skip_player_stats:
-                logger.info("======== Загрузка статистики игроков ========")
-                logger.info(f"Обработано файлов: {details_stats.get('player_stats_processed', 0)}")
-                logger.info(f"Успешно загружено: {details_stats.get('player_stats_success', 0)}")
-                logger.info(f"Ошибок: {details_stats.get('player_stats_error', 0)}")
-
-                # Новый блок: статистика по картам
-                logger.info("======== Загрузка информации о картах ========")
-                logger.info(f"Обработано файлов: {details_stats.get('maps_processed', 0)}")
-                logger.info(f"Успешно загружено: {details_stats.get('maps_success', 0)}")
-                logger.info(f"Ошибок: {details_stats.get('maps_error', 0)}")
-        
+            details_stats.update({
+                "match_details_processed": details_stats_raw.get('match_details_processed', 0),
+                "match_details_success": details_stats_raw.get('match_details_success', 0),
+                "match_details_error": details_stats_raw.get('match_details_error', 0),
+                "player_stats_processed": details_stats_raw.get('player_stats_processed', 0),
+                "player_stats_success": details_stats_raw.get('player_stats_success', 0),
+                "player_stats_error": details_stats_raw.get('player_stats_error', 0),
+                "maps_processed": details_stats_raw.get('maps_processed', 0),
+                "maps_success": details_stats_raw.get('maps_success', 0),
+                "maps_error": details_stats_raw.get('maps_error', 0),
+            })
+        send_telegram_report(details_stats, logger)
         logger.info("Загрузка прошедших матчей завершена")
         
     except Exception as e:
