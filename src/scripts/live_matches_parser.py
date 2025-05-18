@@ -220,6 +220,7 @@ def save_subs_json(data):
 def move_future_subscribers_to_live(live_matches):
     """
     Переносит подписчиков на будущие матчи в live-подписчики, если матч стал live.
+    Дополнительно отправляет уведомление пользователю о начале матча.
     """
     data = load_subs_json()
     changed = False
@@ -229,6 +230,17 @@ def move_future_subscribers_to_live(live_matches):
             users = data["upcoming_live"].pop(match_id)
             if match_id not in data["live"]:
                 data["live"][match_id] = []
+            # --- Новый код: отправка уведомления ---
+            match = next((m for m in live_matches if str(m['match_id']) == match_id), None)
+            if match:
+                t1 = match['team_names'][0] if match['team_names'] else '?'
+                t2 = match['team_names'][1] if len(match['team_names']) > 1 else '?'
+                for user_id in users:
+                    send_telegram_message(
+                        user_id,
+                        f"Ваш матч {t1} vs {t2}, на который вы подписались — начался. Вам будут приходить сообщения о результате."
+                    )
+            # --- Конец нового кода ---
             for user_id in users:
                 if user_id not in data["live"][match_id]:
                     data["live"][match_id].append(user_id)
