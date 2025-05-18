@@ -983,10 +983,11 @@ class HLTVUserBot:
         context.user_data['live_match_mapping'] = live_match_mapping
         context.user_data['upcoming_match_mapping'] = upcoming_match_mapping
         reply_markup_kb = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
-        await update.message.reply_text("Выберите матч для подробностей:", reply_markup=reply_markup_kb)
+        # await update.message.reply_text("", reply_markup=reply_markup_kb)
+        # Новое: сообщение 'Live матчи' перед списком live-матчей
+        await update.message.reply_text("Live матчи")
         # --- Inline-кнопки для live-матчей ---
         live_message = BOT_TEXTS['live_matches_header']
-        inline_keyboard = []
         for match in matches:
             t1 = match['team_names'][0] if match['team_names'] else '?'
             t2 = match['team_names'][1] if len(match['team_names']) > 1 else '?'
@@ -995,20 +996,21 @@ class HLTVUserBot:
             maps1 = match['maps_won'][0] if match['maps_won'] else '0'
             maps2 = match['maps_won'][1] if len(match['maps_won']) > 1 else '0'
             match_id = match['match_id']
-            live_message += f"<b>{t1}</b> ({maps1}) {score1} - {score2} ({maps2}) <b>{t2}</b>\n"
+            match_text = f"<b>{t1}</b> ({maps1}) {score1} - {score2} ({maps2}) <b>{t2}</b>"
             user_sub = next((s for s in subs_data['live'].get(str(match_id), []) if s['id'] == user_id), None)
             if user_sub:
                 btn_text = f"Отписаться от {t1} vs {t2} ({self._type_to_text(user_sub['type'])})"
                 callback = f"unsubscribe_live:{match_id}"
-                inline_keyboard.append([InlineKeyboardButton(btn_text, callback_data=callback)])
+                inline_markup = InlineKeyboardMarkup([[InlineKeyboardButton(btn_text, callback_data=callback)]])
             else:
-                inline_keyboard.append([
-                    InlineKeyboardButton("Раунды", callback_data=f"subscribe_live_round:{match_id}"),
-                    InlineKeyboardButton("Карты", callback_data=f"subscribe_live_map:{match_id}"),
-                    InlineKeyboardButton("Результат", callback_data=f"subscribe_live_match:{match_id}")
+                inline_markup = InlineKeyboardMarkup([
+                    [
+                        InlineKeyboardButton("Раунды", callback_data=f"subscribe_live_round:{match_id}"),
+                        InlineKeyboardButton("Карты", callback_data=f"subscribe_live_map:{match_id}"),
+                        InlineKeyboardButton("Результат", callback_data=f"subscribe_live_match:{match_id}")
+                    ]
                 ])
-        inline_markup = InlineKeyboardMarkup(inline_keyboard)
-        await update.message.reply_text(live_message + "\nВыберите матч для подробностей или подпишитесь:", reply_markup=inline_markup, parse_mode="HTML", disable_web_page_preview=True)
+            await update.message.reply_text(match_text, reply_markup=inline_markup, parse_mode="HTML", disable_web_page_preview=True)
         # --- Inline-кнопки для будущих матчей ---
         if user_future_matches:
             conn = sqlite3.connect(self.db_path)
