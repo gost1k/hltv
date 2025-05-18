@@ -696,7 +696,7 @@ class HLTVUserBot:
             conn.close()
             all_matches = list(upcoming_matches) + list(completed_matches)
             if not all_matches:
-                await update.message.reply_text(BOT_TEXTS['no_matches_team'].format(team_name=team_name), reply_markup=self.markup)
+                await update.message.reply_text('Ничего не найдено. Нашли баг, вопросы, предложения? Пишите: @TarAn0o', reply_markup=self.markup)
                 return
             keyboard = []
             if 'match_mapping' not in context.user_data:
@@ -1088,3 +1088,12 @@ class HLTVUserBot:
         link = f' <a href="{match_url}">🌐</a>' if match_url else ''
         message = f"<b>{t1}</b> ({maps1}) {score1} - {score2} ({maps2}) <b>{t2}</b>\n"
         await update.message.reply_text(message, parse_mode="HTML", reply_markup=self.markup, disable_web_page_preview=True)
+
+if __name__ == "__main__":
+    from src.bots.config import load_config
+    config = load_config("user")
+    token = config["token"]
+    db_path = config["db_path"]
+    log_file = config.get("log_file", "user_bot.log")
+    bot = HLTVUserBot(token, db_path, log_file, config_name='user')
+    bot.run()
