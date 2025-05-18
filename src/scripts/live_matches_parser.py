@@ -279,12 +279,14 @@ def main_loop():
         data = load_subs_json()
         total_live = sum(len(u) for u in data["live"].values())
         total_upcoming = sum(len(u) for u in data["upcoming_live"].values())
+        unique_live_users = len(set(uid for users in data["live"].values() for uid in users))
+        unique_upcoming_users = len(set(uid for users in data["upcoming_live"].values() for uid in users))
         notify_live_changes()
         has_live = bool(matches)
         has_subs = total_live > 0
         if has_live and has_subs:
             next_update = 60
-            logger.info(f"Update Live: {len(matches)} | Live: {total_live} | Live upcoming - {total_upcoming} | Refetch: {next_update} sec")
+            logger.info(f"Update Live: {len(matches)} | Live: {total_live} ({unique_live_users}) | Live upcoming - {total_upcoming} ({unique_upcoming_users}) | Refetch: {next_update} sec")
             subscriber_event.clear()
             subscriber_event.wait(timeout=next_update)
             if subscriber_event.is_set():
@@ -300,7 +302,7 @@ def main_loop():
             next_time = now.replace(hour=next_hour, minute=next_minute, second=0, microsecond=0)
             wait = (next_time - now).total_seconds()
             next_update = int(max(60, wait))
-            logger.info(f"Update Live: {len(matches)} | Live: {total_live} | Live upcoming - {total_upcoming} | Refetch: {next_update} sec")
+            logger.info(f"Update Live: {len(matches)} | Live: {total_live} ({unique_live_users}) | Live upcoming - {total_upcoming} ({unique_upcoming_users}) | Refetch: {next_update} sec")
             subscriber_event.clear()
             subscriber_event.wait(timeout=next_update)
             if subscriber_event.is_set():
