@@ -18,7 +18,7 @@ import uuid
 import re
 
 from src.bots.config import load_config
-from src.scripts.live_matches_parser import handle_new_subscription, load_json, save_json, SUBS_JSON, LIVE_JSON, subscriber_event
+from src.scripts.live_matches_parser import handle_new_subscription, load_json, save_json, SUBS_JSON, LIVE_JSON, subscriber_event, move_future_subscribers_to_live
 from src.bots.common.hltv_user_bot_texts import BOT_TEXTS
 
 # Отключаем лишние логи Telegram API и httpx/urllib3
@@ -929,6 +929,9 @@ class HLTVUserBot:
         subs_data = self.load_subs_json()
         matches = load_json(LIVE_JSON, default=[])
         user_id = update.effective_user.id
+        # Переносим отложенных подписчиков, если матч стал live (на случай если show_live_matches вызывается сразу после обновления)
+        move_future_subscribers_to_live(matches)
+        subs_data = self.load_subs_json()  # обновить после переноса
         # --- Обычная клавиатура: только live и будущие, на которые подписан пользователь ---
         live_match_mapping = {}
         upcoming_match_mapping = {}
