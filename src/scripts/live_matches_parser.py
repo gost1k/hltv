@@ -189,24 +189,32 @@ def notify_live_changes():
         old_match = old_dict.get(match_id)
         # Раунды: любое изменение счёта
         if old_match and match['current_map_scores'] != old_match['current_map_scores']:
-            for user_id in get_subscribers(match_id, "round"):
-                send_telegram_message(user_id, format_score(match))
+            msg = format_score(match)
+            if '()' not in msg:
+                for user_id in get_subscribers(match_id, "round"):
+                    send_telegram_message(user_id, msg)
         # Карты: только изменение maps_won
         if old_match and match['maps_won'] != old_match['maps_won']:
-            for user_id in get_subscribers(match_id, "map"):
-                send_telegram_message(user_id, f"Закончилась карта!\n{format_score(match)}")
+            msg = f"Закончилась карта!\n{format_score(match)}"
+            if '()' not in msg:
+                for user_id in get_subscribers(match_id, "map"):
+                    send_telegram_message(user_id, msg)
         # Победитель: только при определении победителя
         winner = get_winner(match)
         if winner and (not old_match or get_winner(old_match) != winner):
-            for user_id in get_subscribers(match_id, "match"):
-                send_telegram_message(user_id, f"Победа: {winner} 🏆\n{format_score(match)}")
+            msg = f"Победа: {winner} 🏆\n{format_score(match)}"
+            if '()' not in msg:
+                for user_id in get_subscribers(match_id, "match"):
+                    send_telegram_message(user_id, msg)
     # Завершение матча: отписка всех
     finished = set(old_dict) - set(new_dict)
     for match_id in finished:
         last_state = old_dict[match_id]
         for section in ("live",):
-            for sub in subs[section].get(str(match_id), []):
-                send_telegram_message(sub["id"], f"Матч завершён. Итог:\n{format_score(last_state)}")
+            msg = f"Матч завершён. Итог:\n{format_score(last_state)}"
+            if '()' not in msg:
+                for sub in subs[section].get(str(match_id), []):
+                    send_telegram_message(sub["id"], msg)
             subs[section].pop(str(match_id), None)
     save_subs_json(subs)
     save_json(PREV_JSON, new)
