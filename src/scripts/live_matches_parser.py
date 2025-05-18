@@ -122,44 +122,93 @@ def get_winner(match):
         return match['team_names'][1]
     return None
 
+# --- Вспомогательные функции для новой структуры ---
+def migrate_subs_structure(data):
+    # Миграция старой структуры: {match_id: [user_id, ...]} -> {match_id: [{id, type}], ...}
+    def migrate_list(lst):
+        if lst and isinstance(lst[0], dict):
+            return lst  # уже новая структура
+        return [{"id": uid, "type": "round"} for uid in lst]
+    for section in ("live", "upcoming_live"):
+        if section in data:
+            for match_id in list(data[section].keys()):
+                data[section][match_id] = migrate_list(data[section][match_id])
+    return data
+
+def load_subs_json():
+    data = load_json(FUTURE_SUBS_JSON, default=None)
+    if not data or not isinstance(data, dict):
+        if data is None or data == {}:
+            return {"live": {}, "upcoming_live": {}}
+        return {"live": {}, "upcoming_live": data}
+    if "live" not in data:
+        data["live"] = {}
+    if "upcoming_live" not in data:
+        data["upcoming_live"] = {}
+    data = migrate_subs_structure(data)
+    return data
+
+def save_subs_json(data):
+    save_json(FUTURE_SUBS_JSON, data)
+
+# --- Подписка/отписка с типом ---
+def subscribe_user(match_id, user_id, sub_type, section="live"):
+    data = load_subs_json()
+    match_id = str(match_id)
+    if match_id not in data[section]:
+        data[section][match_id] = []
+    # Удаляем старую подписку пользователя на этот матч (если есть)
+    data[section][match_id] = [s for s in data[section][match_id] if s["id"] != user_id]
+    data[section][match_id].append({"id": user_id, "type": sub_type})
+    save_subs_json(data)
+
+def unsubscribe_user(match_id, user_id, section="live"):
+    data = load_subs_json()
+    match_id = str(match_id)
+    if match_id in data[section]:
+        data[section][match_id] = [s for s in data[section][match_id] if s["id"] != user_id]
+        if not data[section][match_id]:
+            data[section].pop(match_id)
+        save_subs_json(data)
+
+# --- Фильтрация подписчиков по типу ---
+def get_subscribers(match_id, sub_type, section="live"):
+    data = load_subs_json()
+    match_id = str(match_id)
+    return [s["id"] for s in data[section].get(match_id, []) if s["type"] == sub_type]
+
+# --- notify_live_changes с учётом типа подписки ---
 def notify_live_changes():
     old = load_json(PREV_JSON, default=[])
     new = load_json(LIVE_JSON, default=[])
-    subs = load_json(SUBS_JSON, default={})
+    subs = load_subs_json()
     old_dict = {m['match_id']: m for m in old}
     new_dict = {m['match_id']: m for m in new}
-    # Собираем изменения для каждого пользователя
-    user_updates = {}
-    user_wins = {}
+    # Для каждого матча и типа подписки
     for match_id, match in new_dict.items():
         old_match = old_dict.get(match_id)
-        # Изменение счёта
-        if old_match and (match['current_map_scores'] != old_match['current_map_scores'] or match['maps_won'] != old_match['maps_won']):
-            for user_id in subs.get("live", {}).get(str(match_id), []):
-                user_updates.setdefault(user_id, []).append(format_score(match))
-        # Победитель
+        # Раунды: любое изменение счёта
+        if old_match and match['current_map_scores'] != old_match['current_map_scores']:
+            for user_id in get_subscribers(match_id, "round"):
+                send_telegram_message(user_id, format_score(match))
+        # Карты: только изменение maps_won
+        if old_match and match['maps_won'] != old_match['maps_won']:
+            for user_id in get_subscribers(match_id, "map"):
+                send_telegram_message(user_id, f"Закончилась карта!\n{format_score(match)}")
+        # Победитель: только при определении победителя
         winner = get_winner(match)
         if winner and (not old_match or get_winner(old_match) != winner):
-            for user_id in subs.get("live", {}).get(str(match_id), []):
-                user_wins.setdefault(user_id, []).append(f"Победа: {winner} 🏆\n{format_score(match)}")
-    # Отправляем объединённые сообщения
-    for user_id in set(list(user_updates.keys()) + list(user_wins.keys())):
-        msgs = []
-        if user_id in user_updates:
-            msgs.extend(user_updates[user_id])
-        if user_id in user_wins:
-            msgs.extend(user_wins[user_id])
-        if msgs:
-            send_telegram_message(user_id, '\n'.join(msgs))
-    # Уведомления о завершении матчей
+            for user_id in get_subscribers(match_id, "match"):
+                send_telegram_message(user_id, f"Победа: {winner} 🏆\n{format_score(match)}")
+    # Завершение матча: отписка всех
     finished = set(old_dict) - set(new_dict)
     for match_id in finished:
         last_state = old_dict[match_id]
-        for user_id in subs.get("live", {}).get(str(match_id), []):
-            send_telegram_message(user_id, f"Матч завершён. Итог:\n{format_score(last_state)}")
-        if "live" in subs:
-            subs["live"].pop(str(match_id), None)
-    save_json(SUBS_JSON, subs)
+        for section in ("live",):
+            for sub in subs[section].get(str(match_id), []):
+                send_telegram_message(sub["id"], f"Матч завершён. Итог:\n{format_score(last_state)}")
+            subs[section].pop(str(match_id), None)
+    save_subs_json(subs)
     save_json(PREV_JSON, new)
 
 subscriber_event = threading.Event()
@@ -203,24 +252,6 @@ def download_live_page():
         return HTML_PATH
     finally:
         pass  # SimpleHTMLParser сам закрывает драйвер
-
-# --- Вспомогательные функции для новой структуры ---
-def load_subs_json():
-    data = load_json(FUTURE_SUBS_JSON, default=None)
-    if not data or not isinstance(data, dict):
-        # Миграция старого формата
-        if data is None or data == {}:
-            return {"live": {}, "upcoming_live": {}}
-        # Старый формат: просто словарь матчей
-        return {"live": {}, "upcoming_live": data}
-    if "live" not in data:
-        data["live"] = {}
-    if "upcoming_live" not in data:
-        data["upcoming_live"] = {}
-    return data
-
-def save_subs_json(data):
-    save_json(FUTURE_SUBS_JSON, data)
 
 # --- Перенос отложенных подписчиков ---
 def move_future_subscribers_to_live(live_matches):
