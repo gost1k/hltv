@@ -220,6 +220,10 @@ class HLTVUserBot:
             match_id = context.user_data['live_match_mapping'][message_text]
             await self.show_match_details(update, context, match_id)
             return
+        elif 'upcoming_match_mapping' in context.user_data and message_text in context.user_data['upcoming_match_mapping']:
+            match_id = context.user_data['upcoming_match_mapping'][message_text]
+            await self.show_match_details(update, context, match_id)
+            return
         elif 'fallback_live_match_mapping' in context.user_data and message_text in context.user_data['fallback_live_match_mapping']:
             match_id = context.user_data['fallback_live_match_mapping'][message_text]
             await self.show_live_match_details(update, context, match_id)
@@ -950,9 +954,11 @@ class HLTVUserBot:
         reply_markup = InlineKeyboardMarkup(inline_keyboard)
         await update.message.reply_text(message + "\nВыберите матч для подробностей или подпишитесь:", reply_markup=reply_markup, parse_mode="HTML", disable_web_page_preview=True)
 
-        # Обычная клавиатура для выбора live-матча (только те, что есть в базе upcoming_match)
+        # --- Обычная клавиатура: только live и будущие, на которые подписан пользователь ---
         live_match_mapping = {}
-        keyboard = [[KeyboardButton("Назад")]]
+        upcoming_match_mapping = {}
+        keyboard = []
+        # Live-матчи (только те, что есть в базе upcoming_match)
         if matches:
             conn = sqlite3.connect(self.db_path)
             conn.row_factory = sqlite3.Row
@@ -968,11 +974,35 @@ class HLTVUserBot:
                     live_match_mapping[match_text] = match_id
                     keyboard.append([KeyboardButton(match_text)])
             conn.close()
+        # Будущие матчи, на которые подписан пользователь
+        user_future_matches = []
+        for match_id_str, users in subs_data['upcoming_live'].items():
+            if user_id in users:
+                user_future_matches.append(int(match_id_str))
+        if user_future_matches:
+            conn = sqlite3.connect(self.db_path)
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            q_marks = ','.join(['?'] * len(user_future_matches))
+            cursor.execute(f'SELECT match_id, team1_name, team2_name FROM upcoming_match WHERE match_id IN ({q_marks})', tuple(user_future_matches))
+            rows = cursor.fetchall()
+            for row in rows:
+                match_id = row['match_id']
+                t1 = row['team1_name']
+                t2 = row['team2_name']
+                match_text = f"{t1} vs {t2}"
+                # Не добавлять дубли (если уже есть среди live)
+                if match_text not in live_match_mapping and match_text not in upcoming_match_mapping:
+                    upcoming_match_mapping[match_text] = match_id
+                    keyboard.append([KeyboardButton(match_text)])
+            conn.close()
+        # Добавляем кнопку 'Назад'
+        keyboard.append([KeyboardButton("Назад")])
+        # Сохраняем соответствие для поиска match_id по тексту
         context.user_data['live_match_mapping'] = live_match_mapping
-        context.user_data['fallback_live_match_mapping'] = {}
+        context.user_data['upcoming_match_mapping'] = upcoming_match_mapping
         reply_markup_kb = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
-    
-        await update.message.reply_text("Выберите live-матч для подробностей:", reply_markup=reply_markup_kb)
+        await update.message.reply_text("Выберите матч для подробностей:", reply_markup=reply_markup_kb)
 
         # --- Сообщение о будущих Live матчах и кнопки отписки ---
         user_future_matches = []
