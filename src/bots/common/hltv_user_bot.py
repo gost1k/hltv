@@ -1002,7 +1002,6 @@ class HLTVUserBot:
         context.user_data['live_match_mapping'] = live_match_mapping
         context.user_data['upcoming_match_mapping'] = upcoming_match_mapping
         reply_markup_kb = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
-        await update.message.reply_text("Выберите матч для подробностей:", reply_markup=reply_markup_kb)
 
         # --- Сообщение о будущих Live матчах и кнопки отписки ---
         user_future_matches = []
