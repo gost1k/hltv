@@ -30,6 +30,10 @@ logging.basicConfig(
 )
 logger = logging.getLogger("live_parser")
 
+# Отключаем лишние логи webdriver-manager
+logging.getLogger("WDM").setLevel(logging.WARNING)
+logging.getLogger("webdriver_manager").setLevel(logging.WARNING)
+
 # --- Вспомогательные функции ---
 def load_json(path, default=None):
     if not os.path.exists(path):
@@ -191,6 +195,7 @@ def download_live_page():
     os.makedirs(HTML_DIR, exist_ok=True)
     parser = SimpleHTMLParser()
     try:
+        logger.info("Download html")
         html = parser.get_html("https://www.hltv.org/matches")
         with open(HTML_PATH, "w", encoding="utf-8") as f:
             f.write(html)
@@ -256,24 +261,21 @@ def main_loop():
         with open(html_path, "r", encoding="utf-8") as f:
             html = f.read()
         matches = parse_live_matches(html)
-        # Переносим отложенных подписчиков, если матч стал live
         move_future_subscribers_to_live(matches)
-        # Логируем подписчиков
         data = load_subs_json()
         total_live = sum(len(u) for u in data["live"].values())
         total_upcoming = sum(len(u) for u in data["upcoming_live"].values())
-        # (логирование только после вычисления next_update)
         save_json(LIVE_JSON, matches)
         notify_live_changes()
         has_live = bool(matches)
         has_subs = total_live > 0
         if has_live and has_subs:
             next_update = 60
-            logger.info(f"Обновлено Live: {len(matches)} | Live смотрят: {total_live} | Live будут смотреть: {total_upcoming} | Обновление через: {next_update} сек")
+            logger.info(f"Update Live: {len(matches)} | Live: {total_live} | Live upcoming - {total_upcoming} | Refetch: {next_update} sec")
             subscriber_event.clear()
             subscriber_event.wait(timeout=next_update)
             if subscriber_event.is_set():
-                logger.info("Сработал триггер подписчика: обновление запущено немедленно.")
+                logger.info("Subscriber trigger: update started immediately.")
         else:
             now = datetime.now()
             next_minute = (now.minute // 10 + 1) * 10
@@ -285,11 +287,11 @@ def main_loop():
             next_time = now.replace(hour=next_hour, minute=next_minute, second=0, microsecond=0)
             wait = (next_time - now).total_seconds()
             next_update = int(max(60, wait))
-            logger.info(f"Обновлено Live: {len(matches)} | Live смотрят: {total_live} | Live будут смотреть: {total_upcoming} | Обновление через: {next_update} сек")
+            logger.info(f"Update Live: {len(matches)} | Live: {total_live} | Live upcoming - {total_upcoming} | Refetch: {next_update} sec")
             subscriber_event.clear()
             subscriber_event.wait(timeout=next_update)
             if subscriber_event.is_set():
-                logger.info("Сработал триггер подписчика: обновление запущено немедленно.")
+                logger.info("Subscriber trigger: update started immediately.")
 
 if __name__ == "__main__":
     main_loop() 

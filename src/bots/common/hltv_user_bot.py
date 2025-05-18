@@ -926,34 +926,9 @@ class HLTVUserBot:
         return message
 
     async def show_live_matches(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        subs_data = self.load_subs_json()
         matches = load_json(LIVE_JSON, default=[])
         user_id = update.effective_user.id
-        # Формируем подробный список live-матчей
-        message = BOT_TEXTS['live_matches_header']
-        inline_keyboard = []
-        subs_data = self.load_subs_json()
-        for match in matches:
-            t1 = match['team_names'][0] if match['team_names'] else '?'
-            t2 = match['team_names'][1] if len(match['team_names']) > 1 else '?'
-            score1 = match['current_map_scores'][0] if match['current_map_scores'] else '?'
-            score2 = match['current_map_scores'][1] if len(match['current_map_scores']) > 1 else '?'
-            maps1 = match['maps_won'][0] if match['maps_won'] else '0'
-            maps2 = match['maps_won'][1] if len(match['maps_won']) > 1 else '0'
-            match_id = match['match_id']
-            message += f"<b>{t1}</b> ({maps1}) {score1} - {score2} ({maps2}) <b>{t2}</b>\n"
-            # Кнопка подписки/отписки
-            subscribed = str(match_id) in subs_data['live'] and user_id in subs_data['live'][str(match_id)]
-            if subscribed:
-                btn_text = f"Отписаться от {t1} vs {t2}"
-                callback = f"unsubscribe_live:{match_id}"
-            else:
-                btn_text = f"Подписаться на {t1} vs {t2}"
-                callback = f"subscribe_live:{match_id}"
-            inline_keyboard.append([InlineKeyboardButton(btn_text, callback_data=callback)])
-        inline_keyboard.append([InlineKeyboardButton("Назад", callback_data="back_to_menu")])
-        reply_markup = InlineKeyboardMarkup(inline_keyboard)
-        await update.message.reply_text(message + "\nВыберите матч для подробностей или подпишитесь:", reply_markup=reply_markup, parse_mode="HTML", disable_web_page_preview=True)
-
         # --- Обычная клавиатура: только live и будущие, на которые подписан пользователь ---
         live_match_mapping = {}
         upcoming_match_mapping = {}
@@ -1002,12 +977,35 @@ class HLTVUserBot:
         context.user_data['live_match_mapping'] = live_match_mapping
         context.user_data['upcoming_match_mapping'] = upcoming_match_mapping
         reply_markup_kb = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+        # 1. Главное меню (обычная клавиатура)
+        await update.message.reply_text("Выберите матч для подробностей:", reply_markup=reply_markup_kb)
 
-        # --- Сообщение о будущих Live матчах и кнопки отписки ---
-        user_future_matches = []
-        for match_id_str, users in subs_data['upcoming_live'].items():
-            if user_id in users:
-                user_future_matches.append(int(match_id_str))
+        # 2. Live-матчи (inline-кнопки)
+        live_message = BOT_TEXTS['live_matches_header']
+        inline_keyboard = []
+        for match in matches:
+            t1 = match['team_names'][0] if match['team_names'] else '?'
+            t2 = match['team_names'][1] if len(match['team_names']) > 1 else '?'
+            score1 = match['current_map_scores'][0] if match['current_map_scores'] else '?'
+            score2 = match['current_map_scores'][1] if len(match['current_map_scores']) > 1 else '?'
+            maps1 = match['maps_won'][0] if match['maps_won'] else '0'
+            maps2 = match['maps_won'][1] if len(match['maps_won']) > 1 else '0'
+            match_id = match['match_id']
+            live_message += f"<b>{t1}</b> ({maps1}) {score1} - {score2} ({maps2}) <b>{t2}</b>\n"
+            # Кнопка подписки/отписки
+            subscribed = str(match_id) in subs_data['live'] and user_id in subs_data['live'][str(match_id)]
+            if subscribed:
+                btn_text = f"Отписаться от {t1} vs {t2}"
+                callback = f"unsubscribe_live:{match_id}"
+            else:
+                btn_text = f"Подписаться на {t1} vs {t2}"
+                callback = f"subscribe_live:{match_id}"
+            inline_keyboard.append([InlineKeyboardButton(btn_text, callback_data=callback)])
+        inline_keyboard.append([InlineKeyboardButton("Назад", callback_data="back_to_menu")])
+        inline_markup = InlineKeyboardMarkup(inline_keyboard)
+        await update.message.reply_text(live_message + "\nВыберите матч для подробностей или подпишитесь:", reply_markup=inline_markup, parse_mode="HTML", disable_web_page_preview=True)
+
+        # 3. Будущие live-матчи (inline-кнопки для отписки)
         if user_future_matches:
             conn = sqlite3.connect(self.db_path)
             conn.row_factory = sqlite3.Row
@@ -1018,16 +1016,16 @@ class HLTVUserBot:
             conn.close()
             if rows:
                 msg = '<b>Ваши подписки на будущие live-матчи:</b>\n\n'
-                inline_keyboard = []
+                future_inline_keyboard = []
                 for row in rows:
                     dt = datetime.fromtimestamp(row['datetime'], tz=self.MOSCOW_TIMEZONE).strftime('%d.%m.%Y %H:%M')
                     t1 = row['team1_name']
                     t2 = row['team2_name']
                     match_id = row['match_id']
                     msg += f"<b>{dt}</b>: <code>{t1}</code> vs <code>{t2}</code>\n"
-                    inline_keyboard.append([InlineKeyboardButton(f"Отписаться от Live: {t1} vs {t2}", callback_data=f"unsubscribe_future_live:{match_id}")])
-                reply_markup = InlineKeyboardMarkup(inline_keyboard)
-                await update.message.reply_text(msg, parse_mode="HTML", reply_markup=reply_markup)
+                    future_inline_keyboard.append([InlineKeyboardButton(f"Отписаться от Live: {t1} vs {t2}", callback_data=f"unsubscribe_future_live:{match_id}")])
+                future_inline_markup = InlineKeyboardMarkup(future_inline_keyboard)
+                await update.message.reply_text(msg, parse_mode="HTML", reply_markup=future_inline_markup)
 
     async def handle_callback_query(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         query = update.callback_query
