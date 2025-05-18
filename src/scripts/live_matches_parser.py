@@ -310,8 +310,8 @@ def main_loop():
         data = load_subs_json()
         total_live = sum(len(u) for u in data["live"].values())
         total_upcoming = sum(len(u) for u in data["upcoming_live"].values())
-        unique_live_users = len(set(uid for users in data["live"].values() for uid in users))
-        unique_upcoming_users = len(set(uid for users in data["upcoming_live"].values() for uid in users))
+        unique_live_users = len(set(uid["id"] for users in data["live"].values() for uid in users))
+        unique_upcoming_users = len(set(uid["id"] for users in data["upcoming_live"].values() for uid in users))
         notify_live_changes()
         has_live = bool(matches)
         has_subs = total_live > 0
