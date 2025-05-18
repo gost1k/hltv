@@ -157,7 +157,8 @@ def notify_live_changes():
         last_state = old_dict[match_id]
         for user_id in subs.get(str(match_id), []):
             send_telegram_message(user_id, f"Матч завершён. Итог:\n{format_score(last_state)}")
-        subs.pop(str(match_id), None)
+        if "live" in subs:
+            subs["live"].pop(str(match_id), None)
     save_json(SUBS_JSON, subs)
     save_json(PREV_JSON, new)
 
@@ -254,6 +255,17 @@ def move_future_subscribers_to_live(live_matches):
     if changed:
         save_subs_json(data)
 
+# --- Очистка подписок на завершённые live-матчи ---
+def clean_dead_live_subscriptions():
+    subs = load_subs_json()
+    live = subs.get("live", {})
+    matches = load_json(LIVE_JSON, default=[])
+    live_ids = {str(m['match_id']) for m in matches}
+    to_remove = [mid for mid in live if mid not in live_ids]
+    for mid in to_remove:
+        live.pop(mid, None)
+    save_subs_json(subs)
+
 # --- Основной цикл ---
 def main_loop():
     while True:
@@ -261,11 +273,12 @@ def main_loop():
         with open(html_path, "r", encoding="utf-8") as f:
             html = f.read()
         matches = parse_live_matches(html)
+        save_json(LIVE_JSON, matches)  # Сначала сохраняем актуальный live_matches.json
+        clean_dead_live_subscriptions()  # Очищаем подписки на завершённые матчи
         move_future_subscribers_to_live(matches)
         data = load_subs_json()
         total_live = sum(len(u) for u in data["live"].values())
         total_upcoming = sum(len(u) for u in data["upcoming_live"].values())
-        save_json(LIVE_JSON, matches)
         notify_live_changes()
         has_live = bool(matches)
         has_subs = total_live > 0
@@ -294,4 +307,6 @@ def main_loop():
                 logger.info("Subscriber trigger: update started immediately.")
 
 if __name__ == "__main__":
+    # Очистить подписки на завершённые live-матчи при запуске
+    notify_live_changes()
     main_loop() 
