@@ -135,12 +135,12 @@ def notify_live_changes():
         old_match = old_dict.get(match_id)
         # Изменение счёта
         if old_match and (match['current_map_scores'] != old_match['current_map_scores'] or match['maps_won'] != old_match['maps_won']):
-            for user_id in subs.get(str(match_id), []):
+            for user_id in subs.get("live", {}).get(str(match_id), []):
                 user_updates.setdefault(user_id, []).append(format_score(match))
         # Победитель
         winner = get_winner(match)
         if winner and (not old_match or get_winner(old_match) != winner):
-            for user_id in subs.get(str(match_id), []):
+            for user_id in subs.get("live", {}).get(str(match_id), []):
                 user_wins.setdefault(user_id, []).append(f"Победа: {winner} 🏆\n{format_score(match)}")
     # Отправляем объединённые сообщения
     for user_id in set(list(user_updates.keys()) + list(user_wins.keys())):
@@ -155,7 +155,7 @@ def notify_live_changes():
     finished = set(old_dict) - set(new_dict)
     for match_id in finished:
         last_state = old_dict[match_id]
-        for user_id in subs.get(str(match_id), []):
+        for user_id in subs.get("live", {}).get(str(match_id), []):
             send_telegram_message(user_id, f"Матч завершён. Итог:\n{format_score(last_state)}")
         if "live" in subs:
             subs["live"].pop(str(match_id), None)
