@@ -399,7 +399,7 @@ class HLTVUserBot:
                 event_id = event['event_id']
                 context.user_data['event_mapping'][event_name] = event_id
                 keyboard.append([KeyboardButton(event_name)])
-            keyboard.append([KeyboardButton(BOT_TEXTS['back'])])
+            keyboard = [[KeyboardButton(BOT_TEXTS['back'])]] + keyboard
             markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
             event_type_str = BOT_TEXTS['choose_event_completed'] if event_type == self.MENU_COMPLETED_MATCHES else BOT_TEXTS['choose_event_upcoming']
             await update.message.reply_text(event_type_str, reply_markup=markup)
@@ -449,6 +449,7 @@ class HLTVUserBot:
                     message += f"• <b>{match_datetime}</b> <code>{team1_name}</code> {team1_score}:{team2_score} <code>{team2_name}</code>\n"
                     match_text = f"{team1_name} {team1_score}:{team2_score} {team2_name}"
                     match_buttons.append([KeyboardButton(match_text)])
+                # Клавиатура выбора матча для прошедших матчей по событию
                 keyboard = [[KeyboardButton('Назад')]] + match_buttons
                 if 'match_mapping' not in context.user_data:
                     context.user_data['match_mapping'] = {}
