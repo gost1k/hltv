@@ -184,6 +184,7 @@ def notify_live_changes():
     subs = load_subs_json()
     old_dict = {m['match_id']: m for m in old}
     new_dict = {m['match_id']: m for m in new}
+    
     # Для каждого матча и типа подписки
     for match_id, match in new_dict.items():
         old_match = old_dict.get(match_id)
@@ -206,16 +207,47 @@ def notify_live_changes():
             if '()' not in msg:
                 for user_id in get_subscribers(match_id, "match"):
                     send_telegram_message(user_id, msg)
+    
     # Завершение матча: отписка всех
     finished = set(old_dict) - set(new_dict)
     for match_id in finished:
         last_state = old_dict[match_id]
-        for section in ("live",):
-            msg = f"Матч завершён. Итог:\n{format_score(last_state)}"
-            if '()' not in msg:
-                for sub in subs[section].get(str(match_id), []):
-                    send_telegram_message(sub["id"], msg)
-            subs[section].pop(str(match_id), None)
+        logger.info(f"Матч {match_id} завершён. Отправка уведомлений...")
+        
+        # Формируем сообщение о завершении
+        t1 = last_state['team_names'][0] if last_state['team_names'] else '?'
+        t2 = last_state['team_names'][1] if len(last_state['team_names']) > 1 else '?'
+        maps1 = last_state['maps_won'][0] if last_state['maps_won'] else '0'
+        maps2 = last_state['maps_won'][1] if len(last_state['maps_won']) > 1 else '0'
+        event_name = last_state.get('event_name', '')
+        bo_type = last_state.get('bo_type', '')
+        
+        # Формируем сообщение в нужном формате
+        msg = "Матч завершен.\n"
+        if bo_type and event_name:
+            msg += f"{bo_type} - {event_name}\n"
+        msg += f"{t1} ({maps1}) {last_state['current_map_scores'][0]} - {last_state['current_map_scores'][1]} ({maps2}) {t2}"
+        
+        if '()' not in msg:
+            # Отправляем уведомления для всех секций
+            for section in ("live", "upcoming_live"):
+                if str(match_id) in subs[section]:
+                    for sub in subs[section][str(match_id)]:
+                        try:
+                            # Для подписчиков типа "match" отправляем сообщение о завершении
+                            if sub["type"] == "match":
+                                send_telegram_message(sub["id"], msg)
+                                logger.info(f"Уведомление о завершении матча {match_id} отправлено пользователю {sub['id']}")
+                            else:
+                                # Для остальных отправляем краткое сообщение
+                                short_msg = f"Матч завершён. Итог:\n{format_score(last_state)}"
+                                send_telegram_message(sub["id"], short_msg)
+                                logger.info(f"Краткое уведомление о завершении матча {match_id} отправлено пользователю {sub['id']}")
+                        except Exception as e:
+                            logger.error(f"Ошибка отправки уведомления о завершении матча {match_id} пользователю {sub['id']}: {str(e)}")
+                    # Удаляем подписку после отправки
+                    subs[section].pop(str(match_id), None)
+    
     save_subs_json(subs)
     save_json(PREV_JSON, new)
 
