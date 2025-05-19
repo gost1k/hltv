@@ -256,7 +256,6 @@ class HLTVUserBot:
             [KeyboardButton("Назад")],
             [KeyboardButton("За сегодня")],
             [KeyboardButton("За вчера")],
-            [KeyboardButton("За 3 дня")],
             [KeyboardButton("По событию")],
         ]
         markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
@@ -273,7 +272,6 @@ class HLTVUserBot:
             [KeyboardButton("Назад")],
             [KeyboardButton("На сегодня")],
             [KeyboardButton("На завтра")],
-            [KeyboardButton("На 3 дня")],
             [KeyboardButton("По событию")],
         ]
         markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
@@ -439,16 +437,19 @@ class HLTVUserBot:
                     message = BOT_TEXTS['no_matches_event_completed'].format(event_name=event_name)
                     await update.message.reply_text(message, reply_markup=self.markup)
                     return
-                events = {
-                    event_id: {
-                        'name': event_name,
-                        'matches': [dict(match) for match in matches]
-                    }
-                }
-                message = BOT_TEXTS['upcoming_event_matches_header'].format(event_name=event_name)
-                message += self.format_matches_message(events)
-                # Формируем клавиатуру выбора матча
-                keyboard = [[KeyboardButton('Назад')]]
+                # Новый заголовок и формат для прошедших матчей по событию
+                message = f"<b>Прошедшие матчи события:</b>\n{event_name}\n\n"
+                match_buttons = []
+                for match in matches:
+                    match_datetime = datetime.fromtimestamp(match['datetime'], tz=self.MOSCOW_TIMEZONE).strftime('%d.%m.%Y')
+                    team1_name = match['team1_name']
+                    team2_name = match['team2_name']
+                    team1_score = match['team1_score']
+                    team2_score = match['team2_score']
+                    message += f"• <b>{match_datetime}</b> <code>{team1_name}</code> {team1_score}:{team2_score} <code>{team2_name}</code>\n"
+                    match_text = f"{team1_name} {team1_score}:{team2_score} {team2_name}"
+                    match_buttons.append([KeyboardButton(match_text)])
+                keyboard = [[KeyboardButton('Назад')]] + match_buttons
                 if 'match_mapping' not in context.user_data:
                     context.user_data['match_mapping'] = {}
                 else:
@@ -457,14 +458,13 @@ class HLTVUserBot:
                 for match in matches:
                     team1_name = match['team1_name']
                     team2_name = match['team2_name']
+                    team1_score = match['team1_score']
+                    team2_score = match['team2_score']
                     match_id = match['match_id']
-                    match_text = f"{team1_name} vs {team2_name}"
+                    match_text = f"{team1_name} {team1_score}:{team2_score} {team2_name}"
                     context.user_data['match_mapping'][match_text] = match_id
-                    keyboard.append([KeyboardButton(match_text)])
                 reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
-                await update.message.reply_text(message, parse_mode="HTML")
-                await update.message.reply_text("\u200B", reply_markup=reply_markup)
-                await update.message.reply_text("Подписаться на Live", reply_markup=reply_markup)
+                await update.message.reply_text(message, parse_mode="HTML", reply_markup=reply_markup)
                 return
             else:
                 # Ветка для будущих матчей по событию
@@ -495,7 +495,6 @@ class HLTVUserBot:
                     team1_name = match['team1_name']
                     team2_name = match['team2_name']
                     message += f"<b>{match_datetime}</b>: <code>{team1_name}</code> vs <code>{team2_name}</code>\n"
-                # Удаляем старую клавиатуру
                 await update.message.reply_text("...", reply_markup=ReplyKeyboardRemove())
                 # Клавиатура выбора матча
                 keyboard = [[KeyboardButton('Назад')]]
@@ -807,21 +806,21 @@ class HLTVUserBot:
         if not events:
             return BOT_TEXTS['no_matches_period']
         message = ""
-        for event_id, event_data in events.items():
-            event_name = event_data['name'] or "Без названия"
-            matches = event_data['matches']
-            message += f"🏆 <b>{event_name}</b>\n\n"
-            for match in matches:
-                team1_name = match['team1_name']
-                team2_name = match['team2_name']
-                team1_score = match['team1_score']
-                team2_score = match['team2_score']
-                if team1_score > team2_score:
-                    team1_name = f"<b>{team1_name}</b>"
-                elif team2_score > team1_score:
-                    team2_name = f"<b>{team2_name}</b>"
-                message += f"• <code>{team1_name}</code> {team1_score} : {team2_score} <code>{team2_name}</code>\n"
-            message += "\n"
+        all_matches = []
+        for event_data in events.values():
+            all_matches.extend(event_data['matches'])
+        for match in all_matches:
+            team1_name = match['team1_name']
+            team2_name = match['team2_name']
+            team1_score = match['team1_score']
+            team2_score = match['team2_score']
+            match_datetime = datetime.fromtimestamp(match['datetime'], tz=self.MOSCOW_TIMEZONE)
+            match_time = match_datetime.strftime('%H:%M')
+            if team1_score > team2_score:
+                team1_name = f"<b>{team1_name}</b>"
+            elif team2_score > team1_score:
+                team2_name = f"<b>{team2_name}</b>"
+            message += f"• <b>{match_time}</b> <code>{team1_name}</code> {team1_score} : {team2_score} <code>{team2_name}</code>\n"
         return message
 
     async def show_upcoming_matches_for_period(self, update: Update, context: ContextTypes.DEFAULT_TYPE, days=0):
@@ -920,18 +919,15 @@ class HLTVUserBot:
         if not events:
             return BOT_TEXTS['no_matches_upcoming']
         message = ""
-        for event_id, event_data in events.items():
-            event_name = event_data['name'] or "Без названия"
-            matches = event_data['matches']
-            message += f"🏆 <b>{event_name}</b>\n\n"
-            for match in matches:
-                team1_name = match['team1_name']
-                team2_name = match['team2_name']
-                match_datetime = datetime.fromtimestamp(match['datetime'], tz=self.MOSCOW_TIMEZONE)
-                match_date = match_datetime.strftime('%d.%m')
-                match_time = match_datetime.strftime('%H:%M')
-                message += f"• <b>{match_date} {match_time}</b> <code>{team1_name}</code> vs <code>{team2_name}</code>\n"
-            message += "\n"
+        all_matches = []
+        for event_data in events.values():
+            all_matches.extend(event_data['matches'])
+        for match in all_matches:
+            team1_name = match['team1_name']
+            team2_name = match['team2_name']
+            match_datetime = datetime.fromtimestamp(match['datetime'], tz=self.MOSCOW_TIMEZONE)
+            match_time = match_datetime.strftime('%H:%M')
+            message += f"• <b>{match_time}</b> <code>{team1_name}</code> vs <code>{team2_name}</code>\n"
         return message
 
     async def show_live_matches(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
