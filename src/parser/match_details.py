@@ -113,13 +113,16 @@ class MatchDetailsParser(BaseParser):
         try:
             conn = sqlite3.connect(self.db_path)
             cursor = conn.cursor()
-            
             table_name = "result_urls" if is_past else "upcoming_urls"
-            
-            cursor.execute(f'''
-                UPDATE {table_name} SET toParse = ? WHERE id = ?
-            ''', (status, match_id))
-            
+            if not is_past:
+                now = int(time.time())
+                cursor.execute(f'''
+                    UPDATE {table_name} SET toParse = ?, last_update = ? WHERE id = ?
+                ''', (status, now, match_id))
+            else:
+                cursor.execute(f'''
+                    UPDATE {table_name} SET toParse = ? WHERE id = ?
+                ''', (status, match_id))
             conn.commit()
             conn.close()
             self.logger.info(f"Обновлен статус матча ID {match_id} в таблице {table_name} на {status}")
