@@ -654,7 +654,17 @@ class HLTVUserBot:
                     conn2.close()
                     if streams:
                         message += BOT_TEXTS['where_to_watch']
+                        # Сначала ищем cmarty
+                        cmarty_streams = []
+                        other_streams = []
                         for s in streams:
+                            url = s['url'] or ''
+                            if 'twitch.tv/cmarty' in url.replace('https://', '').replace('http://', '').replace('www.', ''):
+                                cmarty_streams.append(s)
+                            else:
+                                other_streams.append(s)
+                        # Сначала cmarty, потом остальные
+                        for s in cmarty_streams + other_streams:
                             lang = f" ({s['lang']})" if s['lang'] else ''
                             message += f"• <a href=\"{s['url']}\">{s['name']}{lang}</a>\n"
                 except Exception as e:
