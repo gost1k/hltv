@@ -495,8 +495,7 @@ class HLTVUserBot:
                     team1_name = match['team1_name']
                     team2_name = match['team2_name']
                     message += f"<b>{match_datetime}</b>: <code>{team1_name}</code> vs <code>{team2_name}</code>\n"
-                # await update.message.reply_text("...", reply_markup=ReplyKeyboardRemove())  # убрано чтобы не пропадало меню
-                # Клавиатура выбора матча
+                # Клавиатура выбора матча для будущих матчей по событию
                 keyboard = [[KeyboardButton('Назад')]]
                 if 'match_mapping' not in context.user_data:
                     context.user_data['match_mapping'] = {}
@@ -510,7 +509,7 @@ class HLTVUserBot:
                     context.user_data['match_mapping'][match_text] = match_id
                     keyboard.append([KeyboardButton(match_text)])
                 reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
-                await update.message.reply_text(message, parse_mode="HTML")
+                await update.message.reply_text(message, parse_mode="HTML", reply_markup=reply_markup)
                 return
         except Exception as e:
             self.logger.error(f"Ошибка при получении матчей события {event_id}: {str(e)}")
