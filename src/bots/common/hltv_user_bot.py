@@ -992,7 +992,10 @@ class HLTVUserBot:
         context.user_data['upcoming_match_mapping'] = upcoming_match_mapping
         reply_markup_kb = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
         # Новое: сообщение 'Live матчи' перед списком live-матчей
-        await update.message.reply_text("Live матчи. Выберите тип уведления, чтоб получать уведомления о матче.", reply_markup=reply_markup_kb)
+        if matches:
+            await update.message.reply_text("Live матчи. Выберите тип уведления, чтоб получать уведомления о матче.", reply_markup=reply_markup_kb)
+        else:
+            await update.message.reply_text("В текущий момент live матчей нет.", reply_markup=reply_markup_kb)
         # --- Inline-кнопки для live-матчей ---
         live_message = BOT_TEXTS['live_matches_header']
         for match in matches:
