@@ -495,7 +495,7 @@ class HLTVUserBot:
                     team1_name = match['team1_name']
                     team2_name = match['team2_name']
                     message += f"<b>{match_datetime}</b>: <code>{team1_name}</code> vs <code>{team2_name}</code>\n"
-                await update.message.reply_text("...", reply_markup=ReplyKeyboardRemove())
+                # await update.message.reply_text("...", reply_markup=ReplyKeyboardRemove())  # убрано чтобы не пропадало меню
                 # Клавиатура выбора матча
                 keyboard = [[KeyboardButton('Назад')]]
                 if 'match_mapping' not in context.user_data:
@@ -511,7 +511,6 @@ class HLTVUserBot:
                     keyboard.append([KeyboardButton(match_text)])
                 reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
                 await update.message.reply_text(message, parse_mode="HTML")
-                await update.message.reply_text("Подписаться на Live", reply_markup=reply_markup)
                 return
         except Exception as e:
             self.logger.error(f"Ошибка при получении матчей события {event_id}: {str(e)}")
@@ -659,7 +658,6 @@ class HLTVUserBot:
                             message += f"• <a href=\"{s['url']}\">{s['name']}{lang}</a>\n"
                 except Exception as e:
                     self.logger.error(BOT_TEXTS['error_streamers'].format(match_id=match_id, error=str(e)))
-            # Кнопки для будущих матчей
             reply_markup = self.markup
             if match_type == 'upcoming':
                 from telegram import InlineKeyboardMarkup, InlineKeyboardButton
