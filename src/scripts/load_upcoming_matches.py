@@ -341,17 +341,32 @@ def is_team_determined(team_name):
     return True
 
 def update_upcoming_urls_to_parse(db_path):
+    import math
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
-    # Получаем все матчи из upcoming_match
-    cursor.execute("SELECT match_id, team1_name, team2_name FROM upcoming_match")
+    now = int(time.time())
+    three_days_sec = 3 * 24 * 3600
+
+    # Получаем все id, date из upcoming_urls
+    cursor.execute("SELECT id, date FROM upcoming_urls")
     rows = cursor.fetchall()
-    for match_id, team1, team2 in rows:
-        if is_team_determined(team1) and is_team_determined(team2):
-            cursor.execute("UPDATE upcoming_urls SET toParse=0, reParse=0 WHERE id=?", (match_id,))
-        else:
-            next_update = int(time.time()) + 6*3600
-            cursor.execute("UPDATE upcoming_urls SET reParse=1, next_update=? WHERE id=?", (next_update, match_id))
+    for match_id, match_time in rows:
+        # Если матч уже начался или дата невалидна
+        if not match_time or match_time <= now:
+            continue
+        # Если до матча больше 3 дней — пропускаем
+        if match_time - now > three_days_sec:
+            continue
+        # Вычисляем ближайший 6-часовой слот до даты матча, который больше текущего времени, но не позже даты матча
+        # Слоты: ..., match_time-12h, match_time-6h, match_time
+        slot = match_time
+        while slot - 6*3600 > now:
+            slot -= 6*3600
+        # Если слот уже прошёл, ставим ближайший будущий (match_time)
+        if slot <= now:
+            slot = match_time
+        # Обновляем next_update и reParse=1
+        cursor.execute("UPDATE upcoming_urls SET reParse=1, next_update=? WHERE id=?", (slot, match_id))
     conn.commit()
     conn.close()
 
