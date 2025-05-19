@@ -297,8 +297,8 @@ class MatchDetailsParser(BaseParser):
                 # Парсим страницу
                 if self._parse_match_page(match):
                     # Если успешно и это прошедший матч, обновляем статус
-                    # Для предстоящих матчей статус не меняем (это делает метод _update_match_status)
-                    self._update_match_status(match["id"], match.get("is_past", True), 0)
+                    if match.get("is_past", True):
+                        self._update_match_status(match["id"], True, 0)
                     successful += 1
                 
                 # Закрываем браузер

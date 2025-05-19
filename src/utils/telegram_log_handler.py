@@ -47,10 +47,12 @@ class TelegramLogHandler(logging.Handler):
         if not self.chat_id:
             print("[TelegramLogHandler] ERROR: chat_id not set. Log not sent.")
             return
-        if not self.buffer:
+        if not self.first_prefix:
             return
-        # Собираем сообщение: первая строка — prefix, потом пустая строка, потом все сообщения
-        message = self.first_prefix + "\n\n" + "\n".join(self.buffer)
+        if self.buffer:
+            message = self.first_prefix + "\n\n" + "\n".join(self.buffer)
+        else:
+            message = self.first_prefix
         url = f"https://api.telegram.org/bot{self.token}/sendMessage"
         data = {
             "chat_id": self.chat_id,

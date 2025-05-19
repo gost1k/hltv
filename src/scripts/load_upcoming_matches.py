@@ -86,7 +86,7 @@ def load_upcoming_players(db_path):
         # Путь к JSON-файлу с игроками предстоящих матчей
         players_json_dir = "storage/json/upcoming_players"
         if not os.path.exists(players_json_dir):
-            logger.info(f"Директория {players_json_dir} не существует, пропускаем загрузку игроков")
+            logger.info(f"Директория {players_json_dir} не существует, пропускаем загрузку игроков", extra={"no_telegram": True})
             return {"processed": 0, "success": 0, "error": 0}
         
         import json
@@ -110,7 +110,7 @@ def load_upcoming_players(db_path):
                     data = json.load(f)
                 
                 if 'match_id' not in data or 'players' not in data:
-                    logger.warning(f"В файле {file_path} отсутствуют необходимые данные")
+                    logger.warning(f"В файле {file_path} отсутствуют необходимые данные", extra={"no_telegram": True})
                     stats["error"] += 1
                     continue
                 
@@ -119,7 +119,7 @@ def load_upcoming_players(db_path):
                 # Проверяем, существует ли матч в базе данных
                 cursor.execute('SELECT 1 FROM upcoming_urls WHERE id = ?', (match_id,))
                 if not cursor.fetchone():
-                    logger.warning(f"Матч с ID {match_id} не найден в базе данных, пропускаем")
+                    logger.warning(f"Матч с ID {match_id} не найден в базе данных, пропускаем", extra={"no_telegram": True})
                     stats["error"] += 1
                     continue
                 
@@ -142,21 +142,21 @@ def load_upcoming_players(db_path):
                 
                 conn.commit()
                 stats["success"] += 1
-                logger.info(f"Загружены игроки для матча {match_id}")
+                logger.info(f"Загружены игроки для матча {match_id}", extra={"no_telegram": True})
                 
                 # Удаляем обработанный файл
                 os.remove(file_path)
-                logger.info(f"Файл {os.path.basename(file_path)} удален после обработки")
+                logger.info(f"Файл {os.path.basename(file_path)} удален после обработки", extra={"no_telegram": True})
                 
             except Exception as e:
-                logger.error(f"Ошибка при загрузке игроков матча из {file_path}: {str(e)}")
+                logger.error(f"Ошибка при загрузке игроков матча из {file_path}: {str(e)}", extra={"no_telegram": True})
                 stats["error"] += 1
         
         conn.close()
         return stats
         
     except Exception as e:
-        logger.error(f"Ошибка при загрузке игроков предстоящих матчей: {str(e)}")
+        logger.error(f"Ошибка при загрузке игроков предстоящих матчей: {str(e)}", extra={"no_telegram": True})
         return {"processed": 0, "success": 0, "error": len(json_files) if 'json_files' in locals() else 0}
 
 def load_upcoming_matches_from_files(db_path):
@@ -168,7 +168,7 @@ def load_upcoming_matches_from_files(db_path):
 
     matches_json_dir = "storage/json/upcoming_match"
     if not os.path.exists(matches_json_dir):
-        logger.info(f"Директория {matches_json_dir} не существует, пропускаем загрузку матчей")
+        logger.info(f"Директория {matches_json_dir} не существует, пропускаем загрузку матчей", extra={"no_telegram": True})
         return {"processed": 0, "success": 0, "error": 0}
 
     stats = {"processed": 0, "success": 0, "error": 0}
@@ -206,12 +206,12 @@ def load_upcoming_matches_from_files(db_path):
             ))
             conn.commit()
             stats["success"] += 1
-            logger.info(f"Загружен матч {match['match_id']}")
+            logger.info(f"Загружен матч {match['match_id']}", extra={"no_telegram": True})
             # Удаляем файл после успешной загрузки
             os.remove(file_path)
-            logger.info(f"Файл {os.path.basename(file_path)} удален после загрузки")
+            logger.info(f"Файл {os.path.basename(file_path)} удален после загрузки", extra={"no_telegram": True})
         except Exception as e:
-            logger.error(f"Ошибка при загрузке матча из {file_path}: {str(e)}")
+            logger.error(f"Ошибка при загрузке матча из {file_path}: {str(e)}", extra={"no_telegram": True})
             stats["error"] += 1
 
     conn.close()
@@ -247,7 +247,7 @@ def cleanup_expired_upcoming_matches(db_path):
         # Удаляем из upcoming_match
         cursor.execute(f"DELETE FROM upcoming_match WHERE match_id IN ({placeholders})", expired_ids)
         conn.commit()
-        logger.info(f"Удалено {deleted_matches} устаревших матчей, {deleted_players} игроков, {deleted_streams} стримов")
+        logger.info(f"Удалено {deleted_matches} устаревших матчей, {deleted_players} игроков, {deleted_streams} стримов", extra={"no_telegram": True})
     else:
         logger.info("Нет устаревших матчей для удаления", extra={"no_telegram": True})
     conn.close()
@@ -272,9 +272,9 @@ def create_upcoming_match_streamers_table(db_path):
         ''')
         conn.commit()
         conn.close()
-        logger.info("Таблица upcoming_match_streamers успешно создана/проверена")
+        logger.info("Таблица upcoming_match_streamers успешно создана/проверена", extra={"no_telegram": True})
     except Exception as e:
-        logger.error(f"Ошибка при создании таблицы upcoming_match_streamers: {str(e)}")
+        logger.error(f"Ошибка при создании таблицы upcoming_match_streamers: {str(e)}", extra={"no_telegram": True})
         raise
 
 def load_upcoming_streamers(db_path):
@@ -284,7 +284,7 @@ def load_upcoming_streamers(db_path):
     try:
         streamers_json_dir = "storage/json/upcoming_streams"
         if not os.path.exists(streamers_json_dir):
-            logger.info(f"Директория {streamers_json_dir} не существует, пропускаем загрузку стримеров")
+            logger.info(f"Директория {streamers_json_dir} не существует, пропускаем загрузку стримеров", extra={"no_telegram": True})
             return {"processed": 0, "success": 0, "error": 0}
         import json
         import glob
@@ -299,13 +299,13 @@ def load_upcoming_streamers(db_path):
                 with open(file_path, 'r', encoding='utf-8') as f:
                     data = json.load(f)
                 if 'match_id' not in data or 'streams' not in data:
-                    logger.warning(f"В файле {file_path} отсутствуют необходимые данные")
+                    logger.warning(f"В файле {file_path} отсутствуют необходимые данные", extra={"no_telegram": True})
                     stats["error"] += 1
                     continue
                 match_id = data['match_id']
                 cursor.execute('SELECT 1 FROM upcoming_urls WHERE id = ?', (match_id,))
                 if not cursor.fetchone():
-                    logger.warning(f"Матч с ID {match_id} не найден в базе данных, пропускаем")
+                    logger.warning(f"Матч с ID {match_id} не найден в базе данных, пропускаем", extra={"no_telegram": True})
                     stats["error"] += 1
                     continue
                 cursor.execute('DELETE FROM upcoming_match_streamers WHERE match_id = ?', (match_id,))
@@ -322,16 +322,16 @@ def load_upcoming_streamers(db_path):
                     ))
                 conn.commit()
                 stats["success"] += 1
-                logger.info(f"Загружены стримеры для матча {match_id}")
+                logger.info(f"Загружены стримеры для матча {match_id}", extra={"no_telegram": True})
                 os.remove(file_path)
-                logger.info(f"Файл {os.path.basename(file_path)} удален после обработки")
+                logger.info(f"Файл {os.path.basename(file_path)} удален после обработки", extra={"no_telegram": True})
             except Exception as e:
-                logger.error(f"Ошибка при загрузке стримеров матча из {file_path}: {str(e)}")
+                logger.error(f"Ошибка при загрузке стримеров матча из {file_path}: {str(e)}", extra={"no_telegram": True})
                 stats["error"] += 1
         conn.close()
         return stats
     except Exception as e:
-        logger.error(f"Ошибка при загрузке стримеров предстоящих матчей: {str(e)}")
+        logger.error(f"Ошибка при загрузке стримеров предстоящих матчей: {str(e)}", extra={"no_telegram": True})
         return {"processed": 0, "success": 0, "error": len(json_files) if 'json_files' in locals() else 0}
 
 def update_upcoming_urls_to_parse(db_path):
@@ -370,11 +370,6 @@ def update_upcoming_urls_to_parse(db_path):
     conn.close()
 
 def send_telegram_report(stats, logger):
-    # stats: dict с ключами
-    #   deleted_matches, deleted_players, deleted_streams
-    #   matches_processed, matches_success, matches_error
-    #   players_processed, players_success, players_error
-    #   streamers_processed, streamers_success, streamers_error
     all_values = [
         stats.get('deleted_matches', 0), stats.get('deleted_players', 0), stats.get('deleted_streams', 0),
         stats.get('matches_processed', 0), stats.get('matches_success', 0), stats.get('matches_error', 0),
@@ -417,9 +412,8 @@ def main():
                              "matches_processed": matches_stats.get('processed', 0), "matches_success": matches_stats.get('success', 0), "matches_error": matches_stats.get('error', 0),
                              "players_processed": players_stats.get('processed', 0), "players_success": players_stats.get('success', 0), "players_error": players_stats.get('error', 0),
                              "streamers_processed": streamers_stats.get('processed', 0), "streamers_success": streamers_stats.get('success', 0), "streamers_error": streamers_stats.get('error', 0)}, logger)
-        logger.info("Загрузка предстоящих матчей завершена")
     except Exception as e:
-        logger.error(f"Ошибка при выполнении скрипта: {str(e)}")
+        logger.error(f"Ошибка при выполнении скрипта: {str(e)}", extra={"no_telegram": True})
         sys.exit(1)
     finally:
         for handler in logger.handlers:

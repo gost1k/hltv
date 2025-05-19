@@ -99,8 +99,7 @@ def main():
                 "maps_error": details_stats_raw.get('maps_error', 0),
             })
         send_telegram_report(details_stats, logger)
-        logger.info("Загрузка прошедших матчей завершена")
-        
+
     except Exception as e:
         logger.error(f"Ошибка при выполнении скрипта: {str(e)}")
         sys.exit(1)
