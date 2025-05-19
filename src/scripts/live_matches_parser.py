@@ -348,11 +348,10 @@ def main_loop():
                     match['maps_won'] = current_dict[match['match_id']]['maps_won']
         
         save_json(LIVE_JSON, new_matches)  # Сохраняем матчи
-        # --- ДОПОЛНИТЕЛЬНОЕ ЛОГИРОВАНИЕ ---
-        logger.info(f"[DEBUG] PREV_JSON: {load_json(PREV_JSON, default=[])}")
-        logger.info(f"[DEBUG] LIVE_JSON: {load_json(LIVE_JSON, default=[])}")
-        logger.info(f"[DEBUG] live_subscribers.json: {load_json(FUTURE_SUBS_JSON, default={})}")
-        # --- КОНЕЦ ДОПОЛНИТЕЛЬНОГО ЛОГИРОВАНИЯ ---
+        # --- Удаляю debug-логи ---
+        # logger.info(f"[DEBUG] PREV_JSON: {load_json(PREV_JSON, default=[])}")
+        # logger.info(f"[DEBUG] LIVE_JSON: {load_json(LIVE_JSON, default=[])}")
+        # logger.info(f"[DEBUG] live_subscribers.json: {load_json(FUTURE_SUBS_JSON, default={})}")
         notify_live_changes()
         clean_dead_live_subscriptions()  # Очищаем подписки на завершённые матчи
         move_future_subscribers_to_live(new_matches)
