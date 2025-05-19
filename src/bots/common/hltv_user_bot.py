@@ -331,6 +331,7 @@ class HLTVUserBot:
         all_matches = []
         for event_data in events.values():
             all_matches.extend(event_data['matches'])
+        all_matches.sort(key=lambda m: m['datetime'])
         for match in all_matches:
             team1_name = match['team1_name']
             team2_name = match['team2_name']
@@ -441,7 +442,7 @@ class HLTVUserBot:
                 message = f"<b>Прошедшие матчи события:</b>\n{event_name}\n\n"
                 match_buttons = []
                 for match in matches:
-                    match_datetime = datetime.fromtimestamp(match['datetime'], tz=self.MOSCOW_TIMEZONE).strftime('%d.%m.%Y')
+                    match_datetime = datetime.fromtimestamp(match['datetime'], tz=self.MOSCOW_TIMEZONE).strftime('%d.%m.%Y %H:%M')
                     team1_name = match['team1_name']
                     team2_name = match['team2_name']
                     team1_score = match['team1_score']
@@ -807,6 +808,7 @@ class HLTVUserBot:
         all_matches = []
         for event_data in events.values():
             all_matches.extend(event_data['matches'])
+        all_matches.sort(key=lambda m: m['datetime'])
         for match in all_matches:
             team1_name = match['team1_name']
             team2_name = match['team2_name']
@@ -859,6 +861,7 @@ class HLTVUserBot:
         all_matches = []
         for event_data in events.values():
             all_matches.extend(event_data['matches'])
+        all_matches.sort(key=lambda m: m['datetime'])
         for match in all_matches:
             team1_name = match['team1_name']
             team2_name = match['team2_name']
@@ -920,6 +923,7 @@ class HLTVUserBot:
         all_matches = []
         for event_data in events.values():
             all_matches.extend(event_data['matches'])
+        all_matches.sort(key=lambda m: m['datetime'])
         for match in all_matches:
             team1_name = match['team1_name']
             team2_name = match['team2_name']
