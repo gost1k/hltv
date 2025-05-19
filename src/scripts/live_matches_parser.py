@@ -204,52 +204,36 @@ def notify_live_changes():
             msg = f"Закончилась карта!\n{format_score(match)}"
             for user_id in get_subscribers(match_id, "map"):
                 send_telegram_message(user_id, msg)
-        # Победитель: только при определении победителя
-        winner = get_winner(match)
-        if winner and (not old_match or get_winner(old_match) != winner):
-            msg = f"Победа: {winner} 🏆\n{format_score(match)}"
-            for user_id in get_subscribers(match_id, "match"):
-                send_telegram_message(user_id, msg)
     
     # Завершение матча: отписка всех
     finished = set(old_dict) - set(new_dict)
     for match_id in finished:
         last_state = old_dict[match_id]
         logger.info(f"Матч {match_id} завершён. Отправка уведомлений...")
-        
-        # Формируем сообщение о завершении
         t1 = last_state['team_names'][0] if last_state['team_names'] else '?'
         t2 = last_state['team_names'][1] if len(last_state['team_names']) > 1 else '?'
         maps1 = last_state['maps_won'][0] if last_state['maps_won'] else '0'
         maps2 = last_state['maps_won'][1] if len(last_state['maps_won']) > 1 else '0'
         event_name = last_state.get('event_name', '')
         bo_type = last_state.get('bo_type', '')
-        
-        # Формируем сообщение в нужном формате
         msg = "Матч завершен.\n"
         if bo_type and event_name:
             msg += f"{bo_type} - {event_name}\n"
         msg += f"{t1} ({maps1}) {last_state['current_map_scores'][0]} - {last_state['current_map_scores'][1]} ({maps2}) {t2}"
-        
-        # Отправляем уведомления для всех секций
         for section in ("live", "upcoming_live"):
             if str(match_id) in subs[section]:
                 for sub in subs[section][str(match_id)]:
                     try:
-                        # Для подписчиков типа "match" отправляем сообщение о завершении
                         if sub["type"] == "match":
                             send_telegram_message(sub["id"], msg)
-                            logger.info(f"Уведомление о завершении матча {match_id} отправлено пользователю {sub['id']}")
+                            logger.info(f"[notify] sent to user {sub['id']} for match {match_id}: {msg[:100]}")
                         else:
-                            # Для остальных отправляем краткое сообщение
                             short_msg = f"Матч завершён. Итог:\n{format_score(last_state)}"
                             send_telegram_message(sub["id"], short_msg)
-                            logger.info(f"Краткое уведомление о завершении матча {match_id} отправлено пользователю {sub['id']}")
+                            logger.info(f"[notify] sent to user {sub['id']} for match {match_id}: {short_msg[:100]}")
                     except Exception as e:
                         logger.error(f"Ошибка отправки уведомления о завершении матча {match_id} пользователю {sub['id']}: {str(e)}")
-                # Удаляем подписку после отправки
                 subs[section].pop(str(match_id), None)
-    
     save_subs_json(subs)
     save_json(PREV_JSON, new)
 
@@ -364,6 +348,12 @@ def main_loop():
                     match['maps_won'] = current_dict[match['match_id']]['maps_won']
         
         save_json(LIVE_JSON, new_matches)  # Сохраняем матчи
+        # --- ДОПОЛНИТЕЛЬНОЕ ЛОГИРОВАНИЕ ---
+        logger.info(f"[DEBUG] PREV_JSON: {load_json(PREV_JSON, default=[])}")
+        logger.info(f"[DEBUG] LIVE_JSON: {load_json(LIVE_JSON, default=[])}")
+        logger.info(f"[DEBUG] live_subscribers.json: {load_json(FUTURE_SUBS_JSON, default={})}")
+        # --- КОНЕЦ ДОПОЛНИТЕЛЬНОГО ЛОГИРОВАНИЯ ---
+        notify_live_changes()
         clean_dead_live_subscriptions()  # Очищаем подписки на завершённые матчи
         move_future_subscribers_to_live(new_matches)
         data = load_subs_json()
@@ -371,7 +361,6 @@ def main_loop():
         total_upcoming = sum(len(u) for u in data["upcoming_live"].values())
         unique_live_users = len(set(uid["id"] for users in data["live"].values() for uid in users))
         unique_upcoming_users = len(set(uid["id"] for users in data["upcoming_live"].values() for uid in users))
-        notify_live_changes()
         has_live = bool(new_matches)
         has_subs = total_live > 0
         if has_live and has_subs:
