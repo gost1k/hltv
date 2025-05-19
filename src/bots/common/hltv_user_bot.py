@@ -1062,27 +1062,59 @@ class HLTVUserBot:
         subs_data = self.load_subs_json()
         if data.startswith("subscribe_live_"):
             sub_type, match_id = data.split(":")[0].split("_")[-1], int(data.split(":")[1])
-            subscribe_user(match_id, user_id, sub_type, section="live")
-            await query.answer("Подписка оформлена!")
-            await query.message.reply_text("Вы успешно подписались на live-матч!")
+            # Получаем информацию о матче
+            matches = load_json(LIVE_JSON, default=[])
+            match = next((m for m in matches if m['match_id'] == match_id), None)
+            if match:
+                t1 = match['team_names'][0] if match['team_names'] else '?'
+                t2 = match['team_names'][1] if len(match['team_names']) > 1 else '?'
+                subscribe_user(match_id, user_id, sub_type, section="live")
+                await query.answer("Подписка оформлена!")
+                await query.message.reply_text(f"Вы успешно подписались на live-матч {t1} vs {t2}!")
             return
         elif data.startswith("unsubscribe_live:"):
             match_id = int(data.split(":")[1])
-            unsubscribe_user(match_id, user_id, section="live")
-            await query.answer("Вы отписались от матча!")
-            await query.message.reply_text("Вы успешно отписались от live-матча!")
+            # Получаем информацию о матче
+            matches = load_json(LIVE_JSON, default=[])
+            match = next((m for m in matches if m['match_id'] == match_id), None)
+            if match:
+                t1 = match['team_names'][0] if match['team_names'] else '?'
+                t2 = match['team_names'][1] if len(match['team_names']) > 1 else '?'
+                unsubscribe_user(match_id, user_id, section="live")
+                await query.answer("Вы отписались от матча!")
+                await query.message.reply_text(f"Вы успешно отписались от live-матча {t1} vs {t2}!")
             return
         elif data.startswith("subscribe_upcoming_"):
             sub_type, match_id = data.split(":")[0].split("_")[-1], int(data.split(":")[1])
-            subscribe_user(match_id, user_id, sub_type, section="upcoming_live")
-            await query.answer("Подписка оформлена!")
-            await query.message.reply_text("Вы успешно подписались на будущий live-матч!")
+            # Получаем информацию о матче из базы данных
+            conn = sqlite3.connect(self.db_path)
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            cursor.execute('SELECT team1_name, team2_name FROM upcoming_match WHERE match_id = ?', (match_id,))
+            match = cursor.fetchone()
+            conn.close()
+            if match:
+                t1 = match['team1_name']
+                t2 = match['team2_name']
+                subscribe_user(match_id, user_id, sub_type, section="upcoming_live")
+                await query.answer("Подписка оформлена!")
+                await query.message.reply_text(f"Вы успешно подписались на будущий live-матч {t1} vs {t2}!")
             return
         elif data.startswith("unsubscribe_upcoming:"):
             match_id = int(data.split(":")[1])
-            unsubscribe_user(match_id, user_id, section="upcoming_live")
-            await query.answer("Вы отписались от будущего матча!")
-            await query.message.reply_text("Вы успешно отписались от будущего live-матча!")
+            # Получаем информацию о матче из базы данных
+            conn = sqlite3.connect(self.db_path)
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            cursor.execute('SELECT team1_name, team2_name FROM upcoming_match WHERE match_id = ?', (match_id,))
+            match = cursor.fetchone()
+            conn.close()
+            if match:
+                t1 = match['team1_name']
+                t2 = match['team2_name']
+                unsubscribe_user(match_id, user_id, section="upcoming_live")
+                await query.answer("Вы отписались от будущего матча!")
+                await query.message.reply_text(f"Вы успешно отписались от будущего live-матча {t1} vs {t2}!")
             return
 
     def load_subs_json(self):
