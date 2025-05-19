@@ -15,6 +15,12 @@ from src.bots.notify import send_telegram_message
 from src.parser.matches import MatchesParser
 from src.parser.simple_html import SimpleHTMLParser
 
+# Отключаем лишние логи
+logging.getLogger("tensorflow").setLevel(logging.ERROR)
+logging.getLogger("tensorflow.lite").setLevel(logging.ERROR)
+logging.getLogger("tensorflow.lite.python").setLevel(logging.ERROR)
+logging.getLogger("tensorflow.lite.python.lite").setLevel(logging.ERROR)
+
 LIVE_JSON = "storage/json/live/live_matches.json"
 PREV_JSON = "storage/json/live/live_matches_prev.json"
 SUBS_JSON = "storage/json/live/live_subscribers.json"

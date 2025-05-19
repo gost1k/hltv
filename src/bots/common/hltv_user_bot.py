@@ -951,7 +951,7 @@ class HLTVUserBot:
         subs_data = self.load_subs_json()  # обновить после переноса
         live_match_mapping = {}
         upcoming_match_mapping = {}
-        keyboard = []
+        keyboard = [[KeyboardButton("Назад")]]  # Кнопка "Назад" теперь первая
         if matches:
             conn = sqlite3.connect(self.db_path)
             conn.row_factory = sqlite3.Row
@@ -988,7 +988,6 @@ class HLTVUserBot:
                     upcoming_match_mapping[match_text] = match_id
                     keyboard.append([KeyboardButton(match_text)])
             conn.close()
-        keyboard.append([KeyboardButton("Назад")])
         context.user_data['live_match_mapping'] = live_match_mapping
         context.user_data['upcoming_match_mapping'] = upcoming_match_mapping
         reply_markup_kb = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
