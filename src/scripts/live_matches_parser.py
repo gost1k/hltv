@@ -197,22 +197,19 @@ def notify_live_changes():
         # Раунды: любое изменение счёта
         if old_match and match['current_map_scores'] != old_match['current_map_scores']:
             msg = format_score(match)
-            if '()' not in msg:
-                for user_id in get_subscribers(match_id, "round"):
-                    send_telegram_message(user_id, msg)
+            for user_id in get_subscribers(match_id, "round"):
+                send_telegram_message(user_id, msg)
         # Карты: только изменение maps_won
         if old_match and match['maps_won'] != old_match['maps_won']:
             msg = f"Закончилась карта!\n{format_score(match)}"
-            if '()' not in msg:
-                for user_id in get_subscribers(match_id, "map"):
-                    send_telegram_message(user_id, msg)
+            for user_id in get_subscribers(match_id, "map"):
+                send_telegram_message(user_id, msg)
         # Победитель: только при определении победителя
         winner = get_winner(match)
         if winner and (not old_match or get_winner(old_match) != winner):
             msg = f"Победа: {winner} 🏆\n{format_score(match)}"
-            if '()' not in msg:
-                for user_id in get_subscribers(match_id, "match"):
-                    send_telegram_message(user_id, msg)
+            for user_id in get_subscribers(match_id, "match"):
+                send_telegram_message(user_id, msg)
     
     # Завершение матча: отписка всех
     finished = set(old_dict) - set(new_dict)
@@ -234,25 +231,24 @@ def notify_live_changes():
             msg += f"{bo_type} - {event_name}\n"
         msg += f"{t1} ({maps1}) {last_state['current_map_scores'][0]} - {last_state['current_map_scores'][1]} ({maps2}) {t2}"
         
-        if '()' not in msg:
-            # Отправляем уведомления для всех секций
-            for section in ("live", "upcoming_live"):
-                if str(match_id) in subs[section]:
-                    for sub in subs[section][str(match_id)]:
-                        try:
-                            # Для подписчиков типа "match" отправляем сообщение о завершении
-                            if sub["type"] == "match":
-                                send_telegram_message(sub["id"], msg)
-                                logger.info(f"Уведомление о завершении матча {match_id} отправлено пользователю {sub['id']}")
-                            else:
-                                # Для остальных отправляем краткое сообщение
-                                short_msg = f"Матч завершён. Итог:\n{format_score(last_state)}"
-                                send_telegram_message(sub["id"], short_msg)
-                                logger.info(f"Краткое уведомление о завершении матча {match_id} отправлено пользователю {sub['id']}")
-                        except Exception as e:
-                            logger.error(f"Ошибка отправки уведомления о завершении матча {match_id} пользователю {sub['id']}: {str(e)}")
-                    # Удаляем подписку после отправки
-                    subs[section].pop(str(match_id), None)
+        # Отправляем уведомления для всех секций
+        for section in ("live", "upcoming_live"):
+            if str(match_id) in subs[section]:
+                for sub in subs[section][str(match_id)]:
+                    try:
+                        # Для подписчиков типа "match" отправляем сообщение о завершении
+                        if sub["type"] == "match":
+                            send_telegram_message(sub["id"], msg)
+                            logger.info(f"Уведомление о завершении матча {match_id} отправлено пользователю {sub['id']}")
+                        else:
+                            # Для остальных отправляем краткое сообщение
+                            short_msg = f"Матч завершён. Итог:\n{format_score(last_state)}"
+                            send_telegram_message(sub["id"], short_msg)
+                            logger.info(f"Краткое уведомление о завершении матча {match_id} отправлено пользователю {sub['id']}")
+                    except Exception as e:
+                        logger.error(f"Ошибка отправки уведомления о завершении матча {match_id} пользователю {sub['id']}: {str(e)}")
+                # Удаляем подписку после отправки
+                subs[section].pop(str(match_id), None)
     
     save_subs_json(subs)
     save_json(PREV_JSON, new)
@@ -349,21 +345,38 @@ def main_loop():
         html_path = download_live_page()
         with open(html_path, "r", encoding="utf-8") as f:
             html = f.read()
-        matches = parse_live_matches(html)
-        save_json(LIVE_JSON, matches)  # Сначала сохраняем актуальный live_matches.json
+        new_matches = parse_live_matches(html)
+        
+        # Загружаем текущие матчи
+        current_matches = load_json(LIVE_JSON, default=[])
+        current_dict = {m['match_id']: m for m in current_matches}
+        
+        # Проверяем значения перед обновлением
+        for match in new_matches:
+            if match['match_id'] in current_dict:
+                # Проверяем новые значения на пустые скобки
+                current_map_scores = match['current_map_scores']
+                maps_won = match['maps_won']
+                if not (len(current_map_scores) >= 2 and len(maps_won) >= 2 and 
+                       all(current_map_scores) and all(maps_won)):
+                    # Если новые значения некорректны, оставляем старые
+                    match['current_map_scores'] = current_dict[match['match_id']]['current_map_scores']
+                    match['maps_won'] = current_dict[match['match_id']]['maps_won']
+        
+        save_json(LIVE_JSON, new_matches)  # Сохраняем матчи
         clean_dead_live_subscriptions()  # Очищаем подписки на завершённые матчи
-        move_future_subscribers_to_live(matches)
+        move_future_subscribers_to_live(new_matches)
         data = load_subs_json()
         total_live = sum(len(u) for u in data["live"].values())
         total_upcoming = sum(len(u) for u in data["upcoming_live"].values())
         unique_live_users = len(set(uid["id"] for users in data["live"].values() for uid in users))
         unique_upcoming_users = len(set(uid["id"] for users in data["upcoming_live"].values() for uid in users))
         notify_live_changes()
-        has_live = bool(matches)
+        has_live = bool(new_matches)
         has_subs = total_live > 0
         if has_live and has_subs:
             next_update = 60
-            logger.info(f"Update Live: {len(matches)} | Live: {total_live} ({unique_live_users}) | Live upcoming - {total_upcoming} ({unique_upcoming_users}) | Refetch: {next_update} sec")
+            logger.info(f"Update Live: {len(new_matches)} | Live: {total_live} ({unique_live_users}) | Live upcoming - {total_upcoming} ({unique_upcoming_users}) | Refetch: {next_update} sec")
             subscriber_event.clear()
             subscriber_event.wait(timeout=next_update)
             if subscriber_event.is_set():
@@ -379,7 +392,7 @@ def main_loop():
             next_time = now.replace(hour=next_hour, minute=next_minute, second=0, microsecond=0)
             wait = (next_time - now).total_seconds()
             next_update = int(max(60, wait))
-            logger.info(f"Update Live: {len(matches)} | Live: {total_live} ({unique_live_users}) | Live upcoming - {total_upcoming} ({unique_upcoming_users}) | Refetch: {next_update} sec")
+            logger.info(f"Update Live: {len(new_matches)} | Live: {total_live} ({unique_live_users}) | Live upcoming - {total_upcoming} ({unique_upcoming_users}) | Refetch: {next_update} sec")
             subscriber_event.clear()
             subscriber_event.wait(timeout=next_update)
             if subscriber_event.is_set():
