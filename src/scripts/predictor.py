@@ -286,6 +286,21 @@ class Predictor:
                     conn.execute('DELETE FROM predict_map WHERE match_id = ? AND map_name = ?', (match_id, map_name))
                     conn.execute('''INSERT INTO predict_map (match_id, map_name, team1_rounds, team2_rounds, team1_rounds_final, team2_rounds_final, model_version, last_updated) VALUES (?, ?, ?, ?, ?, ?, ?, ?)''',
                                  (match_id, map_name, team1_score, team2_score, team1_score_final, team2_score_final, self.model_version, datetime.now().isoformat()))
+                    # --- Уникальные признаки по карте для каждой команды ---
+                    t1_map = self.maps[(self.maps['team1_id'] == match['team1_id']) & (self.maps['map_name'] == map_name)]
+                    t2_map = self.maps[(self.maps['team2_id'] == match['team2_id']) & (self.maps['map_name'] == map_name)]
+                    t1_mean_rounds = t1_map['team1_rounds'].mean() if not t1_map.empty else 0
+                    t2_mean_rounds = t2_map['team2_rounds'].mean() if not t2_map.empty else 0
+                    t1_maps_count = t1_map.shape[0]
+                    t2_maps_count = t2_map.shape[0]
+                    t1_winrate = (t1_map['team1_rounds'] > t1_map['team2_rounds']).mean() if not t1_map.empty else 0
+                    t2_winrate = (t2_map['team2_rounds'] > t2_map['team1_rounds']).mean() if not t2_map.empty else 0
+                    feats['t1_map_mean_rounds'] = t1_mean_rounds
+                    feats['t2_map_mean_rounds'] = t2_mean_rounds
+                    feats['t1_map_count'] = t1_maps_count
+                    feats['t2_map_count'] = t2_maps_count
+                    feats['t1_map_winrate'] = t1_winrate
+                    feats['t2_map_winrate'] = t2_winrate
             conn.commit()
         logger.info(f'Сделано прогнозов по картам для всех матчей.')
 
