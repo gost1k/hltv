@@ -14,6 +14,7 @@ import threading
 from src.bots.notify import send_telegram_message
 from src.parser.matches import MatchesParser
 from src.parser.simple_html import SimpleHTMLParser
+import random  # Импортирую random для генерации случайного интервала
 
 # Отключаем лишние логи
 logging.getLogger("tensorflow").setLevel(logging.ERROR)
@@ -370,26 +371,8 @@ def main_loop():
             if subscriber_event.is_set():
                 logger.info("Subscriber trigger: update started immediately.")
         else:
-            now = datetime.now()
-            # Найти ближайшее время вида HH:03, HH:18, HH:33, HH:48
-            minute = now.minute
-            hour = now.hour
-            # Список минут для обновления
-            update_minutes = [3, 18, 33, 48]
-            # Найти следующую подходящую минуту
-            next_minute = None
-            for m in update_minutes:
-                if minute < m:
-                    next_minute = m
-                    break
-            if next_minute is None:
-                # Следующий час
-                next_minute = update_minutes[0]
-                hour = (hour + 1) % 24
-            next_time = now.replace(hour=hour, minute=next_minute, second=0, microsecond=0)
-            wait = (next_time - now).total_seconds()
-            next_update = int(max(60, wait))
-            logger.info(f"Update Live: {len(new_matches)} | Live: {total_live} ({unique_live_users}) | Live upcoming - {total_upcoming} ({unique_upcoming_users}) | Refetch: {next_update} sec")
+            next_update = random.randint(180, 420)  # 3-7 минут
+            logger.info(f"Update Live: {len(new_matches)} | Live: {total_live} ({unique_live_users}) | Live upcoming - {total_upcoming} ({unique_upcoming_users}) | Refetch: {next_update} sec (no subscribers)")
             subscriber_event.clear()
             subscriber_event.wait(timeout=next_update)
             if subscriber_event.is_set():
