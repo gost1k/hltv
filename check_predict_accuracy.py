@@ -54,13 +54,16 @@ def main():
     # Можно вывести примеры ошибок
     print("\nОшибки (первые 10):")
     errors = df[(df['team1_score_final'] != df['team1_score']) | (df['team2_score_final'] != df['team2_score'])].head(10)
+    # Заголовок с выравниванием
+    print(f"{'Дата и время':<17} | {'match_id':<8} | {'Команды':<35} | {'Прогноз':<9} | {'Реальный':<9}")
+    print('-'*90)
     for _, row in errors.iterrows():
         dt = datetime.fromtimestamp(row['datetime']).strftime('%d.%m.%Y %H:%M')
-        match_id = row['match_id']
+        match_id = str(row['match_id'])
         teams = f"{row['team1_name']} vs {row['team2_name']}"
         pred = f"{row['team1_score_final']}-{row['team2_score_final']}"
         real = f"{row['team1_score']}-{row['team2_score']}"
-        print(f"datetime({dt}) | {match_id} | {teams} | прогноз: {pred} | реальный: {real}")
+        print(f"{dt:<17} | {match_id:<8} | {teams:<35} | {pred:<9} | {real:<9}")
 
 if __name__ == "__main__":
     main() 
