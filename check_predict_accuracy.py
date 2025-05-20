@@ -9,11 +9,13 @@ def main():
     # Загружаем данные
     pred = pd.read_sql_query('SELECT match_id, team1_score_final, team2_score_final FROM predict', conn)
     real = pd.read_sql_query('SELECT match_id, team1_score, team2_score, datetime FROM result_match', conn)
+    names = pd.read_sql_query('SELECT match_id, team1_name, team2_name FROM result_match', conn)
     conn.close()
     # Оставляем только те строки, где team1_score и team2_score не больше 2
     real = real[(real['team1_score'] <= 2) & (real['team2_score'] <= 2)]
     # Объединяем по match_id
     df = pd.merge(pred, real, on='match_id', how='inner')
+    df = pd.merge(df, names, on='match_id', how='left')
     # Считаем метрики по всем данным
     mae_team1 = (df['team1_score_final'] - df['team1_score']).abs().mean()
     mae_team2 = (df['team2_score_final'] - df['team2_score']).abs().mean()
@@ -51,7 +53,14 @@ def main():
         print("\nЗа последнюю неделю матчей нет.")
     # Можно вывести примеры ошибок
     print("\nОшибки (первые 10):")
-    print(df[(df['team1_score_final'] != df['team1_score']) | (df['team2_score_final'] != df['team2_score'])].head(10))
+    errors = df[(df['team1_score_final'] != df['team1_score']) | (df['team2_score_final'] != df['team2_score'])].head(10)
+    for _, row in errors.iterrows():
+        dt = datetime.fromtimestamp(row['datetime']).strftime('%d.%m.%Y %H:%M')
+        match_id = row['match_id']
+        teams = f"{row['team1_name']} vs {row['team2_name']}"
+        pred = f"{row['team1_score_final']}-{row['team2_score_final']}"
+        real = f"{row['team1_score']}-{row['team2_score']}"
+        print(f"datetime({dt}) | {match_id} | {teams} | прогноз: {pred} | реальный: {real}")
 
 if __name__ == "__main__":
     main() 
