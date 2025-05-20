@@ -8,6 +8,7 @@ CREATE TABLE IF NOT EXISTS predict (
     team2_score REAL,
     team1_score_final INTEGER,
     team2_score_final INTEGER,
+    confidence REAL,
     model_version TEXT,
     last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
@@ -16,10 +17,11 @@ CREATE TABLE IF NOT EXISTS predict_map (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     match_id INTEGER NOT NULL,
     map_name TEXT NOT NULL,
-    team1_score REAL,
-    team2_score REAL,
-    team1_score_final INTEGER,
-    team2_score_final INTEGER,
+    team1_rounds REAL,
+    team2_rounds REAL,
+    team1_rounds_final INTEGER,
+    team2_rounds_final INTEGER,
+    confidence REAL,
     model_version TEXT,
     last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );

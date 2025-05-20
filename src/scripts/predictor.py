@@ -80,6 +80,13 @@ class Predictor:
         exclude_cols = ['match_id', 'team1_id', 'team2_id', 'event_id', 'team1_score', 'team2_score']
         numeric_cols = [col for col in match.index if col not in exclude_cols and pd.api.types.is_numeric_dtype(type(match[col]))]
         match_numeric = {col: match[col] for col in numeric_cols}
+        # --- Новые метрики по картам ---
+        t1_maps = self.maps[self.maps['team1_id'] == match['team1_id']]
+        t2_maps = self.maps[self.maps['team2_id'] == match['team2_id']]
+        t1_maps_mean_rounds = t1_maps['team1_rounds'].mean() if not t1_maps.empty else 0
+        t2_maps_mean_rounds = t2_maps['team2_rounds'].mean() if not t2_maps.empty else 0
+        t1_maps_count = t1_maps.shape[0]
+        t2_maps_count = t2_maps.shape[0]
         feats = {
             'team1_id': match['team1_id'],
             'team2_id': match['team2_id'],
@@ -89,6 +96,10 @@ class Predictor:
             'head_to_head_count': h2h_count,
             'head_to_head_team1_wins': h2h_team1_wins,
             'head_to_head_team2_wins': h2h_team2_wins,
+            'team1_maps_mean_rounds': t1_maps_mean_rounds,
+            'team2_maps_mean_rounds': t2_maps_mean_rounds,
+            'team1_maps_count': t1_maps_count,
+            'team2_maps_count': t2_maps_count,
         }
         feats.update(match_numeric)
         feats.update(t1_agg)
@@ -154,6 +165,17 @@ class Predictor:
 
     def postprocess_score(self, score, max_score):
         return int(min(max(round(score), 0), max_score))
+
+    def postprocess_four_outcomes(self, team1_pred, team2_pred, strong_win_threshold=1.0):
+        diff = team1_pred - team2_pred
+        if diff >= strong_win_threshold:
+            return 2, 0  # Уверенная победа первой команды
+        elif diff > 0:
+            return 2, 1  # Победа первой команды с борьбой
+        elif diff <= -strong_win_threshold:
+            return 0, 2  # Уверенная победа второй команды
+        else:
+            return 1, 2  # Победа второй команды с борьбой
 
     def postprocess_bo3(self, team1_pred, team2_pred):
         t1 = int(round(team1_pred))
@@ -229,7 +251,7 @@ class Predictor:
             feats = feats[feature_list]
             team1_score = float(self.model[0].predict(feats)[0])
             team2_score = float(self.model[1].predict(feats)[0])
-            team1_score_final, team2_score_final = self.postprocess_bo3(team1_score, team2_score)
+            team1_score_final, team2_score_final = self.postprocess_four_outcomes(team1_score, team2_score)
             save_features_json(match_id, feats.iloc[0].to_dict())
             with sqlite3.connect(self.db_path) as conn:
                 conn.execute('''INSERT INTO predict (match_id, team1_score, team2_score, team1_score_final, team2_score_final, model_version, last_updated) VALUES (?, ?, ?, ?, ?, ?, ?)''',
