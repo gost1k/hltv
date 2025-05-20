@@ -4,6 +4,9 @@ from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.common.by import By
 from webdriver_manager.chrome import ChromeDriverManager
+import os
+import sys
+import subprocess
 
 class SimpleHTMLParser:
     def __init__(self):
@@ -26,7 +29,12 @@ class SimpleHTMLParser:
             "profile.managed_default_content_settings.fonts": 2,
         }
         options.add_experimental_option("prefs", prefs)
-        self.driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=options)
+        # Подавляем логи selenium/chromedriver через аргументы
+        options.add_argument('--log-level=3')  # только критические ошибки
+        options.add_experimental_option('excludeSwitches', ['enable-logging'])
+        service = Service(ChromeDriverManager().install())
+        # Не используем service.log_output!
+        self.driver = webdriver.Chrome(service=service, options=options)
 
     def get_html(self, url, timeout=30):
         self.driver.get(url)

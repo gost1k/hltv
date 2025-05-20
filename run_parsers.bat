@@ -23,6 +23,11 @@ python -m src.main --write-json-upcoming-match-page
 python -m src.scripts.load_past_matches
 python -m src.scripts.load_upcoming_matches
 
+@REM Парсим игроков
+@REM python -m src.scripts.download_players_html
+@REM python -m src.scripts.parse_players_html_to_json
+@REM python -m src.scripts.load_players_json_to_db
+
 @REM Ждем 60 минут (3600 секунд)
 ping -n 3601 127.0.0.1 >nul
 goto loop
