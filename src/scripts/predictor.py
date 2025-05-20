@@ -139,10 +139,12 @@ class Predictor:
     def train(self):
         logger.info('Обучение модели...')
         self.feature_engineering(for_train=True)
-        # Только числовые признаки, без target и id
-        drop_cols = ['team1_score', 'team2_score', 'match_id']
-        X = self.features.drop(drop_cols, axis=1, errors='ignore').select_dtypes(include=[np.number])
-        logger.info(f'Используемые признаки: {list(X.columns)}')
+        # Используем эталонный список признаков
+        with open('storage/model_features_etalon.json', 'r') as f:
+            features_etalon = json.load(f)
+        feature_list = features_etalon['team1'] + features_etalon['team2']
+        X = self.features[feature_list]
+        logger.info(f'Используемые признаки: {feature_list}')
         y1 = self.features['team1_score']
         y2 = self.features['team2_score']
         X_train, X_val, y1_train, y1_val = train_test_split(X, y1, test_size=0.2, random_state=42)
@@ -157,8 +159,7 @@ class Predictor:
         logger.info(f"MAE team2_score: {mean_absolute_error(y2_val, y2_pred):.3f}")
         self.model = (model1, model2)
         save_model(self.model)
-        # Сохраняем список признаков
-        feature_list = list(X.columns)
+        # Сохраняем список признаков (эталонный)
         with open('storage/model_features.json', 'w') as f:
             json.dump(feature_list, f)
         logger.info('Модель и признаки сохранены.')
@@ -235,7 +236,7 @@ class Predictor:
         self.load_data()
         self.feature_engineering(for_train=False)
         # Загружаем список признаков
-        with open('storage/model_features.json') as f:
+        with open('storage/model_features.json', 'r') as f:
             feature_list = json.load(f)
         # Для simplicity: прогнозируем только для матчей, которых нет в predict
         with sqlite3.connect(self.db_path) as conn:

@@ -11,7 +11,9 @@ venv/
 env/
 ENV/
 .env
-/storage/*
+/storage/html*
+/storage/json*
+/storage/screenshots*
 
 # IDE files
 .idea/
