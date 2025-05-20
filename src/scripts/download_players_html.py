@@ -1,13 +1,39 @@
 import os
 import sqlite3
 from datetime import datetime, timedelta
-from src.parser.simple_html import SimpleHTMLParser
+from src.parser.base import BaseParser
+import time
+import logging
+from src.utils.telegram_log_handler import TelegramLogHandler
+import json
 
 DB_PATH = 'hltv.db'
 HTML_DIR = 'storage/html/player'
 os.makedirs(HTML_DIR, exist_ok=True)
 
 PLAYER_URL = 'https://www.hltv.org/player/{player_id}/{player_nickname}'
+
+# Настройка Telegram логгера
+try:
+    with open("src/bots/config/dev_bot_config.json", encoding="utf-8") as f:
+        dev_bot_config = json.load(f)
+    dev_bot_token = dev_bot_config["token"]
+    telegram_handler = TelegramLogHandler(dev_bot_token, chat_id="7146832422")
+    telegram_handler.setLevel(logging.INFO)
+    logger = logging.getLogger("players_html_downloader")
+    logger.addHandler(telegram_handler)
+except Exception as e:
+    logger = logging.getLogger("players_html_downloader")
+    logger.warning(f"[Telegram] Not configured: {e}")
+
+# Класс для скачивания HTML через BaseParser
+class PlayerHTMLDownloader(BaseParser):
+    def download_html(self, url):
+        self.driver.get(url)
+        self._wait_for_page_load()
+        return self.driver.page_source
+    def parse(self):
+        pass  # Не используется, но требуется для абстрактного класса
 
 # Вспомогательная функция для получения игроков из upcoming_match_players
 def get_upcoming_players(conn):
@@ -62,20 +88,43 @@ def main():
         if need_download:
             url = PLAYER_URL.format(player_id=player_id, player_nickname=player_nickname)
             try:
-                parser = SimpleHTMLParser()  # создаём новый парсер для каждого игрока
-                html = parser.get_html(url)
-                html_path = os.path.join(HTML_DIR, f'{player_id}.html')
-                with open(html_path, 'w', encoding='utf-8') as f:
-                    f.write(html)
-                parser.driver.quit()  # явно закрываем драйвер
-                # next_update через 7 дней, last_update сейчас
-                next_update_val = (now + timedelta(days=7)).isoformat()
-                last_update_val = now.isoformat()
-                update_player_dates(conn, player_id, next_update_val, last_update_val)
-                print(f'[OK] Downloaded {player_nickname} ({player_id})')
-                updated += 1
+                with PlayerHTMLDownloader() as parser:
+                    html = parser.download_html(url)
+                    # Проверка на Cloudflare
+                    if '<a rel="noopener noreferrer"' in html and '>Cloudflare<' in html:
+                        html_path = os.path.join(HTML_DIR, f'{player_id}.html')
+                        with open(html_path, 'w', encoding='utf-8') as f:
+                            f.write(html)
+                        logger.warning("При парсинге игроков уперлись в защиту", extra={"telegram_firstline": True})
+                        if hasattr(telegram_handler, 'send_buffer'):
+                            telegram_handler.send_buffer()
+                        print(f'[ERR] Cloudflare detected for {player_nickname} ({player_id}), process stopped.')
+                        break
+                    html_path = os.path.join(HTML_DIR, f'{player_id}.html')
+                    with open(html_path, 'w', encoding='utf-8') as f:
+                        f.write(html)
+                    # next_update через 7 дней, last_update сейчас
+                    next_update_val = (now + timedelta(days=7)).isoformat()
+                    last_update_val = now.isoformat()
+                    update_player_dates(conn, player_id, next_update_val, last_update_val)
+                    print(f'[OK] Downloaded {player_nickname} ({player_id})')
+                    updated += 1
             except Exception as e:
-                print(f'[ERR] Failed to download {player_nickname} ({player_id}): {e}')
+                # Сохраняем html даже при ошибке, если возможно
+                html = None
+                try:
+                    html = parser.driver.page_source
+                except Exception:
+                    pass
+                if html:
+                    html_path = os.path.join(HTML_DIR, f'{player_id}.html')
+                    with open(html_path, 'w', encoding='utf-8') as f:
+                        f.write(html)
+                    print(f'[ERR] Saved partial HTML for {player_nickname} ({player_id}) due to error: {e}')
+                else:
+                    print(f'[ERR] Failed to download and save HTML for {player_nickname} ({player_id}): {e}')
+                break  # Останавливаем процесс
+            time.sleep(25)  # Таймаут между запросами
         else:
             skipped += 1
     print(f'Done. Downloaded: {updated}, Skipped: {skipped}')
