@@ -262,7 +262,7 @@ class Predictor:
                     save_features_json(f"{match_id}_{map_name}", feats_df.iloc[0].to_dict(), map_name=map_name)
                     # Удаляем старый прогноз для этой пары (match_id, map_name)
                     conn.execute('DELETE FROM predict_map WHERE match_id = ? AND map_name = ?', (match_id, map_name))
-                    conn.execute('''INSERT INTO predict_map (match_id, map_name, team1_score, team2_score, team1_score_final, team2_score_final, model_version, last_updated) VALUES (?, ?, ?, ?, ?, ?, ?, ?)''',
+                    conn.execute('''INSERT INTO predict_map (match_id, map_name, team1_rounds, team2_rounds, team1_rounds_final, team2_rounds_final, model_version, last_updated) VALUES (?, ?, ?, ?, ?, ?, ?, ?)''',
                                  (match_id, map_name, team1_score, team2_score, team1_score_final, team2_score_final, self.model_version, datetime.now().isoformat()))
             conn.commit()
         logger.info(f'Сделано прогнозов по картам для всех матчей.')

@@ -26,14 +26,14 @@ def evaluate(period='all'):
         exact_score = ((df['team1_score'] == df['team1_score_final']) & (df['team2_score'] == df['team2_score_final'])).mean()
         # Карты
         maps_real = pd.read_sql_query('SELECT match_id, map_name, team1_rounds, team2_rounds FROM result_match_maps', conn)
-        maps_pred = pd.read_sql_query('SELECT match_id, map_name, team1_score_final, team2_score_final FROM predict_map', conn)
+        maps_pred = pd.read_sql_query('SELECT match_id, map_name, team1_rounds, team2_rounds, team1_rounds_final, team2_rounds_final FROM predict_map', conn)
         df_map = maps_real.merge(maps_pred, on=['match_id', 'map_name'])
         if period == 'week':
             match_ids = set(df['match_id'])
             df_map = df_map[df_map['match_id'].isin(match_ids)]
-        mae_map_team1 = (df_map['team1_rounds'] - df_map['team1_score_final']).abs().mean()
-        mae_map_team2 = (df_map['team2_rounds'] - df_map['team2_score_final']).abs().mean()
-        exact_map_score = ((df_map['team1_rounds'] == df_map['team1_score_final']) & (df_map['team2_rounds'] == df_map['team2_score_final'])).mean()
+        mae_map_team1 = (df_map['team1_rounds'] - df_map['team1_rounds_final']).abs().mean()
+        mae_map_team2 = (df_map['team2_rounds'] - df_map['team2_rounds_final']).abs().mean()
+        exact_map_score = ((df_map['team1_rounds'] == df_map['team1_rounds_final']) & (df_map['team2_rounds'] == df_map['team2_rounds_final'])).mean()
     # Пишем в лог
     os.makedirs('logs', exist_ok=True)
     with open(LOG_PATH, 'a', encoding='utf-8') as f:
