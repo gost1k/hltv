@@ -10,6 +10,8 @@ def main():
     pred = pd.read_sql_query('SELECT match_id, team1_score_final, team2_score_final FROM predict', conn)
     real = pd.read_sql_query('SELECT match_id, team1_score, team2_score, datetime FROM result_match', conn)
     conn.close()
+    # Оставляем только те строки, где team1_score и team2_score не больше 2
+    real = real[(real['team1_score'] <= 2) & (real['team2_score'] <= 2)]
     # Объединяем по match_id
     df = pd.merge(pred, real, on='match_id', how='inner')
     # Считаем метрики по всем данным
