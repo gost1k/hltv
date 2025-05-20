@@ -16,6 +16,7 @@ import asyncio
 import time
 import uuid
 import re
+import json
 
 from src.bots.config import load_config
 from src.scripts.live_matches_parser import handle_new_subscription, load_json, save_json, SUBS_JSON, LIVE_JSON, subscriber_event, move_future_subscribers_to_live, subscribe_user, unsubscribe_user, load_subs_json
@@ -27,6 +28,32 @@ logging.getLogger("telegram.vendor.ptb_urllib3.urllib3.connectionpool").setLevel
 logging.getLogger("telegram.ext._application").setLevel(logging.WARNING)
 logging.getLogger("telegram.ext._updater").setLevel(logging.WARNING)
 logging.getLogger("urllib3").setLevel(logging.WARNING)
+
+BOT_LOG_PATH = os.path.join(os.path.dirname(__file__), '../../../storage/json/bot/user_actions.json')
+
+def log_user_action(telegram_id, action, value=None):
+    os.makedirs(os.path.dirname(BOT_LOG_PATH), exist_ok=True)
+    try:
+        if os.path.exists(BOT_LOG_PATH):
+            with open(BOT_LOG_PATH, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+        else:
+            data = {"users": {}}
+    except Exception:
+        data = {"users": {}}
+    user_log = data["users"].setdefault(str(telegram_id), {})
+    # Лог действий
+    actions = user_log.setdefault("actions", [])
+    now = datetime.now().isoformat(timespec='seconds')
+    actions.append({"action": action, "value": value, "timestamp": now})
+    user_log["actions"] = actions
+    # Счётчик всех действий
+    user_log["total_actions"] = user_log.get("total_actions", 0) + 1
+    # Дата последнего действия
+    user_log["last_action_time"] = now
+    data["users"][str(telegram_id)] = user_log
+    with open(BOT_LOG_PATH, 'w', encoding='utf-8') as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
 
 # Класс HLTVUserBot будет содержать всю бизнес-логику user-бота
 class HLTVUserBot:
@@ -95,6 +122,7 @@ class HLTVUserBot:
         self.logger.info(f"handle_message called, message_text: {message_text}")
         user = update.effective_user
         user_info = self._get_safe_user_info(user)
+        log_user_action(user.id, "button", message_text)
         period_buttons = [
             "За сегодня", "За вчера", "За 3 дня",
             "На сегодня", "На завтра", "На 3 дня",
@@ -108,6 +136,7 @@ class HLTVUserBot:
             try:
                 match_id = int(message_text.split(" ")[1])
                 handle_new_subscription(match_id, user.id)
+                log_user_action(user.id, "subscribe_live", match_id)
                 self.logger.info(BOT_TEXTS['log']['subscribe_live'].format(user_info=user_info, match_id=match_id))
                 await update.message.reply_text(BOT_TEXTS['subscribe_success'].format(match_id=match_id))
             except Exception as e:
@@ -125,6 +154,7 @@ class HLTVUserBot:
                     save_json(SUBS_JSON, subs)
                     from src.scripts.live_matches_parser import subscriber_event
                     subscriber_event.set()
+                    log_user_action(user.id, "unsubscribe_live", match_id)
                     self.logger.info(BOT_TEXTS['log']['unsubscribe_live'].format(user_info=user_info, match_id=match_id))
                     await update.message.reply_text(BOT_TEXTS['unsubscribe_success'].format(match_id=match_id))
                 else:
@@ -306,6 +336,7 @@ class HLTVUserBot:
     async def show_matches_for_period(self, update: Update, context: ContextTypes.DEFAULT_TYPE, days=1, for_today=False):
         user = update.effective_user
         user_info = self._get_safe_user_info(user)
+        log_user_action(user.id, "view_completed_period", days)
         today = datetime.now(self.MOSCOW_TIMEZONE)
         if for_today:
             start_date = datetime(today.year, today.month, today.day, 0, 0, 0, tzinfo=self.MOSCOW_TIMEZONE)
@@ -411,6 +442,7 @@ class HLTVUserBot:
     async def show_matches_for_event(self, update: Update, context: ContextTypes.DEFAULT_TYPE, event_id):
         user = update.effective_user
         user_info = self._get_safe_user_info(user)
+        log_user_action(user.id, "view_event", event_id)
         self.logger.info(BOT_TEXTS['log']['matches_for_event_request'].format(user_info=user_info, event_id=event_id))
         event_type = context.user_data.get('showing_menu', self.MENU_COMPLETED_MATCHES)
         try:
@@ -520,6 +552,7 @@ class HLTVUserBot:
     async def show_match_details(self, update: Update, context: ContextTypes.DEFAULT_TYPE, match_id):
         user = update.effective_user
         user_info = self._get_safe_user_info(user)
+        log_user_action(user.id, "view_match", match_id)
         self.logger.info(BOT_TEXTS['log']['match_details_request'].format(user_info=user_info, match_id=match_id))
         try:
             conn = sqlite3.connect(self.db_path)
@@ -836,6 +869,7 @@ class HLTVUserBot:
     async def show_upcoming_matches_for_period(self, update: Update, context: ContextTypes.DEFAULT_TYPE, days=0):
         user = update.effective_user
         user_info = self._get_safe_user_info(user)
+        log_user_action(user.id, "view_upcoming_period", days)
         today = datetime.now(self.MOSCOW_TIMEZONE)
         current_timestamp = today.timestamp()
         if days == 0:
@@ -1080,6 +1114,7 @@ class HLTVUserBot:
                 t1 = match['team_names'][0] if match['team_names'] else '?'
                 t2 = match['team_names'][1] if len(match['team_names']) > 1 else '?'
                 subscribe_user(match_id, user_id, sub_type, section="live")
+                log_user_action(user_id, "subscribe_live", match_id)
                 await query.answer("Подписка оформлена!")
                 await query.message.reply_text(f"Вы успешно подписались на live-матч {t1} vs {t2}!")
             return
@@ -1092,6 +1127,7 @@ class HLTVUserBot:
                 t1 = match['team_names'][0] if match['team_names'] else '?'
                 t2 = match['team_names'][1] if len(match['team_names']) > 1 else '?'
                 unsubscribe_user(match_id, user_id, section="live")
+                log_user_action(user_id, "unsubscribe_live", match_id)
                 await query.answer("Вы отписались от матча!")
                 await query.message.reply_text(f"Вы успешно отписались от live-матча {t1} vs {t2}!")
             return
@@ -1108,6 +1144,7 @@ class HLTVUserBot:
                 t1 = match['team1_name']
                 t2 = match['team2_name']
                 subscribe_user(match_id, user_id, sub_type, section="upcoming_live")
+                log_user_action(user_id, "subscribe_upcoming", match_id)
                 await query.answer("Подписка оформлена!")
                 await query.message.reply_text(f"Вы успешно подписались на будущий live-матч {t1} vs {t2}!")
             return
@@ -1124,6 +1161,7 @@ class HLTVUserBot:
                 t1 = match['team1_name']
                 t2 = match['team2_name']
                 unsubscribe_user(match_id, user_id, section="upcoming_live")
+                log_user_action(user_id, "unsubscribe_upcoming", match_id)
                 await query.answer("Вы отписались от будущего матча!")
                 await query.message.reply_text(f"Вы успешно отписались от будущего live-матча {t1} vs {t2}!")
             return
