@@ -4,8 +4,9 @@
 """
 
 import logging
-from telegram import Update, ReplyKeyboardMarkup, KeyboardButton
+from telegram import Update, ReplyKeyboardMarkup, KeyboardButton, InputFile
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
+import os
 
 from src.bots.config import load_config
 
@@ -41,10 +42,12 @@ class DevBot:
         """
         self.token = token
         self.db_path = db_path
+        self.admin_chat_ids = config.get('admin_chat_ids', [])
         
         # Создаем простую клавиатуру с кнопками
         self.menu_keyboard = [
-            [KeyboardButton("Статус системы")]
+            [KeyboardButton("Статус системы")],
+            [KeyboardButton("Скачать БД")]
         ]
         self.markup = ReplyKeyboardMarkup(self.menu_keyboard, resize_keyboard=True)
     
@@ -70,7 +73,21 @@ class DevBot:
         """
         Обработчик текстовых сообщений и нажатий на кнопки
         """
-        # На любое сообщение отвечаем "Работает"
+        user = update.effective_user
+        chat_id = user.id
+        text = update.message.text.strip()
+        if text == "Скачать БД":
+            db_path = os.path.abspath(self.db_path)
+            logger.info(f"Путь к базе: {db_path}, Существует: {os.path.exists(db_path)}")
+            if self.admin_chat_ids and chat_id not in self.admin_chat_ids:
+                await update.message.reply_text("У вас нет прав для скачивания базы данных.", reply_markup=self.markup)
+                return
+            if not os.path.exists(db_path):
+                await update.message.reply_text(f"Файл базы данных не найден: {db_path}", reply_markup=self.markup)
+                return
+            await update.message.reply_document(document=InputFile(db_path), filename=os.path.basename(db_path), caption="Файл базы данных HLTV")
+            return
+        # На любое другое сообщение отвечаем "Работает"
         await update.message.reply_text("Работает", reply_markup=self.markup)
     
     async def error(self, update, context):

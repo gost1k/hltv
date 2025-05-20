@@ -95,6 +95,26 @@ CREATE_TABLES = [
         rating REAL,
         FOREIGN KEY (match_id) REFERENCES result_match (match_id)
     )
+    ''',
+    # Таблица с прогнозами по матчам
+    '''
+    CREATE TABLE IF NOT EXISTS predict (
+        match_id INTEGER PRIMARY KEY,
+        team1_score INTEGER,
+        team2_score INTEGER,
+        last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+    ''',
+    # Таблица с прогнозами по картам
+    '''
+    CREATE TABLE IF NOT EXISTS predict_map (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        match_id INTEGER NOT NULL,
+        map_name TEXT NOT NULL,
+        team1_score INTEGER,
+        team2_score INTEGER,
+        last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
     '''
 ]
 
