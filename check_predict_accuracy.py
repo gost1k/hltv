@@ -20,10 +20,15 @@ def main():
     exact_mask = (df['team1_score_final'] == df['team1_score']) & (df['team2_score_final'] == df['team2_score'])
     exact = exact_mask.mean()
     total_exact = exact_mask.sum()
+    # Процент угадывания победителя (у кого 2)
+    real_winner = (df['team1_score'] == 2).astype(int) - (df['team2_score'] == 2).astype(int)
+    pred_winner = (df['team1_score_final'] == 2).astype(int) - (df['team2_score_final'] == 2).astype(int)
+    winner_correct = (real_winner == pred_winner).mean()
     print(f"Всего матчей: {len(df)}")
     print(f"MAE team1: {mae_team1:.3f}")
     print(f"MAE team2: {mae_team2:.3f}")
     print(f"Точное совпадение счёта: {exact:.2%} (всего: {total_exact})")
+    print(f"Успешное угадывание победителя: {winner_correct:.2%}")
     # За последнюю неделю
     one_week_ago = int((datetime.now() - timedelta(days=7)).timestamp())
     df_week = df[df['datetime'] > one_week_ago]
@@ -33,11 +38,15 @@ def main():
         exact_mask_w = (df_week['team1_score_final'] == df_week['team1_score']) & (df_week['team2_score_final'] == df_week['team2_score'])
         exact_w = exact_mask_w.mean()
         total_exact_w = exact_mask_w.sum()
+        real_winner_w = (df_week['team1_score'] == 2).astype(int) - (df_week['team2_score'] == 2).astype(int)
+        pred_winner_w = (df_week['team1_score_final'] == 2).astype(int) - (df_week['team2_score_final'] == 2).astype(int)
+        winner_correct_w = (real_winner_w == pred_winner_w).mean()
         print(f"\nЗа последнюю неделю:")
         print(f"Матчей: {len(df_week)}")
         print(f"MAE team1: {mae_team1_w:.3f}")
         print(f"MAE team2: {mae_team2_w:.3f}")
         print(f"Точное совпадение счёта: {exact_w:.2%} (всего: {total_exact_w})")
+        print(f"Успешное угадывание победителя: {winner_correct_w:.2%}")
     else:
         print("\nЗа последнюю неделю матчей нет.")
     # Можно вывести примеры ошибок
