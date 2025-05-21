@@ -209,7 +209,9 @@ class MatchDetailsCollector:
                         'map_name': map_name,
                         'team1_rounds': team1_rounds,
                         'team2_rounds': team2_rounds,
-                        'rounds': rounds
+                        'rounds': rounds,
+                        'team1_id': match_data.get('team1_id'),
+                        'team2_id': match_data.get('team2_id')
                     })
             # --- Конец блока ---
             

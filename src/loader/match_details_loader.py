@@ -332,15 +332,17 @@ class MatchDetailsLoader:
                     for m in match_data['maps']:
                         cursor2.execute(
                             '''
-                            INSERT INTO result_match_maps (match_id, map_name, team1_rounds, team2_rounds, rounds)
-                            VALUES (?, ?, ?, ?, ?)
+                            INSERT INTO result_match_maps (match_id, map_name, team1_rounds, team2_rounds, rounds, team1_id, team2_id)
+                            VALUES (?, ?, ?, ?, ?, ?, ?)
                             ''',
                             (
                                 match_id,
                                 m.get('map_name', ''),
                                 m.get('team1_rounds', 0),
                                 m.get('team2_rounds', 0),
-                                m.get('rounds', '')
+                                m.get('rounds', ''),
+                                m.get('team1_id'),
+                                m.get('team2_id')
                             )
                         )
                     conn2.commit()
@@ -490,15 +492,17 @@ class MatchDetailsLoader:
             for m in maps:
                 cursor.execute(
                     '''
-                    INSERT INTO result_match_maps (match_id, map_name, team1_rounds, team2_rounds, rounds)
-                    VALUES (?, ?, ?, ?, ?)
+                    INSERT INTO result_match_maps (match_id, map_name, team1_rounds, team2_rounds, rounds, team1_id, team2_id)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
                     ''',
                     (
                         match_id,
                         m.get('map_name', ''),
                         m.get('team1_rounds', 0),
                         m.get('team2_rounds', 0),
-                        m.get('rounds', '')
+                        m.get('rounds', ''),
+                        m.get('team1_id'),
+                        m.get('team2_id')
                     )
                 )
             conn.commit()
