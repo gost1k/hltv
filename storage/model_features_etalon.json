@@ -34,7 +34,18 @@
     "t1_agg_plus_minus",
     "t1_agg_adr",
     "t1_agg_kast",
-    "t1_agg_rating"
+    "t1_agg_rating",
+    "t1_agg_rating_std",
+    "t1_winrate_last3",
+    "t1_winrate_last5",
+    "t1_score_last3",
+    "t1_score_last5",
+    "t1_opp_rank_last3",
+    "t1_opp_rank_last5",
+    "t1_lineup_stability",
+    "t1_has_sub",
+    "t1_days_last_match",
+    "t1_matches_30d"
   ],
   "team2": [
     "team2_rank",
@@ -71,6 +82,17 @@
     "t2_agg_plus_minus",
     "t2_agg_adr",
     "t2_agg_kast",
-    "t2_agg_rating"
+    "t2_agg_rating",
+    "t2_agg_rating_std",
+    "t2_winrate_last3",
+    "t2_winrate_last5",
+    "t2_score_last3",
+    "t2_score_last5",
+    "t2_opp_rank_last3",
+    "t2_opp_rank_last5",
+    "t2_lineup_stability",
+    "t2_has_sub",
+    "t2_days_last_match",
+    "t2_matches_30d"
   ]
 }
