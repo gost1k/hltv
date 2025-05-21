@@ -239,6 +239,37 @@ class Predictor:
         else:
             return loser_score, max_score
 
+    def calc_confidence(self, team1_id, team2_id, by_map=False, map_name=None):
+        # Считаем объем данных для каждой команды
+        if by_map and map_name:
+            t1_maps = self.maps[(self.maps['team1_id'] == team1_id) & (self.maps['map_name'] == map_name)]
+            t2_maps = self.maps[(self.maps['team2_id'] == team2_id) & (self.maps['map_name'] == map_name)]
+        else:
+            t1_maps = self.maps[self.maps['team1_id'] == team1_id]
+            t2_maps = self.maps[self.maps['team2_id'] == team2_id]
+        t1_matches = self.matches[self.matches['team1_id'] == team1_id]
+        t2_matches = self.matches[self.matches['team2_id'] == team2_id]
+        t1_stats = self.players_stats[self.players_stats['team_id'] == team1_id]
+        t2_stats = self.players_stats[self.players_stats['team_id'] == team2_id]
+        t1_score = len(t1_maps) + len(t1_matches) + len(t1_stats)
+        t2_score = len(t2_maps) + len(t2_matches) + len(t2_stats)
+        # Для нормировки ищем максимум по всем командам
+        all_team_ids = pd.concat([
+            self.maps['team1_id'], self.maps['team2_id'],
+            self.matches['team1_id'], self.matches['team2_id'],
+            self.players_stats['team_id']
+        ]).unique()
+        max_score = 1
+        for tid in all_team_ids:
+            maps = self.maps[(self.maps['team1_id'] == tid) | (self.maps['team2_id'] == tid)]
+            matches = self.matches[(self.matches['team1_id'] == tid) | (self.matches['team2_id'] == tid)]
+            stats = self.players_stats[self.players_stats['team_id'] == tid]
+            score = len(maps) + len(matches) + len(stats)
+            if score > max_score:
+                max_score = score
+        conf = min(t1_score, t2_score) / max_score if max_score > 0 else 0
+        return round(conf, 3)
+
     def predict_upcoming(self):
         logger.info('Прогноз для будущих матчей...')
         self.load_data()
@@ -251,10 +282,14 @@ class Predictor:
             existing = pd.read_sql_query('SELECT match_id FROM predict', conn)
         to_predict = self.upcoming_features[~self.upcoming_features['match_id'].isin(existing['match_id'])]
         # Добавляю имена команд для фильтрации по TBD/winner/loser
-        to_predict = to_predict.merge(self.upcoming[['match_id', 'team1_name', 'team2_name']], on='match_id', how='left')
+        to_predict = to_predict.merge(self.upcoming[['match_id', 'team1_name', 'team2_name', 'team1_id', 'team2_id']], on='match_id', how='left')
         results = []
         for _, row in tqdm(to_predict.iterrows(), total=to_predict.shape[0]):
             match_id = row['match_id']
+            # Получаем id команд из self.upcoming по match_id
+            match_row = self.upcoming[self.upcoming['match_id'] == match_id].iloc[0]
+            t1_id = match_row['team1_id']
+            t2_id = match_row['team2_id']
             # Пропуск матчей с TBD/winner/loser в названии команды
             t1_name = str(row.get('team1_name', '')).lower()
             t2_name = str(row.get('team2_name', '')).lower()
@@ -269,49 +304,33 @@ class Predictor:
             team1_score = float(self.model[0].predict(feats)[0])
             team2_score = float(self.model[1].predict(feats)[0])
             team1_score_final, team2_score_final = self.postprocess_four_outcomes(team1_score, team2_score)
+            confidence = self.calc_confidence(t1_id, t2_id, by_map=False)
             save_features_json(match_id, feats.iloc[0].to_dict())
             with sqlite3.connect(self.db_path) as conn:
-                conn.execute('''INSERT INTO predict (match_id, team1_score, team2_score, team1_score_final, team2_score_final, model_version, last_updated) VALUES (?, ?, ?, ?, ?, ?, ?)''',
-                             (match_id, team1_score, team2_score, team1_score_final, team2_score_final, self.model_version, datetime.now().isoformat()))
+                conn.execute('''INSERT INTO predict (match_id, team1_score, team2_score, team1_score_final, team2_score_final, model_version, last_updated, confidence) VALUES (?, ?, ?, ?, ?, ?, ?, ?)''',
+                             (match_id, team1_score, team2_score, team1_score_final, team2_score_final, self.model_version, datetime.now().isoformat(), confidence))
                 conn.commit()
-            results.append((match_id, team1_score, team2_score))
+            results.append((match_id, team1_score, team2_score, confidence))
         logger.info(f'Сделано прогнозов: {len(results)}')
         # Прогноз по картам (перезаписываем старые значения)
         map_names = ['Nuke', 'Mirage', 'Inferno', 'Ancient', 'Anubis', 'Vertigo', 'Dust2']
         with sqlite3.connect(self.db_path) as conn:
             for _, match in self.upcoming.iterrows():
+                t1_id = match['team1_id']
+                t2_id = match['team2_id']
                 # Пропуск матчей с TBD/winner/loser в названии команды
                 t1_name = str(match.get('team1_name', '')).lower()
                 t2_name = str(match.get('team2_name', '')).lower()
                 if any(x in t1_name for x in ['tbd', 'winner', 'loser']) or any(x in t2_name for x in ['tbd', 'winner', 'loser']):
                     continue
                 match_id = match['match_id']
-                t1_players = self.upcoming_players[(self.upcoming_players['match_id'] == match_id) & (self.upcoming_players['team_id'] == match['team1_id'])]['player_id'].tolist()
-                t2_players = self.upcoming_players[(self.upcoming_players['match_id'] == match_id) & (self.upcoming_players['team_id'] == match['team2_id'])]['player_id'].tolist()
+                t1_players = self.upcoming_players[(self.upcoming_players['match_id'] == match_id) & (self.upcoming_players['team_id'] == t1_id)]['player_id'].tolist()
+                t2_players = self.upcoming_players[(self.upcoming_players['match_id'] == match_id) & (self.upcoming_players['team_id'] == t2_id)]['player_id'].tolist()
                 for map_name in map_names:
-                    h1 = self.maps[(self.maps['map_name'] == map_name) & ((self.maps['match_id'].isin(self.matches[self.matches['team1_id'] == match['team1_id']]['match_id'])) | (self.maps['match_id'].isin(self.matches[self.matches['team2_id'] == match['team1_id']]['match_id'])))]
-                    h2 = self.maps[(self.maps['map_name'] == map_name) & ((self.maps['match_id'].isin(self.matches[self.matches['team1_id'] == match['team2_id']]['match_id'])) | (self.maps['match_id'].isin(self.matches[self.matches['team2_id'] == match['team2_id']]['match_id'])))]
-                    t1_map_stats = h1.select_dtypes(include=[np.number]).mean().add_prefix('t1_map_mean_').to_dict()
-                    t2_map_stats = h2.select_dtypes(include=[np.number]).mean().add_prefix('t2_map_mean_').to_dict()
+                    # Индивидуальные признаки по карте для обеих команд
                     feats = self.get_common_features(match, t1_players, t2_players)
-                    feats.update(t1_map_stats)
-                    feats.update(t2_map_stats)
-                    for col in feature_list:
-                        if col not in feats:
-                            feats[col] = 0
-                    feats_df = pd.DataFrame([feats])[feature_list]
-                    feats_df = feats_df.astype(float)
-                    team1_score = float(self.model[0].predict(feats_df)[0])
-                    team2_score = float(self.model[1].predict(feats_df)[0])
-                    team1_score_final, team2_score_final = self.postprocess_map_score(team1_score, team2_score, max_score=13)
-                    save_features_json(f"{match_id}_{map_name}", feats_df.iloc[0].to_dict(), map_name=map_name)
-                    # Удаляем старый прогноз для этой пары (match_id, map_name)
-                    conn.execute('DELETE FROM predict_map WHERE match_id = ? AND map_name = ?', (match_id, map_name))
-                    conn.execute('''INSERT INTO predict_map (match_id, map_name, team1_rounds, team2_rounds, team1_rounds_final, team2_rounds_final, model_version, last_updated) VALUES (?, ?, ?, ?, ?, ?, ?, ?)''',
-                                 (match_id, map_name, team1_score, team2_score, team1_score_final, team2_score_final, self.model_version, datetime.now().isoformat()))
-                    # --- Уникальные признаки по карте для каждой команды ---
-                    t1_map = self.maps[(self.maps['team1_id'] == match['team1_id']) & (self.maps['map_name'] == map_name)]
-                    t2_map = self.maps[(self.maps['team2_id'] == match['team2_id']) & (self.maps['map_name'] == map_name)]
+                    t1_map = self.maps[(self.maps['team1_id'] == t1_id) & (self.maps['map_name'] == map_name)]
+                    t2_map = self.maps[(self.maps['team2_id'] == t2_id) & (self.maps['map_name'] == map_name)]
                     feats['t1_map_mean_rounds'] = t1_map['team1_rounds'].mean() if not t1_map.empty else 0
                     feats['t2_map_mean_rounds'] = t2_map['team2_rounds'].mean() if not t2_map.empty else 0
                     feats['t1_map_count'] = t1_map.shape[0]
@@ -326,11 +345,12 @@ class Predictor:
                     team1_score = float(self.model[0].predict(feats_df)[0])
                     team2_score = float(self.model[1].predict(feats_df)[0])
                     team1_score_final, team2_score_final = self.postprocess_map_score(team1_score, team2_score, max_score=13)
+                    confidence = self.calc_confidence(t1_id, t2_id, by_map=True, map_name=map_name)
                     save_features_json(f"{match_id}_{map_name}", feats_df.iloc[0].to_dict(), map_name=map_name)
                     # Удаляем старый прогноз для этой пары (match_id, map_name)
                     conn.execute('DELETE FROM predict_map WHERE match_id = ? AND map_name = ?', (match_id, map_name))
-                    conn.execute('''INSERT INTO predict_map (match_id, map_name, team1_rounds, team2_rounds, team1_rounds_final, team2_rounds_final, model_version, last_updated) VALUES (?, ?, ?, ?, ?, ?, ?, ?)''',
-                                 (match_id, map_name, team1_score, team2_score, team1_score_final, team2_score_final, self.model_version, datetime.now().isoformat()))
+                    conn.execute('''INSERT INTO predict_map (match_id, map_name, team1_rounds, team2_rounds, team1_rounds_final, team2_rounds_final, model_version, last_updated, confidence) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+                                 (match_id, map_name, team1_score, team2_score, team1_score_final, team2_score_final, self.model_version, datetime.now().isoformat(), confidence))
             conn.commit()
         logger.info(f'Сделано прогнозов по картам для всех матчей.')
 

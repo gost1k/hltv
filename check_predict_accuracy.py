@@ -149,20 +149,57 @@ def main():
     else:
         print("\nЗа последнюю неделю матчей нет.")
 
-    # Выводим все строки (совпадения и ошибки)
-    print("\nВсе матчи:")
-    print(f"{'Дата и время':<17} | {'match_id':<8} | {'Команды':<35} | {'Прогноз':<9} | {'Реальный':<9} | {'team1_pred_raw':<8} | {'team2_pred_raw':<8} | {'Победитель':<10} | {'Счет':<6}")
-    print('-'*120)
-    for _, row in df.iterrows():
-        dt = datetime.fromtimestamp(row['datetime']).strftime('%d.%m.%Y %H:%M')
-        match_id = str(row['match_id'])
-        teams = f"{row['team1_name']} vs {row['team2_name']}"
-        pred = f"{row['team1_score_final']}-{row['team2_score_final']}"
-        real = f"{row['team1_score']}-{row['team2_score']}"
-        t1_raw = row['team1_pred_raw'] if 'team1_pred_raw' in row else ''
-        t2_raw = row['team2_pred_raw'] if 'team2_pred_raw' in row else ''
-        print(f"{dt:<17} | {match_id:<8} | {teams:<35} | {pred:<9} | {real:<9} | {t1_raw!s:<8} | {t2_raw!s:<8} | {row['winner_correct']:<10} | {row['score_exact']:<6}")
-    df.to_csv('all_matches.csv', index=False)
+    # Обработка пропусков: если rank отсутствует или не число — считаем 101 (вне топ-100)
+    if 'team1_rank' in df.columns and 'team2_rank' in df.columns:
+        for col in ['team1_rank', 'team2_rank']:
+            df[col] = pd.to_numeric(df[col], errors='coerce').fillna(101).astype(int)
+        # Разделяем на топ-100 и остальные
+        is_top100 = (df['team1_rank'] <= 100) & (df['team2_rank'] <= 100)
+        df_top100 = df[is_top100].copy()
+        df_other = df[~is_top100].copy()
+        # Вывод и сохранение для топ-100
+        print("\nВсе матчи (ТОП-100):")
+        print(f"{'Дата и время':<17} | {'match_id':<8} | {'Команды':<35} | {'Прогноз':<9} | {'Реальный':<9} | {'team1_pred_raw':<8} | {'team2_pred_raw':<8} | {'Победитель':<10} | {'Счет':<6}")
+        print('-'*120)
+        for _, row in df_top100.iterrows():
+            dt = datetime.fromtimestamp(row['datetime']).strftime('%d.%m.%Y %H:%M')
+            match_id = str(row['match_id'])
+            teams = f"{row['team1_name']} vs {row['team2_name']}"
+            pred = f"{row['team1_score_final']}-{row['team2_score_final']}"
+            real = f"{row['team1_score']}-{row['team2_score']}"
+            t1_raw = row['team1_pred_raw'] if 'team1_pred_raw' in row else ''
+            t2_raw = row['team2_pred_raw'] if 'team2_pred_raw' in row else ''
+            print(f"{dt:<17} | {match_id:<8} | {teams:<35} | {pred:<9} | {real:<9} | {t1_raw!s:<8} | {t2_raw!s:<8} | {row['winner_correct']:<10} | {row['score_exact']:<6}")
+        df_top100.to_csv('all_matches_top100.csv', index=False)
+        # Вывод и сохранение для остальных
+        print("\nВсе матчи (прочие):")
+        print(f"{'Дата и время':<17} | {'match_id':<8} | {'Команды':<35} | {'Прогноз':<9} | {'Реальный':<9} | {'team1_pred_raw':<8} | {'team2_pred_raw':<8} | {'Победитель':<10} | {'Счет':<6}")
+        print('-'*120)
+        for _, row in df_other.iterrows():
+            dt = datetime.fromtimestamp(row['datetime']).strftime('%d.%m.%Y %H:%M')
+            match_id = str(row['match_id'])
+            teams = f"{row['team1_name']} vs {row['team2_name']}"
+            pred = f"{row['team1_score_final']}-{row['team2_score_final']}"
+            real = f"{row['team1_score']}-{row['team2_score']}"
+            t1_raw = row['team1_pred_raw'] if 'team1_pred_raw' in row else ''
+            t2_raw = row['team2_pred_raw'] if 'team2_pred_raw' in row else ''
+            print(f"{dt:<17} | {match_id:<8} | {teams:<35} | {pred:<9} | {real:<9} | {t1_raw!s:<8} | {t2_raw!s:<8} | {row['winner_correct']:<10} | {row['score_exact']:<6}")
+        df_other.to_csv('all_matches_other.csv', index=False)
+    else:
+        # Если нет рангов — выводим всё одной группой
+        print("\nВсе матчи (rank недоступен):")
+        print(f"{'Дата и время':<17} | {'match_id':<8} | {'Команды':<35} | {'Прогноз':<9} | {'Реальный':<9} | {'team1_pred_raw':<8} | {'team2_pred_raw':<8} | {'Победитель':<10} | {'Счет':<6}")
+        print('-'*120)
+        for _, row in df.iterrows():
+            dt = datetime.fromtimestamp(row['datetime']).strftime('%d.%m.%Y %H:%M')
+            match_id = str(row['match_id'])
+            teams = f"{row['team1_name']} vs {row['team2_name']}"
+            pred = f"{row['team1_score_final']}-{row['team2_score_final']}"
+            real = f"{row['team1_score']}-{row['team2_score']}"
+            t1_raw = row['team1_pred_raw'] if 'team1_pred_raw' in row else ''
+            t2_raw = row['team2_pred_raw'] if 'team2_pred_raw' in row else ''
+            print(f"{dt:<17} | {match_id:<8} | {teams:<35} | {pred:<9} | {real:<9} | {t1_raw!s:<8} | {t2_raw!s:<8} | {row['winner_correct']:<10} | {row['score_exact']:<6}")
+        df.to_csv('all_matches.csv', index=False)
 
     # Аналитика для карт
     df_map = pd.merge(pred_map, real_map, on=['match_id', 'map_name'], how='inner', suffixes=('_pred', '_real'))
