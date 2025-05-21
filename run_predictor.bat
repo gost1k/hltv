@@ -1,4 +1,7 @@
 python -m src.scripts.predictor --mode train
 python -m src.scripts.predictor --mode predict
-python -m src.scripts.evaluate_predictions --period all
-python -m src.scripts.evaluate_predictions --period week
+
+Формируем CSV для предиктов по прошедшим матчам
+python -m src.scripts.predictor --mode predict_past
+Делаем формулу для предиктов
+python src/scripts/calibrate_postprocess_formula.py

@@ -24,7 +24,10 @@
     "t1_mean_faceit_winrate",
     "t1_mean_faceit_winstreak",
     "t1_mean_faceit_avgkdr",
-    "t1_mean_faceit_headshots"
+    "t1_mean_faceit_headshots",
+    "t1_map_mean_rounds",
+    "t1_map_count",
+    "t1_map_winrate"
   ],
   "team2": [
     "team2_rank",
@@ -51,6 +54,9 @@
     "t2_mean_faceit_winrate",
     "t2_mean_faceit_winstreak",
     "t2_mean_faceit_avgkdr",
-    "t2_mean_faceit_headshots"
+    "t2_mean_faceit_headshots",
+    "t2_map_mean_rounds",
+    "t2_map_count",
+    "t2_map_winrate"
   ]
 }
