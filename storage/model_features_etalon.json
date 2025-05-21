@@ -27,7 +27,14 @@
     "t1_mean_faceit_headshots",
     "t1_map_mean_rounds",
     "t1_map_count",
-    "t1_map_winrate"
+    "t1_map_winrate",
+    "t1_agg_kills",
+    "t1_agg_deaths",
+    "t1_agg_kd_ratio",
+    "t1_agg_plus_minus",
+    "t1_agg_adr",
+    "t1_agg_kast",
+    "t1_agg_rating"
   ],
   "team2": [
     "team2_rank",
@@ -57,6 +64,13 @@
     "t2_mean_faceit_headshots",
     "t2_map_mean_rounds",
     "t2_map_count",
-    "t2_map_winrate"
+    "t2_map_winrate",
+    "t2_agg_kills",
+    "t2_agg_deaths",
+    "t2_agg_kd_ratio",
+    "t2_agg_plus_minus",
+    "t2_agg_adr",
+    "t2_agg_kast",
+    "t2_agg_rating"
   ]
 }

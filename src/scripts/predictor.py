@@ -63,12 +63,28 @@ class Predictor:
         self.upcoming = fetch_df('SELECT * FROM upcoming_match', self.db_path)
         self.upcoming_players = fetch_df('SELECT * FROM upcoming_match_players', self.db_path)
 
+    def aggregate_player_stats(self, player_ids, team_id):
+        stats = self.players_stats[(self.players_stats['player_id'].isin(player_ids)) & (self.players_stats['team_id'] == team_id)]
+        agg_fields = ['kills', 'deaths', 'kd_ratio', 'plus_minus', 'adr', 'kast', 'rating']
+        agg = {}
+        for field in agg_fields:
+            if field in stats.columns:
+                agg[field] = stats[field].mean() if not stats.empty else 0
+            else:
+                agg[field] = 0
+        return agg
+
     def get_common_features(self, match, t1_players, t2_players):
         # Агрегация формы игроков (players) ДО матча
         t1_feats = self.players[self.players['player_id'].isin(t1_players)].select_dtypes(include=[np.number])
         t2_feats = self.players[self.players['player_id'].isin(t2_players)].select_dtypes(include=[np.number])
         t1_agg = t1_feats.mean().add_prefix('t1_mean_').to_dict()
         t2_agg = t2_feats.mean().add_prefix('t2_mean_').to_dict()
+        # --- Новая агрегация по player_stats ---
+        t1_stats_agg = self.aggregate_player_stats(t1_players, match['team1_id'])
+        t2_stats_agg = self.aggregate_player_stats(t2_players, match['team2_id'])
+        t1_stats_agg = {f't1_agg_{k}': v for k, v in t1_stats_agg.items()}
+        t2_stats_agg = {f't2_agg_{k}': v for k, v in t2_stats_agg.items()}
         # Head-to-head
         h2h = self.matches[((self.matches['team1_id'] == match['team1_id']) & (self.matches['team2_id'] == match['team2_id'])) |
                            ((self.matches['team1_id'] == match['team2_id']) & (self.matches['team2_id'] == match['team1_id']))]
@@ -104,6 +120,8 @@ class Predictor:
         feats.update(match_numeric)
         feats.update(t1_agg)
         feats.update(t2_agg)
+        feats.update(t1_stats_agg)
+        feats.update(t2_stats_agg)
         return feats
 
     def feature_engineering(self, for_train=True):
@@ -214,7 +232,8 @@ class Predictor:
 
     def postprocess_map_score(self, team1_pred, team2_pred, max_score=13, loser_max=11):
         diff = abs(team1_pred - team2_pred)
-        loser_score = int(round(max(0, min(loser_max, 11 - diff))))
+        # Калиброванная формула: loser_score = -0.58 * diff_pred + 8.61
+        loser_score = int(round(max(0, min(loser_max, -0.58 * diff + 8.61))))
         if team1_pred >= team2_pred:
             return max_score, loser_score
         else:
