@@ -10,7 +10,7 @@ import os
 DB_PATH = 'hltv.db'
 
 def analyze_loser_distribution(real_df, pred_df, real_score_cols, pred_score_cols, label_prefix=""):
-    # Определяем счет проигравшей стороны для реальных и предсказанных данных
+    # Определяем счет проигравшей стороны для реальных и предсказанных данных (только для совпавших пар)
     loser_real = []
     loser_pred = []
     for idx, row in real_df.iterrows():
@@ -27,18 +27,42 @@ def analyze_loser_distribution(real_df, pred_df, real_score_cols, pred_score_col
             loser_pred.append(t2)
         elif t2 == 13:
             loser_pred.append(t1)
+    # Исторические данные (все реальные карты/матчи, даже если нет предсказания)
+    if 'map_name' in real_df.columns:
+        # Для карт
+        all_real_df = pd.read_sql_query('SELECT team1_rounds, team2_rounds FROM result_match_maps', sqlite3.connect(DB_PATH))
+        loser_hist = []
+        for idx, row in all_real_df.iterrows():
+            t1 = row['team1_rounds']
+            t2 = row['team2_rounds']
+            if t1 == 13:
+                loser_hist.append(t2)
+            elif t2 == 13:
+                loser_hist.append(t1)
+    else:
+        # Для матчей
+        all_real_df = pd.read_sql_query('SELECT team1_score, team2_score FROM result_match', sqlite3.connect(DB_PATH))
+        loser_hist = []
+        for idx, row in all_real_df.iterrows():
+            t1 = row['team1_score']
+            t2 = row['team2_score']
+            if t1 == 2:
+                loser_hist.append(t2)
+            elif t2 == 2:
+                loser_hist.append(t1)
     # Гистограмма
     plt.figure(figsize=(10,5))
     bins = range(0, 14)
     real_hist = plt.hist(loser_real, bins=bins, alpha=0.5, label=f'{label_prefix}Реальные данные')
     pred_hist = plt.hist(loser_pred, bins=bins, alpha=0.5, label=f'{label_prefix}Предсказания')
+    hist_hist = plt.hist(loser_hist, bins=bins, alpha=0.3, label=f'{label_prefix}Исторические данные', color='green')
     plt.xlabel('Раунды проигравшей стороны')
     plt.ylabel('Частота')
     plt.title(f'Сравнение распределения проигравших ({label_prefix.strip()})')
     plt.legend()
     plt.grid(axis='y', linestyle='--', alpha=0.5)
     # Подписи к столбцам
-    for hist, color in zip([real_hist, pred_hist], ['blue', 'orange']):
+    for hist, color in zip([real_hist, pred_hist, hist_hist], ['blue', 'orange', 'green']):
         for x, y in zip(hist[1][:-1], hist[0]):
             if y > 0:
                 plt.text(x + 0.1, y + 0.2, f'{int(y)}', color=color, fontsize=9, ha='center')
@@ -51,6 +75,10 @@ def analyze_loser_distribution(real_df, pred_df, real_score_cols, pred_score_col
         mean_pred = np.mean(loser_pred)
         plt.axvline(mean_pred, color='orange', linestyle='--', linewidth=1.5, label=f'Среднее (предсказания): {mean_pred:.2f}')
         plt.text(mean_pred + 0.2, plt.ylim()[1]*0.8, f'{mean_pred:.2f}', color='orange', fontsize=10)
+    if loser_hist:
+        mean_hist = np.mean(loser_hist)
+        plt.axvline(mean_hist, color='green', linestyle='--', linewidth=1.5, label=f'Среднее (исторические): {mean_hist:.2f}')
+        plt.text(mean_hist + 0.2, plt.ylim()[1]*0.7, f'{mean_hist:.2f}', color='green', fontsize=10)
     plt.tight_layout()
     plt.show()
 
