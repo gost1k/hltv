@@ -212,6 +212,74 @@ class Predictor:
         feats.update(t2_agg)
         feats.update(t1_stats_agg)
         feats.update(t2_stats_agg)
+
+        # --- Индивидуальные признаки по каждому игроку (форма + долгосрочные) ---
+        player_stats_cols = ['kills', 'deaths', 'kd_ratio', 'plus_minus', 'adr', 'kast', 'rating']
+        player_long_cols = ['rating_2_1', 'firepower', 'entrying', 'trading', 'opening', 'clutching', 'sniping', 'utility']
+        for prefix, player_ids, team_id in [
+            ('t1', t1_players, match['team1_id']),
+            ('t2', t2_players, match['team2_id'])
+        ]:
+            # Форма (players_stats)
+            stats = self.players_stats[(self.players_stats['player_id'].isin(player_ids)) & (self.players_stats['team_id'] == team_id)]
+            stats = stats.sort_values(by=['rating', 'kills'], ascending=False).reset_index(drop=True)
+            # Исторические (players)
+            players_long = self.players[self.players['player_id'].isin(player_ids)]
+            players_long = players_long.sort_values(by=['rating_2_1'], ascending=False).reset_index(drop=True)
+            for i in range(5):
+                for col in player_stats_cols:
+                    feats[f'{prefix}_player{i+1}_{col}_recent'] = stats.iloc[i][col] if i < len(stats) and col in stats.columns else 0
+                for col in player_long_cols:
+                    feats[f'{prefix}_player{i+1}_{col}_long'] = players_long.iloc[i][col] if i < len(players_long) and col in players_long.columns else 0
+
+        # --- Новые кастомные признаки ---
+        for prefix, team_id, opp_id in [
+            ("t1", match["team1_id"], match["team2_id"]),
+            ("t2", match["team2_id"], match["team1_id"])
+        ]:
+            # Все карты этой команды
+            team_maps = self.maps[self.maps['team1_id'] == team_id]
+            feats[f'{prefix}_total_maps_played'] = team_maps.shape[0]
+            feats[f'{prefix}_unique_maps_played'] = team_maps['map_name'].nunique() if 'map_name' in team_maps.columns else 0
+            # Средний рейтинг соперников на всех картах
+            feats[f'{prefix}_avg_opponent_rating'] = team_maps['team2_rank'].mean() if 'team2_rank' in team_maps.columns else 0
+            # Средний рейтинг соперников за последние 10 матчей
+            if 'date' in team_maps.columns:
+                last10 = team_maps.sort_values('date', ascending=False).head(10)
+            elif 'datetime' in team_maps.columns:
+                last10 = team_maps.sort_values('datetime', ascending=False).head(10)
+            else:
+                last10 = team_maps.head(10)
+            feats[f'{prefix}_avg_opponent_rating_last10'] = last10['team2_rank'].mean() if 'team2_rank' in last10.columns else 0
+            # Winrate против топ-20 команд на карте (если map_name есть)
+            map_name = match.get('map_name', None)
+            if map_name:
+                map_games = team_maps[team_maps['map_name'] == map_name]
+                vs_top20 = map_games[map_games['team2_rank'] <= 20] if 'team2_rank' in map_games.columns else pd.DataFrame()
+                feats[f'{prefix}_map_winrate_vs_top20'] = (vs_top20['team1_rounds'] > vs_top20['team2_rounds']).mean() if not vs_top20.empty else 0
+                # Winrate за CT и T (если есть side info)
+                for side in ['ct', 't']:
+                    col = f'team1_rounds_{side}' if prefix == 't1' else f'team2_rounds_{side}'
+                    if col in map_games.columns:
+                        feats[f'{prefix}_map_winrate_{side}'] = (map_games[col] > map_games[f'team2_rounds_{side}' if prefix == 't1' else f'team1_rounds_{side}']).mean()
+                    else:
+                        feats[f'{prefix}_map_winrate_{side}'] = 0
+                # Winrate против данного соперника на карте
+                vs_opp = map_games[map_games['team2_id'] == opp_id]
+                feats[f'{prefix}_map_winrate_vs_opponent'] = (vs_opp['team1_rounds'] > vs_opp['team2_rounds']).mean() if not vs_opp.empty else 0
+                # Время с последней игры на карте
+                if not map_games.empty and 'date' in map_games.columns and 'datetime' in match:
+                    last_map_date = map_games['date'].max()
+                    feats[f'{prefix}_days_since_last_map'] = (match['datetime'] - pd.to_datetime(last_map_date).timestamp()) // (24*3600)
+                else:
+                    feats[f'{prefix}_days_since_last_map'] = -1
+            else:
+                feats[f'{prefix}_map_winrate_vs_top20'] = 0
+                feats[f'{prefix}_map_winrate_ct'] = 0
+                feats[f'{prefix}_map_winrate_t'] = 0
+                feats[f'{prefix}_map_winrate_vs_opponent'] = 0
+                feats[f'{prefix}_days_since_last_map'] = -1
+
         return feats
 
     def feature_engineering(self, for_train=True):

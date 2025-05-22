@@ -14,4 +14,5 @@ python analyze_past_predictions.py
 
 @REM Удаляем не состоявшиеся предикты
 python delete_unplayed_predictions.py
-
+@REM Эксперемент набора признаков
+python -m src.scripts.feature_selection_experiment
