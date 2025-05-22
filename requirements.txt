@@ -20,6 +20,7 @@ scipy>=1.7
 lightgbm>=3.3
 catboost>=1.0
 pytorch-tabnet>=4.0
+colorama>=0.4.6
 
 # Установка:
 # pip install -r requirements.txt

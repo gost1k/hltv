@@ -17,4 +17,8 @@ python delete_unplayed_predictions.py
 @REM Эксперемент набора признаков
 python -m src.scripts.feature_selection_experiment
 @REM Показываем важность признаков
-python .\show_feature_importance.py     
+python .\show_feature_importance.py
+
+# --- Новый вывод (таблицы и статистика по confidence) ---
+
+df_matches = df_matches.merge(names, on='match_id', how='left')
