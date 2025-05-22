@@ -295,11 +295,16 @@ class Predictor:
             features.append(feats)
         if for_train:
             self.features = pd.DataFrame(features)
+            # Исключаем demo_id если он есть
+            if 'demo_id' in self.features.columns:
+                self.features = self.features.drop(columns=['demo_id'])
             # Добавляем целевые переменные из result_match
             scores = self.matches[['match_id', 'team1_score', 'team2_score']]
             self.features = self.features.merge(scores, on='match_id', how='left')
         else:
             self.upcoming_features = pd.DataFrame(features)
+            if 'demo_id' in self.upcoming_features.columns:
+                self.upcoming_features = self.upcoming_features.drop(columns=['demo_id'])
 
     def train(self):
         logger.info('Обучение модели...')
