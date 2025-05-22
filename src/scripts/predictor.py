@@ -213,25 +213,6 @@ class Predictor:
         feats.update(t1_stats_agg)
         feats.update(t2_stats_agg)
 
-        # --- Индивидуальные признаки по каждому игроку (форма + долгосрочные) ---
-        player_stats_cols = ['kills', 'deaths', 'kd_ratio', 'plus_minus', 'adr', 'kast', 'rating']
-        player_long_cols = ['rating_2_1', 'firepower', 'entrying', 'trading', 'opening', 'clutching', 'sniping', 'utility']
-        for prefix, player_ids, team_id in [
-            ('t1', t1_players, match['team1_id']),
-            ('t2', t2_players, match['team2_id'])
-        ]:
-            # Форма (players_stats)
-            stats = self.players_stats[(self.players_stats['player_id'].isin(player_ids)) & (self.players_stats['team_id'] == team_id)]
-            stats = stats.sort_values(by=['rating', 'kills'], ascending=False).reset_index(drop=True)
-            # Исторические (players)
-            players_long = self.players[self.players['player_id'].isin(player_ids)]
-            players_long = players_long.sort_values(by=['rating_2_1'], ascending=False).reset_index(drop=True)
-            for i in range(5):
-                for col in player_stats_cols:
-                    feats[f'{prefix}_player{i+1}_{col}_recent'] = stats.iloc[i][col] if i < len(stats) and col in stats.columns else 0
-                for col in player_long_cols:
-                    feats[f'{prefix}_player{i+1}_{col}_long'] = players_long.iloc[i][col] if i < len(players_long) and col in players_long.columns else 0
-
         # --- Новые кастомные признаки ---
         for prefix, team_id, opp_id in [
             ("t1", match["team1_id"], match["team2_id"]),
@@ -326,7 +307,7 @@ class Predictor:
         # Используем эталонный список признаков
         with open('storage/model_features_etalon.json', 'r') as f:
             features_etalon = json.load(f)
-        feature_list = features_etalon['team1'] + features_etalon['team2']
+        feature_list = list(dict.fromkeys(features_etalon['team1'] + features_etalon['team2']))
         X = self.features[feature_list]
         logger.info(f'Используемые признаки: {feature_list}')
         y1 = self.features['team1_score']
@@ -397,8 +378,8 @@ class Predictor:
 
     def postprocess_map_score(self, team1_pred, team2_pred, max_score=13, loser_max=11):
         diff = abs(team1_pred - team2_pred)
-        # Калиброванная формула: loser_score = -0.58 * diff_pred + 8.61
-        loser_score = int(round(max(0, min(loser_max, -0.58 * diff + 8.61))))
+        # Калиброванная формула: loser_score = -0.31 * diff_pred + 8.43
+        loser_score = int(round(max(0, min(loser_max, -0.31 * diff + 8.43))))
         if team1_pred >= team2_pred:
             return max_score, loser_score
         else:

@@ -104,6 +104,11 @@ def main():
     except Exception:
         pred_map_raw = None
     conn.close()
+    # --- Сохраняем оригинальные DataFrame для анализа распределения проигравших ---
+    real_df_orig = real.copy()
+    pred_df_orig = pred.copy()
+    real_map_df_orig = real_map.copy()
+    pred_map_df_orig = pred_map.copy()
     # Оставляем только те строки, где team1_score и team2_score не больше 2 (для матчей)
     real = real[(real['team1_score'] <= 2) & (real['team2_score'] <= 2)]
     # Объединяем по match_id (матчи)
@@ -222,9 +227,62 @@ def main():
 
     # Графики распределения проигравших
     print("\nГрафики распределения проигравших по матчам:")
-    analyze_loser_distribution(real, pred, ['team1_score', 'team2_score'], ['team1_score_final', 'team2_score_final'], label_prefix="Матчи ")
+    analyze_loser_distribution(real_df_orig, pred_df_orig, ['team1_score', 'team2_score'], ['team1_score_final', 'team2_score_final'], label_prefix="Матчи ")
     print("\nГрафики распределения проигравших по картам:")
-    analyze_loser_distribution(real_map, pred_map, ['team1_rounds', 'team2_rounds'], ['team1_rounds_final', 'team2_rounds_final'], label_prefix="Карты ")
+    analyze_loser_distribution(real_map_df_orig, pred_map_df_orig, ['team1_rounds', 'team2_rounds'], ['team1_rounds_final', 'team2_rounds_final'], label_prefix="Карты ")
+
+    # --- Новый вывод (таблицы и статистика по confidence) ---
+    conn = sqlite3.connect(DB_PATH)
+    match_info = pd.read_sql_query('SELECT match_id, datetime, team1_name, team2_name FROM result_match', conn)
+    conn.close()
+    if pred_raw is not None and 'confidence' in pred.columns:
+        df['confidence'] = pred['confidence']
+    else:
+        df['confidence'] = np.nan
+    df = df.sort_values('confidence', ascending=False)
+    if pred_map_raw is not None and 'confidence' in pred_map.columns:
+        df_map['confidence'] = pred_map['confidence']
+    else:
+        df_map['confidence'] = np.nan
+    df_map = df_map.merge(match_info, on='match_id', how='left')
+    df_map = df_map.sort_values('confidence', ascending=False)
+    print("\nВсе матчи:")
+    print(f"{'Дата и время':<17} | {'match_id':<8} | {'Команды':<35} | {'Прогноз':<9} | {'Реальный':<9} | {'team1_pred_raw':<12} | {'team2_pred_raw':<12} | {'Победитель':<10} | {'Счет':<6} | {'conf':<8}")
+    print('-'*140)
+    for _, row in df.iterrows():
+        dt = datetime.fromtimestamp(row['datetime']).strftime('%d.%m.%Y %H:%M') if 'datetime' in row and not pd.isnull(row['datetime']) else ''
+        match_id = str(row['match_id'])
+        teams = f"{row['team1_name']} vs {row['team2_name']}"
+        pred = f"{row['team1_score_final']}-{row['team2_score_final']}"
+        real = f"{row['team1_score']}-{row['team2_score']}"
+        t1_raw = f"{row['team1_pred_raw']:.6f}" if 'team1_pred_raw' in row and pd.notnull(row['team1_pred_raw']) else ''
+        t2_raw = f"{row['team2_pred_raw']:.6f}" if 'team2_pred_raw' in row and pd.notnull(row['team2_pred_raw']) else ''
+        conf = f"{row['confidence']:.3f}" if 'confidence' in row and pd.notnull(row['confidence']) else ''
+        print(f"{dt:<17} | {match_id:<8} | {teams:<35} | {pred:<9} | {real:<9} | {t1_raw:<12} | {t2_raw:<12} | {row['winner_correct']:<10} | {row['score_exact']:<6} | {conf:<8}")
+    print("\nВсе карты:")
+    print(f"{'Дата и время':<17} | {'match_id':<8} | {'map_name':<8} | {'Команды':<35} | {'Прогноз':<9} | {'Реальный':<9} | {'team1_pred_raw':<12} | {'team2_pred_raw':<12} | {'Победитель':<10} | {'Счет':<6} | {'conf':<8}")
+    print('-'*150)
+    sep_printed = False
+    for i, row in df_map.iterrows():
+        dt = datetime.fromtimestamp(row['datetime']).strftime('%d.%m.%Y %H:%M') if 'datetime' in row and not pd.isnull(row['datetime']) else ''
+        match_id = str(row['match_id'])
+        map_name = row['map_name']
+        teams = f"{row['team1_name']} vs {row['team2_name']}"
+        pred = f"{row['team1_rounds_final']}-{row['team2_rounds_final']}"
+        real = f"{row['team1_rounds']}-{row['team2_rounds']}"
+        t1_raw = f"{row['team1_pred_raw']:.6f}" if 'team1_pred_raw' in row and pd.notnull(row['team1_pred_raw']) else ''
+        t2_raw = f"{row['team2_pred_raw']:.6f}" if 'team2_pred_raw' in row and pd.notnull(row['team2_pred_raw']) else ''
+        conf = f"{row['confidence']:.3f}" if 'confidence' in row and pd.notnull(row['confidence']) else ''
+        if not sep_printed and row['confidence'] < 0.15:
+            print('-'*150)
+            sep_printed = True
+        print(f"{dt:<17} | {match_id:<8} | {map_name:<8} | {teams:<35} | {pred:<9} | {real:<9} | {t1_raw:<12} | {t2_raw:<12} | {row['winner_correct']:<10} | {row['score_exact']:<6} | {conf:<8}")
+    high_conf = df_map[df_map['confidence'] >= 0.15]
+    low_conf = df_map[df_map['confidence'] < 0.15]
+    for label, part in [('conf > 0.15', high_conf), ('conf < 0.15', low_conf)]:
+        exact = ((part['team1_rounds_final'] == part['team1_rounds']) & (part['team2_rounds_final'] == part['team2_rounds'])).mean()
+        winner = ((part['team1_rounds'] == 13) == (part['team1_rounds_final'] == 13)).mean()
+        print(f"\n{label}:\n  Точное совпадение счёта: {exact:.2%}\n  Успешное угадывание победителя: {winner:.2%}")
 
 if __name__ == "__main__":
     main() 

@@ -16,3 +16,5 @@ python analyze_past_predictions.py
 python delete_unplayed_predictions.py
 @REM Эксперемент набора признаков
 python -m src.scripts.feature_selection_experiment
+@REM Показываем важность признаков
+python .\show_feature_importance.py     

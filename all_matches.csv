@@ -1,1 +1,5 @@
 match_id,team1_score_final,team2_score_final,team1_score,team2_score,datetime,team1_name,team2_name,team1_pred_raw,team2_pred_raw,winner_correct,score_exact
+2382681,0,2,2,1,1747872000,Vitality,The MongolZ,3.290109057425309,4.410740287519694,✗,✗
+2382682,2,0,2,1,1747872300,GamerLegion,G2,2.603986364048066,0.9183855867516222,✔,✗
+2382689,2,0,2,0,1747864200,MOUZ,Falcons,2.4654331362566357,1.3132063675300694,✔,✔
+2382690,2,0,2,1,1747861200,Aurora,HEROIC,2.6208197826667083,1.480438120110452,✔,✗
