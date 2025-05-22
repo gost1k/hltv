@@ -502,6 +502,21 @@ class Predictor:
             conf *= (1 - 0.1 * missing)
         return round(conf, 3)
 
+    def load_loser_score_formula(self, formula_path='formula.txt'):
+        import re
+        import os
+        if not os.path.exists(formula_path):
+            # дефолтная формула
+            return lambda diff_pred: max(0, min(11, int(round(-0.31 * diff_pred + 8.43))))
+        with open(formula_path, 'r') as f:
+            line = f.readline()
+            m = re.match(r'loser_score\s*=\s*([\-\d.]+)\s*\*\s*diff_pred\s*\+\s*([\-\d.]+)', line)
+            if m:
+                a, b = float(m.group(1)), float(m.group(2))
+                return lambda diff_pred: max(0, min(11, int(round(a * diff_pred + b))))
+            else:
+                return lambda diff_pred: max(0, min(11, int(round(-0.31 * diff_pred + 8.43))))
+
     def predict_upcoming(self):
         logger.info('Прогноз для будущих матчей...')
         self.load_data()
@@ -516,6 +531,8 @@ class Predictor:
             map_clf = joblib.load('storage/model_predict_map_honest.pkl')
             with open('storage/model_features_map_honest.json', 'r') as f:
                 honest_map_features = json.load(f)
+        # Загружаем формулу loser_score
+        loser_score_func = self.load_loser_score_formula()
         # Для simplicity: прогнозируем только для матчей, которых нет в predict
         with sqlite3.connect(self.db_path) as conn:
             existing = pd.read_sql_query('SELECT match_id FROM predict', conn)
@@ -572,8 +589,20 @@ class Predictor:
                         feats_df = feats_df.astype(float)
                         win_pred = map_clf.predict(feats_df)[0]
                         confidence = self.calc_confidence(t1_id, t2_id, by_map=True, map_name=map_name, match_row=match)
-                        # Для predict_map: team1_rounds_final = 13 если win_pred==1, иначе 0 (и наоборот)
-                        team1_score_final, team2_score_final = (13, 0) if win_pred == 1 else (0, 13)
+                        # --- Новый блок: расчет loser_score по формуле ---
+                        # diff_pred = разница между двумя "сырыми" выходами модели (можно взять вероятности win_pred, если классификатор)
+                        # Для честной модели win_pred — это 0 или 1, но можно получить вероятности через predict_proba
+                        if hasattr(map_clf, 'predict_proba'):
+                            proba = map_clf.predict_proba(feats_df)[0]
+                            # proba[1] — вероятность победы team1, proba[0] — team2
+                            diff_pred = abs(proba[1] - proba[0]) * 10  # масштабируем для формулы
+                        else:
+                            diff_pred = 5  # дефолт, если нет predict_proba
+                        loser_score = loser_score_func(diff_pred)
+                        if win_pred == 1:
+                            team1_score_final, team2_score_final = 13, loser_score
+                        else:
+                            team1_score_final, team2_score_final = loser_score, 13
                         # Записываем предсказание
                         conn.execute('DELETE FROM predict_map WHERE match_id = ? AND map_name = ?', (match['match_id'], map_name))
                         conn.execute('''INSERT INTO predict_map (match_id, map_name, team1_rounds, team2_rounds, team1_rounds_final, team2_rounds_final, model_version, last_updated, confidence) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)''',
