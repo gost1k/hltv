@@ -336,6 +336,51 @@ class Predictor:
             json.dump(feature_list, f)
         logger.info('Модель и признаки сохранены.')
 
+        # --- Честная модель для карт ---
+        logger.info('Обучение честной модели для карт...')
+        honest_map_features, honest_map_X, honest_map_y = self.build_honest_map_trainset()
+        if len(honest_map_X) > 0:
+            X_train_map, X_val_map, y_train_map, y_val_map = train_test_split(honest_map_X, honest_map_y, test_size=0.2, random_state=42)
+            map_clf = LGBMClassifier(n_estimators=200)
+            map_clf.fit(X_train_map, y_train_map)
+            y_pred_map = map_clf.predict(X_val_map)
+            acc_map = accuracy_score(y_val_map, y_pred_map)
+            logger.info(f"Accuracy честной модели по картам: {acc_map:.3f}")
+            joblib.dump(map_clf, 'storage/model_predict_map_honest.pkl')
+            with open('storage/model_features_map_honest.json', 'w') as f:
+                json.dump(honest_map_features, f)
+            logger.info('Честная модель по картам и признаки сохранены.')
+        else:
+            logger.warning('Недостаточно данных для обучения честной модели по картам!')
+
+    def build_honest_map_trainset(self):
+        # Формирует честный trainset для карт (без demo_id)
+        maps_df = fetch_df('SELECT * FROM result_match_maps', self.db_path)
+        matches_df = fetch_df('SELECT * FROM result_match', self.db_path)
+        features = []
+        for idx, row in maps_df.iterrows():
+            match_id = row['match_id']
+            map_name = row['map_name']
+            match_row = matches_df[matches_df['match_id'] == match_id]
+            if match_row.empty:
+                continue
+            match_series = match_row.iloc[0].copy()
+            match_series['map_name'] = map_name
+            t1_id = row['team1_id']
+            t2_id = row['team2_id']
+            t1_players = self.players_stats[(self.players_stats['match_id'] == match_id) & (self.players_stats['team_id'] == t1_id)]['player_id'].tolist()
+            t2_players = self.players_stats[(self.players_stats['match_id'] == match_id) & (self.players_stats['team_id'] == t2_id)]['player_id'].tolist()
+            feats = self.get_common_features(match_series, t1_players, t2_players)
+            feats['map_name'] = map_name
+            feats['win_map'] = int(row['team1_rounds'] > row['team2_rounds'])
+            features.append(feats)
+        df = pd.DataFrame(features)
+        # Исключаем demo_id
+        honest_map_features = [f for f in df.columns if f not in ['win_map', 'map_name', 'demo_id']]
+        X = df[honest_map_features].dropna()
+        y = df.loc[X.index, 'win_map']
+        return honest_map_features, X, y
+
     def postprocess_score(self, score, max_score):
         return int(min(max(round(score), 0), max_score))
 
@@ -461,9 +506,16 @@ class Predictor:
         logger.info('Прогноз для будущих матчей...')
         self.load_data()
         self.feature_engineering(for_train=False)
-        # Загружаем список признаков
+        # Загружаем список признаков для матчей
         with open('storage/model_features.json', 'r') as f:
             feature_list = json.load(f)
+        # Загружаем честную модель и признаки для карт
+        map_clf = None
+        honest_map_features = None
+        if os.path.exists('storage/model_predict_map_honest.pkl') and os.path.exists('storage/model_features_map_honest.json'):
+            map_clf = joblib.load('storage/model_predict_map_honest.pkl')
+            with open('storage/model_features_map_honest.json', 'r') as f:
+                honest_map_features = json.load(f)
         # Для simplicity: прогнозируем только для матчей, которых нет в predict
         with sqlite3.connect(self.db_path) as conn:
             existing = pd.read_sql_query('SELECT match_id FROM predict', conn)
@@ -501,45 +553,35 @@ class Predictor:
         logger.info(f'Сделано прогнозов: {len(results)}')
         # Прогноз по картам (перезаписываем старые значения)
         map_names = ['Nuke', 'Mirage', 'Inferno', 'Ancient', 'Anubis', 'Vertigo', 'Dust2']
-        with sqlite3.connect(self.db_path) as conn:
-            for _, match in self.upcoming.iterrows():
-                t1_id = match['team1_id']
-                t2_id = match['team2_id']
-                # Пропуск матчей с TBD/winner/loser в названии команды
-                t1_name = str(match.get('team1_name', '')).lower()
-                t2_name = str(match.get('team2_name', '')).lower()
-                if any(x in t1_name for x in ['tbd', 'winner', 'loser']) or any(x in t2_name for x in ['tbd', 'winner', 'loser']):
-                    continue
-                match_id = match['match_id']
-                t1_players = self.upcoming_players[(self.upcoming_players['match_id'] == match_id) & (self.upcoming_players['team_id'] == t1_id)]['player_id'].tolist()
-                t2_players = self.upcoming_players[(self.upcoming_players['match_id'] == match_id) & (self.upcoming_players['team_id'] == t2_id)]['player_id'].tolist()
-                for map_name in map_names:
-                    # Индивидуальные признаки по карте для обеих команд
-                    feats = self.get_common_features(match, t1_players, t2_players)
-                    t1_map = self.maps[(self.maps['team1_id'] == t1_id) & (self.maps['map_name'] == map_name)]
-                    t2_map = self.maps[(self.maps['team2_id'] == t2_id) & (self.maps['map_name'] == map_name)]
-                    feats['t1_map_mean_rounds'] = t1_map['team1_rounds'].mean() if not t1_map.empty else 0
-                    feats['t2_map_mean_rounds'] = t2_map['team2_rounds'].mean() if not t2_map.empty else 0
-                    feats['t1_map_count'] = t1_map.shape[0]
-                    feats['t2_map_count'] = t2_map.shape[0]
-                    feats['t1_map_winrate'] = (t1_map['team1_rounds'] > t1_map['team2_rounds']).mean() if not t1_map.empty else 0
-                    feats['t2_map_winrate'] = (t2_map['team2_rounds'] > t2_map['team1_rounds']).mean() if not t2_map.empty else 0
-                    for col in feature_list:
-                        if col not in feats:
-                            feats[col] = 0
-                    feats_df = pd.DataFrame([feats])[feature_list]
-                    feats_df = feats_df.astype(float)
-                    team1_score = float(self.model[0].predict(feats_df)[0])
-                    team2_score = float(self.model[1].predict(feats_df)[0])
-                    team1_score_final, team2_score_final = self.postprocess_map_score(team1_score, team2_score, max_score=13)
-                    confidence = self.calc_confidence(t1_id, t2_id, by_map=True, map_name=map_name, match_row=match)
-                    save_features_json(f"{match_id}_{map_name}", feats_df.iloc[0].to_dict(), map_name=map_name)
-                    # Удаляем старый прогноз для этой пары (match_id, map_name)
-                    conn.execute('DELETE FROM predict_map WHERE match_id = ? AND map_name = ?', (match_id, map_name))
-                    conn.execute('''INSERT INTO predict_map (match_id, map_name, team1_rounds, team2_rounds, team1_rounds_final, team2_rounds_final, model_version, last_updated, confidence) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)''',
-                                 (match_id, map_name, team1_score, team2_score, team1_score_final, team2_score_final, self.model_version, datetime.now().isoformat(), confidence))
-            conn.commit()
-        logger.info(f'Сделано прогнозов по картам для всех матчей.')
+        if map_clf is not None and honest_map_features is not None:
+            with sqlite3.connect(self.db_path) as conn:
+                for _, match in self.upcoming.iterrows():
+                    t1_id = match['team1_id']
+                    t2_id = match['team2_id']
+                    t1_players = self.upcoming_players[(self.upcoming_players['match_id'] == match['match_id']) & (self.upcoming_players['team_id'] == t1_id)]['player_id'].tolist()
+                    t2_players = self.upcoming_players[(self.upcoming_players['match_id'] == match['match_id']) & (self.upcoming_players['team_id'] == t2_id)]['player_id'].tolist()
+                    for map_name in map_names:
+                        match_series = match.copy()
+                        match_series['map_name'] = map_name
+                        feats = self.get_common_features(match_series, t1_players, t2_players)
+                        feats['map_name'] = map_name
+                        # Исключаем demo_id
+                        if 'demo_id' in feats:
+                            del feats['demo_id']
+                        feats_df = pd.DataFrame([feats])[honest_map_features]
+                        feats_df = feats_df.astype(float)
+                        win_pred = map_clf.predict(feats_df)[0]
+                        confidence = self.calc_confidence(t1_id, t2_id, by_map=True, map_name=map_name, match_row=match)
+                        # Для predict_map: team1_rounds_final = 13 если win_pred==1, иначе 0 (и наоборот)
+                        team1_score_final, team2_score_final = (13, 0) if win_pred == 1 else (0, 13)
+                        # Записываем предсказание
+                        conn.execute('DELETE FROM predict_map WHERE match_id = ? AND map_name = ?', (match['match_id'], map_name))
+                        conn.execute('''INSERT INTO predict_map (match_id, map_name, team1_rounds, team2_rounds, team1_rounds_final, team2_rounds_final, model_version, last_updated, confidence) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+                                     (match['match_id'], map_name, None, None, team1_score_final, team2_score_final, self.model_version, datetime.now().isoformat(), confidence))
+                conn.commit()
+            logger.info(f'Сделано честных прогнозов по картам для всех матчей.')
+        else:
+            logger.warning('Честная модель по картам не обучена — пропускаю predict_map!')
 
     def predict_past_maps(self):
         logger.info('Прогноз для прошедших матчей (по картам)...')
