@@ -36,32 +36,23 @@ def analyze_loser_distribution(real_df, pred_df, real_score_cols, pred_score_col
 
 def main():
     conn = sqlite3.connect(DB_PATH)
-    pred = pd.read_sql_query('SELECT match_id, team1_score_final, team2_score_final, confidence FROM predict', conn)
+    # Загружаем predict: *_final — итоговый счет, *_score — вероятности
+    pred = pd.read_sql_query('SELECT match_id, team1_score, team2_score, team1_score_final, team2_score_final, confidence FROM predict', conn)
     real = pd.read_sql_query('SELECT match_id, team1_score, team2_score, datetime FROM result_match', conn)
     names = pd.read_sql_query('SELECT match_id, team1_name, team2_name FROM result_match', conn)
-    try:
-        pred_raw = pd.read_sql_query('SELECT match_id, team1_score, team2_score FROM predict', conn)
-        pred_raw = pred_raw.rename(columns={'team1_score': 'team1_pred_raw', 'team2_score': 'team2_pred_raw'})
-    except Exception:
-        pred_raw = None
-    pred_map = pd.read_sql_query('SELECT match_id, map_name, team1_rounds_final, team2_rounds_final, confidence FROM predict_map', conn)
+    pred_map = pd.read_sql_query('SELECT match_id, map_name, team1_rounds, team2_rounds, team1_rounds_final, team2_rounds_final, confidence FROM predict_map', conn)
     real_map = pd.read_sql_query('SELECT match_id, map_name, team1_rounds, team2_rounds FROM result_match_maps', conn)
-    try:
-        pred_map_raw = pd.read_sql_query('SELECT match_id, map_name, team1_rounds, team2_rounds FROM predict_map', conn)
-        pred_map_raw = pred_map_raw.rename(columns={'team1_rounds': 'team1_pred_raw', 'team2_rounds': 'team2_pred_raw'})
-    except Exception:
-        pred_map_raw = None
     conn.close()
     # Копии для вывода
     df_matches = pred.copy()
     df_matches = df_matches.merge(names, on='match_id', how='left')
     df_matches = df_matches.merge(real[['match_id', 'team1_score', 'team2_score', 'datetime']], on='match_id', how='left')
-    if pred_raw is not None:
-        df_matches = df_matches.merge(pred_raw, on='match_id', how='left')
+    # DEBUG: выводим список колонок после merge
+    print('df_matches columns:', df_matches.columns.tolist())
     df_maps = pred_map.copy()
     df_maps = df_maps.merge(real_map[['match_id', 'map_name', 'team1_rounds', 'team2_rounds']], on=['match_id', 'map_name'], how='left')
-    if pred_map_raw is not None:
-        df_maps = df_maps.merge(pred_map_raw, on=['match_id', 'map_name'], how='left')
+    # DEBUG: выводим список колонок после merge
+    print('df_maps columns:', df_maps.columns.tolist())
     conn = sqlite3.connect(DB_PATH)
     match_info = pd.read_sql_query('SELECT match_id, datetime, team1_name, team2_name FROM result_match', conn)
     conn.close()
@@ -69,21 +60,22 @@ def main():
     df_matches = df_matches.sort_values('confidence', ascending=False)
     df_maps = df_maps.sort_values('confidence', ascending=False)
     # Оставляем только сыгранные матчи (есть результат)
-    df_matches = df_matches[df_matches['team1_score'].notnull() & df_matches['team2_score'].notnull()]
-    df_maps = df_maps[df_maps['team1_rounds'].notnull() & df_maps['team2_rounds'].notnull()]
+    df_matches = df_matches[df_matches['team1_score_y'].notnull() & df_matches['team2_score_y'].notnull()]
+    # Используем team1_rounds_y/team2_rounds_y как реальные значения
+    df_maps = df_maps[df_maps['team1_rounds_y'].notnull() & df_maps['team2_rounds_y'].notnull()]
     print("\n")  # двойной отступ перед таблицей матчей
-    print(f"{'Дата и время':<17} | {'match_id':<8} | {'Команды':<35} | {'Прогноз':<9} | {'Реальный':<9} | {'team1_pred_raw':<12} | {'team2_pred_raw':<12} | {'conf':<8}")
+    print(f"{'Дата и время':<17} | {'match_id':<8} | {'Команды':<35} | {'Прогноз':<9} | {'Реальный':<9} | {'team1_proba':<12} | {'team2_proba':<12} | {'conf':<8}")
     print('-'*120)
     for _, row in df_matches.iterrows():
         dt = datetime.fromtimestamp(row['datetime']).strftime('%d.%m.%Y %H:%M') if 'datetime' in row and not pd.isnull(row['datetime']) else ''
         match_id = str(row['match_id'])
         teams = f"{row['team1_name']} vs {row['team2_name']}"
         pred1, pred2 = row['team1_score_final'], row['team2_score_final']
-        real1, real2 = int(row['team1_score']), int(row['team2_score'])
+        real1, real2 = int(row['team1_score_y']), int(row['team2_score_y'])
         pred = f"{pred1}-{pred2}"
         real = f"{real1}-{real2}"
-        t1_raw = f"{row['team1_pred_raw']:.6f}" if 'team1_pred_raw' in row and pd.notnull(row['team1_pred_raw']) else ''
-        t2_raw = f"{row['team2_pred_raw']:.6f}" if 'team2_pred_raw' in row and pd.notnull(row['team2_pred_raw']) else ''
+        t1_proba = f"{row['team1_score']:.3f}" if 'team1_score' in row and pd.notnull(row['team1_score']) else ''
+        t2_proba = f"{row['team2_score']:.3f}" if 'team2_score' in row and pd.notnull(row['team2_score']) else ''
         conf_val = row['confidence'] if 'confidence' in row and pd.notnull(row['confidence']) else None
         conf = f"{conf_val*100:.1f} %" if conf_val is not None else ''
         # Цвет для confidence (абсолютное значение, 3 знака после запятой)
@@ -118,9 +110,9 @@ def main():
             score_col = Fore.YELLOW
         else:
             score_col = Fore.RED
-        print(f"{dt:<17} | {match_id:<8} | {teams:<35} | {score_col}{pred:<9}{Style.RESET_ALL} | {score_col}{real:<9}{Style.RESET_ALL} | {t1_raw:<12} | {t2_raw:<12} | {conf_col:<8}")
+        print(f"{dt:<17} | {match_id:<8} | {teams:<35} | {score_col}{pred:<9}{Style.RESET_ALL} | {score_col}{real:<9}{Style.RESET_ALL} | {t1_proba:<12} | {t2_proba:<12} | {conf_col:<8}")
     print("\n")  # двойной отступ перед таблицей карт
-    print(f"{'Дата и время':<17} | {'match_id':<8} | {'map_name':<8} | {'Команды':<35} | {'Прогноз':<9} | {'Реальный':<9} | {'team1_pred_raw':<12} | {'team2_pred_raw':<12} | {'conf':<8}")
+    print(f"{'Дата и время':<17} | {'match_id':<8} | {'map_name':<8} | {'Команды':<35} | {'Прогноз':<9} | {'Реальный':<9} | {'team1_proba':<12} | {'team2_proba':<12} | {'conf':<8}")
     print('-'*130)
     sep_printed = False
     for i, row in df_maps.iterrows():
@@ -129,11 +121,11 @@ def main():
         map_name = row['map_name']
         teams = f"{row['team1_name']} vs {row['team2_name']}"
         pred1, pred2 = row['team1_rounds_final'], row['team2_rounds_final']
-        real1, real2 = int(row['team1_rounds']), int(row['team2_rounds'])
+        real1, real2 = int(row['team1_rounds_y']), int(row['team2_rounds_y'])
         pred = f"{pred1}-{pred2}"
         real = f"{real1}-{real2}"
-        t1_raw = f"{row['team1_pred_raw']:.6f}" if 'team1_pred_raw' in row and pd.notnull(row['team1_pred_raw']) else ''
-        t2_raw = f"{row['team2_pred_raw']:.6f}" if 'team2_pred_raw' in row and pd.notnull(row['team2_pred_raw']) else ''
+        t1_proba = f"{row['team1_rounds']:.3f}" if 'team1_rounds' in row and pd.notnull(row['team1_rounds']) else ''
+        t2_proba = f"{row['team2_rounds']:.3f}" if 'team2_rounds' in row and pd.notnull(row['team2_rounds']) else ''
         conf_val = row['confidence'] if 'confidence' in row and pd.notnull(row['confidence']) else None
         conf = f"{conf_val*100:.1f} %" if conf_val is not None else ''
         # Цвет для confidence (абсолютное значение, 3 знака после запятой)
@@ -171,7 +163,7 @@ def main():
         if not sep_printed and conf_val is not None and conf_val < 0.15:
             print('-'*130)
             sep_printed = True
-        print(f"{dt:<17} | {match_id:<8} | {map_name:<8} | {teams:<35} | {score_col}{pred:<9}{Style.RESET_ALL} | {score_col}{real:<9}{Style.RESET_ALL} | {t1_raw:<12} | {t2_raw:<12} | {conf_col:<8}")
+        print(f"{dt:<17} | {match_id:<8} | {map_name:<8} | {teams:<35} | {score_col}{pred:<9}{Style.RESET_ALL} | {score_col}{real:<9}{Style.RESET_ALL} | {t1_proba:<12} | {t2_proba:<12} | {conf_col:<8}")
 
     # Сводная таблица по confidence
     # Бины и подписи
@@ -189,13 +181,13 @@ def main():
         'Точное угадывание счета карты'
     ]
     # mask для точного счета
-    exact_match = (df_matches['team1_score_final'] == df_matches['team1_score']) & (df_matches['team2_score_final'] == df_matches['team2_score'])
-    exact_map = (df_maps['team1_rounds_final'] == df_maps['team1_rounds']) & (df_maps['team2_rounds_final'] == df_maps['team2_rounds'])
+    exact_match = (df_matches['team1_score_final'] == df_matches['team1_score_y']) & (df_matches['team2_score_final'] == df_matches['team2_score_y'])
+    exact_map = (df_maps['team1_rounds_final'] == df_maps['team1_rounds_y']) & (df_maps['team2_rounds_final'] == df_maps['team2_rounds_y'])
     # mask для победителя
-    match_winner = ((df_matches['team1_score_final'] > df_matches['team2_score_final']) & (df_matches['team1_score'] > df_matches['team2_score'])) | \
-                   ((df_matches['team2_score_final'] > df_matches['team1_score_final']) & (df_matches['team2_score'] > df_matches['team1_score']))
-    map_winner = ((df_maps['team1_rounds_final'] > df_maps['team2_rounds_final']) & (df_maps['team1_rounds'] > df_maps['team2_rounds'])) | \
-                ((df_maps['team2_rounds_final'] > df_maps['team1_rounds_final']) & (df_maps['team2_rounds'] > df_maps['team1_rounds']))
+    match_winner = ((df_matches['team1_score_final'] > df_matches['team2_score_final']) & (df_matches['team1_score_y'] > df_matches['team2_score_y'])) | \
+                   ((df_matches['team2_score_final'] > df_matches['team1_score_final']) & (df_matches['team2_score_y'] > df_matches['team1_score_y']))
+    map_winner = ((df_maps['team1_rounds_final'] > df_maps['team2_rounds_final']) & (df_maps['team1_rounds_y'] > df_maps['team2_rounds_y'])) | \
+                ((df_maps['team2_rounds_final'] > df_maps['team1_rounds_final']) & (df_maps['team2_rounds_y'] > df_maps['team1_rounds_y']))
     # Считаем проценты по каждому бину
     def percent_bin(df, mask):
         total = df.groupby('conf_bin', observed=False).size()

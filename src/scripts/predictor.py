@@ -559,14 +559,28 @@ class Predictor:
             feats = feats.astype(float)
             team1_score = float(self.model[0].predict(feats)[0])
             team2_score = float(self.model[1].predict(feats)[0])
-            team1_score_final, team2_score_final = self.postprocess_four_outcomes(team1_score, team2_score)
-            confidence = self.calc_confidence(t1_id, t2_id, by_map=False, match_row=match_row)
+            # --- Новый блок: вероятности и confidence ---
+            if hasattr(self.model[2], 'predict_proba'):
+                y_proba = self.model[2].predict_proba(feats)[0]
+                team1_proba = y_proba[1]
+                team2_proba = y_proba[0]
+                confidence = abs(team1_proba - team2_proba)
+            else:
+                team1_proba = team2_proba = confidence = None
+            # Победитель по вероятности
+            if team1_proba is not None and team1_proba >= team2_proba:
+                team1_score_final, team2_score_final = 1, 0
+            elif team1_proba is not None:
+                team1_score_final, team2_score_final = 0, 1
+            else:
+                # fallback на регрессию
+                team1_score_final, team2_score_final = self.postprocess_four_outcomes(team1_score, team2_score)
             save_features_json(match_id, feats.iloc[0].to_dict())
             with sqlite3.connect(self.db_path) as conn:
                 conn.execute('''INSERT INTO predict (match_id, team1_score, team2_score, team1_score_final, team2_score_final, model_version, last_updated, confidence) VALUES (?, ?, ?, ?, ?, ?, ?, ?)''',
-                             (match_id, team1_score, team2_score, team1_score_final, team2_score_final, self.model_version, datetime.now().isoformat(), confidence))
+                             (match_id, team1_proba, team2_proba, team1_score_final, team2_score_final, self.model_version, datetime.now().isoformat(), confidence))
                 conn.commit()
-            results.append((match_id, team1_score, team2_score, confidence))
+            results.append((match_id, team1_proba, team2_proba, confidence))
         logger.info(f'Сделано прогнозов: {len(results)}')
         # Прогноз по картам (перезаписываем старые значения)
         map_names = ['Nuke', 'Mirage', 'Inferno', 'Ancient', 'Anubis', 'Vertigo', 'Dust2']

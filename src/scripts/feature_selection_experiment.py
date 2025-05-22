@@ -166,12 +166,80 @@ else:
     acc_map_honest = test_features(features_df_map_honest_clean[map_honest_features], features_df_map_honest_clean['win_map'], 'Карты: честные признаки')
     results.append(('Карты', 'честные', acc_map_honest))
 
+# --- Честный feature engineering для матчей ---
+def build_honest_match_features():
+    from src.scripts.predictor import Predictor
+    import sqlite3
+    predictor = Predictor()
+    predictor.load_data()
+    predictor.feature_engineering(for_train=True)
+    # Загружаем матчи
+    with sqlite3.connect('hltv.db') as conn:
+        matches_df = pd.read_sql_query('SELECT * FROM result_match', conn)
+    features = []
+    for idx, row in matches_df.iterrows():
+        match_id = row['match_id']
+        # Получаем игроков
+        t1_id = row['team1_id']
+        t2_id = row['team2_id']
+        t1_players = predictor.players_stats[(predictor.players_stats['match_id'] == match_id) & (predictor.players_stats['team_id'] == t1_id)]['player_id'].tolist()
+        t2_players = predictor.players_stats[(predictor.players_stats['match_id'] == match_id) & (predictor.players_stats['team_id'] == t2_id)]['player_id'].tolist()
+        match_series = row.copy()
+        # Формируем признаки только по истории до этого матча
+        feats = predictor.get_common_features(match_series, t1_players, t2_players)
+        feats['team1_score'] = row['team1_score']
+        feats['team2_score'] = row['team2_score']
+        features.append(feats)
+    df = pd.DataFrame(features)
+    # Исключаем team1_score, team2_score, demo_id из признаков
+    honest_match_features = [f for f in df.columns if f not in ['team1_score', 'team2_score', 'demo_id']]
+    X = df[honest_match_features].dropna()
+    y1 = df.loc[X.index, 'team1_score']
+    y2 = df.loc[X.index, 'team2_score']
+    return honest_match_features, X, y1, y2
+
+# --- Честный эксперимент для счета матча ---
+honest_match_features, X_honest, y1_honest, y2_honest = build_honest_match_features()
+print('\nЧестные признаки для обучения по матчам:')
+for feat in honest_match_features:
+    print(feat)
+
+from lightgbm import LGBMRegressor
+from sklearn.metrics import mean_absolute_error
+from sklearn.model_selection import train_test_split
+
+if len(X_honest) > 0:
+    X_train1, X_val1, y_train1, y_val1 = train_test_split(X_honest, y1_honest, test_size=0.2, random_state=42)
+    X_train2, X_val2, y_train2, y_val2 = train_test_split(X_honest, y2_honest, test_size=0.2, random_state=42)
+    model1 = LGBMRegressor(n_estimators=200)
+    model2 = LGBMRegressor(n_estimators=200)
+    model1.fit(X_train1, y_train1)
+    model2.fit(X_train2, y_train2)
+    y1_pred = model1.predict(X_val1)
+    y2_pred = model2.predict(X_val2)
+    mae1 = mean_absolute_error(y_val1, y1_pred)
+    mae2 = mean_absolute_error(y_val2, y2_pred)
+    print(f'Честный MAE team1_score: {mae1:.3f}')
+    print(f'Честный MAE team2_score: {mae2:.3f}')
+else:
+    print('Нет данных для честного обучения по матчам!')
+
 # --- Сравнительная таблица ---
 print('\n=== Сравнительная таблица accuracy ===')
 print(f"{'Тип':<8} | {'Набор признаков':<20} | {'Accuracy':<8}")
 print('-'*44)
 for t, label, acc in results:
     print(f"{t:<8} | {label:<20} | {acc:.4f}")
+
+# --- Сравнительная таблица MAE для честного прогноза счета матча ---
+print('\n=== Сравнительная таблица MAE (честный прогноз счета матча) ===')
+print(f"{'Команда':<12} | {'MAE':<8}")
+print('-'*24)
+if len(X_honest) > 0:
+    print(f"{'team1_score':<12} | {mae1:.4f}")
+    print(f"{'team2_score':<12} | {mae2:.4f}")
+else:
+    print('Нет данных для честного обучения по матчам!')
 
 # --- Вывод и сохранение честных признаков для карт ---
 with open('honest_map_features.txt', 'w', encoding='utf-8') as f:
