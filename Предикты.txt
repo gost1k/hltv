@@ -2,7 +2,7 @@
 python src/scripts/predictor_main.py
 
 @REM Переобучение
-python src/scripts/predictor_main.py
+python src/scripts/predictor_main.py retrain
 
 @REM Экспорт придиктов
 python src/scripts/predict_export_import.py export hltv.db predict_export.csv
