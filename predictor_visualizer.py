@@ -407,6 +407,7 @@ def export_predict_table_html():
     import pandas as pd
     import sqlite3
     from pathlib import Path
+    import numpy as np
     
     DB_PATH = 'hltv.db'
     OUTPUT_PATH = 'predictor/visualizations'
@@ -429,6 +430,7 @@ def export_predict_table_html():
         r.datetime
     FROM predict p
     LEFT JOIN result_match r ON p.match_id = r.match_id
+    WHERE r.datetime IS NOT NULL
     ORDER BY r.datetime DESC
     '''
     df = pd.read_sql_query(query, conn)
@@ -440,17 +442,30 @@ def export_predict_table_html():
     
     # Преобразуем время
     df['date'] = pd.to_datetime(df['datetime'], unit='s')
+    df = df.sort_values('date', ascending=False)
     
-    # Красивое форматирование
-    styled = df[['match_id','team1_name','team2_name','date','team1_score','team2_score','team1_score_final','team2_score_final','confidence','model_version','last_updated']].copy()
+    # Формируем нужный порядок столбцов: дата первой, team1_score/team2_score по центру
+    columns = ['date','match_id','team1_name','team1_score','team2_score','team2_name','team1_score_final','team2_score_final','confidence','model_version','last_updated']
+    styled = df[columns].copy()
     styled['date'] = styled['date'].dt.strftime('%Y-%m-%d %H:%M')
     styled['confidence'] = styled['confidence'].map(lambda x: f"{x:.2f}")
     styled['team1_score'] = styled['team1_score'].map(lambda x: f"{x:.2f}")
     styled['team2_score'] = styled['team2_score'].map(lambda x: f"{x:.2f}")
     
+    def highlight_score(row):
+        t1 = float(row['team1_score'])
+        t2 = float(row['team2_score'])
+        if t1 > t2:
+            return ['background-color: #b6fcb6', 'background-color: #fcb6b6']
+        elif t1 < t2:
+            return ['background-color: #fcb6b6', 'background-color: #b6fcb6']
+        else:
+            return ['background-color: #fffcb6', 'background-color: #fffcb6']
+    
     # Стилизация таблицы
     html_table = styled.style \
         .background_gradient(subset=['confidence'], cmap='YlGnBu') \
+        .apply(highlight_score, axis=1, subset=['team1_score','team2_score']) \
         .set_caption('Таблица предсказаний матчей CS2') \
         .set_table_styles([
             {'selector': 'th', 'props': [('background-color', '#222'), ('color', 'white')]},
@@ -466,7 +481,7 @@ def export_predict_table_html():
     
     # График: распределение confidence и вероятностей
     plt.figure(figsize=(12,6))
-    sns.histplot(df['confidence'], bins=20, kde=True, color='royalblue', label='Уверенность (confidence)')
+    sns.histplot(df['confidence'].astype(float), bins=20, kde=True, color='royalblue', label='Уверенность (confidence)')
     plt.xlabel('Уверенность модели (confidence)')
     plt.ylabel('Количество матчей')
     plt.title('Распределение уверенности модели в предсказаниях')
@@ -478,8 +493,8 @@ def export_predict_table_html():
     
     # График вероятностей победы
     plt.figure(figsize=(12,6))
-    sns.histplot(df['team1_score'], bins=20, kde=True, color='green', label='Вероятность победы Team 1', alpha=0.6)
-    sns.histplot(df['team2_score'], bins=20, kde=True, color='red', label='Вероятность победы Team 2', alpha=0.6)
+    sns.histplot(df['team1_score'].astype(float), bins=20, kde=True, color='green', label='Вероятность победы Team 1', alpha=0.6)
+    sns.histplot(df['team2_score'].astype(float), bins=20, kde=True, color='red', label='Вероятность победы Team 2', alpha=0.6)
     plt.xlabel('Вероятность победы')
     plt.ylabel('Количество матчей')
     plt.title('Распределение вероятностей победы команд')
@@ -496,6 +511,7 @@ def export_upcoming_predict_table_html():
     import pandas as pd
     import sqlite3
     from pathlib import Path
+    import numpy as np
     
     DB_PATH = 'hltv.db'
     OUTPUT_PATH = 'predictor/visualizations'
@@ -530,17 +546,30 @@ def export_upcoming_predict_table_html():
     
     # Преобразуем время
     df['date'] = pd.to_datetime(df['datetime'], unit='s')
+    df = df.sort_values('date', ascending=True)
     
-    # Красивое форматирование
-    styled = df[['match_id','team1_name','team2_name','date','team1_score','team2_score','team1_score_final','team2_score_final','confidence','model_version','last_updated']].copy()
+    # Формируем нужный порядок столбцов: дата первой, team1_score/team2_score по центру
+    columns = ['date','match_id','team1_name','team1_score','team2_score','team2_name','team1_score_final','team2_score_final','confidence','model_version','last_updated']
+    styled = df[columns].copy()
     styled['date'] = styled['date'].dt.strftime('%Y-%m-%d %H:%M')
     styled['confidence'] = styled['confidence'].map(lambda x: f"{x:.2f}")
     styled['team1_score'] = styled['team1_score'].map(lambda x: f"{x:.2f}")
     styled['team2_score'] = styled['team2_score'].map(lambda x: f"{x:.2f}")
     
+    def highlight_score(row):
+        t1 = float(row['team1_score'])
+        t2 = float(row['team2_score'])
+        if t1 > t2:
+            return ['background-color: #b6fcb6', 'background-color: #fcb6b6']
+        elif t1 < t2:
+            return ['background-color: #fcb6b6', 'background-color: #b6fcb6']
+        else:
+            return ['background-color: #fffcb6', 'background-color: #fffcb6']
+    
     # Стилизация таблицы
     html_table = styled.style \
         .background_gradient(subset=['confidence'], cmap='YlGnBu') \
+        .apply(highlight_score, axis=1, subset=['team1_score','team2_score']) \
         .set_caption('Таблица предсказаний будущих матчей CS2') \
         .set_table_styles([
             {'selector': 'th', 'props': [('background-color', '#222'), ('color', 'white')]},
@@ -556,7 +585,7 @@ def export_upcoming_predict_table_html():
     
     # График: распределение confidence
     plt.figure(figsize=(12,6))
-    sns.histplot(df['confidence'], bins=20, kde=True, color='royalblue', label='Уверенность (confidence)')
+    sns.histplot(df['confidence'].astype(float), bins=20, kde=True, color='royalblue', label='Уверенность (confidence)')
     plt.xlabel('Уверенность модели (confidence)')
     plt.ylabel('Количество матчей')
     plt.title('Распределение уверенности модели в предсказаниях (будущие матчи)')
@@ -568,8 +597,8 @@ def export_upcoming_predict_table_html():
     
     # График вероятностей победы
     plt.figure(figsize=(12,6))
-    sns.histplot(df['team1_score'], bins=20, kde=True, color='green', label='Вероятность победы Team 1', alpha=0.6)
-    sns.histplot(df['team2_score'], bins=20, kde=True, color='red', label='Вероятность победы Team 2', alpha=0.6)
+    sns.histplot(df['team1_score'].astype(float), bins=20, kde=True, color='green', label='Вероятность победы Team 1', alpha=0.6)
+    sns.histplot(df['team2_score'].astype(float), bins=20, kde=True, color='red', label='Вероятность победы Team 2', alpha=0.6)
     plt.xlabel('Вероятность победы')
     plt.ylabel('Количество матчей')
     plt.title('Распределение вероятностей победы команд (будущие матчи)')
