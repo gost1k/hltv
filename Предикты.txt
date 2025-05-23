@@ -4,6 +4,9 @@ python src/scripts/predictor_main.py
 @REM Переобучение
 python src/scripts/predictor_main.py retrain
 
+@REM экспорт предиктов в html 
+python predictor_visualizer.py
+
 @REM Экспорт придиктов
 python src/scripts/predict_export_import.py export hltv.db predict_export.csv
 
