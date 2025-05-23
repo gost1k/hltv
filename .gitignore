@@ -17,6 +17,7 @@ ENV/
 /storage/html*
 /storage/json*
 /storage/screenshots*
+/predictor/*
 
 # IDE files
 .idea/
