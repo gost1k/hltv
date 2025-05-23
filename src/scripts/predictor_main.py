@@ -738,4 +738,9 @@ def main():
 
 
 if __name__ == "__main__":
-    main() 
+    import sys
+    if len(sys.argv) > 1 and sys.argv[1] == "retrain":
+        predictor = CS2MatchPredictor()
+        predictor.retrain()
+    else:
+        main() 

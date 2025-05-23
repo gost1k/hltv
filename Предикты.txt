@@ -1,0 +1,11 @@
+@REM обучение
+python src/scripts/predictor_main.py
+
+@REM Переобучение
+python src/scripts/predictor_main.py
+
+@REM Экспорт придиктов
+python src/scripts/predict_export_import.py export hltv.db predict_export.csv
+
+@REM Импорт предиктов
+python src/scripts/predict_export_import.py import hltv.db predict_export.csv
