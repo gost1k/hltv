@@ -1,0 +1,2 @@
+Model,Accuracy,AUC,Recall,Prec.,F1,Kappa,MCC
+CatBoost Classifier,0.9857,0.9987,0.984,0.9893,0.9866,0.9712,0.9712

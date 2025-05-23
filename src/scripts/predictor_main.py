@@ -42,6 +42,23 @@ class CS2MatchPredictor:
         Path(model_path).mkdir(parents=True, exist_ok=True)
         Path(DIAGNOSTICS_PATH).mkdir(parents=True, exist_ok=True)
         
+        # Инициализируем список признаков
+        self.feature_columns = [
+            'rank_diff', 'rank_ratio', 'h2h_total', 'h2h_winrate_team1',
+            'hour', 'weekday', 'log_rank_team1', 'log_rank_team2',
+            'team1_avg_rating', 'team1_avg_kd', 'team1_avg_adr', 'team1_avg_kast',
+            'team1_max_rating', 'team1_min_rating', 'team2_avg_rating', 'team2_avg_kd',
+            'team2_avg_adr', 'team2_avg_kast', 'team2_max_rating', 'team2_min_rating',
+            'team1_avg_rating_2_1', 'team1_avg_firepower', 'team1_avg_opening',
+            'team1_avg_clutching', 'team1_avg_sniping', 'team2_avg_rating_2_1',
+            'team2_avg_firepower', 'team2_avg_opening', 'team2_avg_clutching',
+            'team2_avg_sniping', 'rating_diff', 'kd_diff', 'firepower_diff',
+            'team1_recent_winrate', 'team1_avg_score_for', 'team1_avg_score_against',
+            'team1_matches_played', 'team2_recent_winrate', 'team2_avg_score_for',
+            'team2_avg_score_against', 'team2_matches_played', 'winrate_diff',
+            'matches_played_diff'
+        ]
+        
         logger.info("Инициализация CS2MatchPredictor с PyCaret")
         
     def _get_connection(self):
@@ -51,6 +68,18 @@ class CS2MatchPredictor:
     def _create_base_features(self, df):
         """Создание базовых признаков из сырых данных"""
         logger.info("Создание базовых признаков...")
+        
+        # Проверяем наличие необходимых колонок
+        required_columns = ['team1_rank', 'team2_rank', 'datetime', 
+                          'head_to_head_team1_wins', 'head_to_head_team2_wins']
+        
+        for col in required_columns:
+            if col not in df.columns:
+                logger.warning(f"Колонка {col} отсутствует в данных")
+                if col in ['head_to_head_team1_wins', 'head_to_head_team2_wins']:
+                    df[col] = 0
+                else:
+                    raise ValueError(f"Отсутствует обязательная колонка: {col}")
         
         # Разница в рейтингах
         df['rank_diff'] = df['team1_rank'] - df['team2_rank']
@@ -77,6 +106,21 @@ class CS2MatchPredictor:
     def _create_player_features(self, df):
         """Создание признаков на основе статистики игроков"""
         logger.info("Загрузка и агрегация статистики игроков...")
+        
+        # Список всех возможных признаков
+        player_features = [
+            'team1_avg_rating', 'team1_avg_kd', 'team1_avg_adr', 'team1_avg_kast',
+            'team1_max_rating', 'team1_min_rating', 'team2_avg_rating', 'team2_avg_kd',
+            'team2_avg_adr', 'team2_avg_kast', 'team2_max_rating', 'team2_min_rating',
+            'team1_avg_rating_2_1', 'team1_avg_firepower', 'team1_avg_opening',
+            'team1_avg_clutching', 'team1_avg_sniping', 'team2_avg_rating_2_1',
+            'team2_avg_firepower', 'team2_avg_opening', 'team2_avg_clutching',
+            'team2_avg_sniping'
+        ]
+        
+        # Инициализируем все признаки нулями
+        for feature in player_features:
+            df[feature] = 0.0
         
         with self._get_connection() as conn:
             # Получаем статистику игроков для каждого матча
@@ -123,11 +167,11 @@ class CS2MatchPredictor:
             
             if not team1_stats.empty:
                 for col in ['avg_rating', 'avg_kd', 'avg_adr', 'avg_kast', 'max_rating', 'min_rating']:
-                    match_df[f'team1_{col}'] = team1_stats[col].iloc[0] if col in team1_stats.columns else np.nan
+                    match_df[f'team1_{col}'] = team1_stats[col].iloc[0] if col in team1_stats.columns else 0.0
             
             if not team1_players.empty:
                 for col in ['avg_rating_2_1', 'avg_firepower', 'avg_opening', 'avg_clutching', 'avg_sniping']:
-                    match_df[f'team1_{col}'] = team1_players[col].iloc[0] if col in team1_players.columns else np.nan
+                    match_df[f'team1_{col}'] = team1_players[col].iloc[0] if col in team1_players.columns else 0.0
             
             # Статистика для команды 2
             team2_id = match_df['team2_id'].iloc[0]
@@ -136,21 +180,20 @@ class CS2MatchPredictor:
             
             if not team2_stats.empty:
                 for col in ['avg_rating', 'avg_kd', 'avg_adr', 'avg_kast', 'max_rating', 'min_rating']:
-                    match_df[f'team2_{col}'] = team2_stats[col].iloc[0] if col in team2_stats.columns else np.nan
+                    match_df[f'team2_{col}'] = team2_stats[col].iloc[0] if col in team2_stats.columns else 0.0
             
             if not team2_players.empty:
                 for col in ['avg_rating_2_1', 'avg_firepower', 'avg_opening', 'avg_clutching', 'avg_sniping']:
-                    match_df[f'team2_{col}'] = team2_players[col].iloc[0] if col in team2_players.columns else np.nan
+                    match_df[f'team2_{col}'] = team2_players[col].iloc[0] if col in team2_players.columns else 0.0
             
             result_dfs.append(match_df)
         
         df = pd.concat(result_dfs, ignore_index=True)
         
         # Создаем относительные признаки
-        if 'team1_avg_rating' in df.columns and 'team2_avg_rating' in df.columns:
-            df['rating_diff'] = df['team1_avg_rating'] - df['team2_avg_rating']
-            df['kd_diff'] = df['team1_avg_kd'] - df['team2_avg_kd']
-            df['firepower_diff'] = df['team1_avg_firepower'] - df['team2_avg_firepower']
+        df['rating_diff'] = df['team1_avg_rating'] - df['team2_avg_rating']
+        df['kd_diff'] = df['team1_avg_kd'] - df['team2_avg_kd']
+        df['firepower_diff'] = df['team1_avg_firepower'] - df['team2_avg_firepower']
         
         return df
     
@@ -265,7 +308,8 @@ class CS2MatchPredictor:
         feature_cols = [col for col in df.columns if col not in [
             'match_id', 'url', 'team1_won', 'team1_score', 'team2_score',
             'team1_name', 'team2_name', 'event_name', 'parsed_at',
-            'team1_team_id', 'team2_team_id'  # Дубликаты от merge
+            'team1_team_id', 'team2_team_id',
+            'datetime', 'team1_id', 'team1_rank', 'team2_id', 'team2_rank', 'event_id', 'demo_id', 'head_to_head_team1_wins', 'head_to_head_team2_wins'
         ]]
         
         self.feature_columns = feature_cols
@@ -317,7 +361,6 @@ class CS2MatchPredictor:
             train_size=0.8,
             use_gpu=False,
             verbose=False,
-            silent=True,
             feature_selection=True,
             remove_multicollinearity=True,
             multicollinearity_threshold=0.9
@@ -425,25 +468,110 @@ class CS2MatchPredictor:
         # Получаем данные матча
         with self._get_connection() as conn:
             query = """
-            SELECT * FROM upcoming_match
-            WHERE match_id = ?
+            SELECT 
+                um.match_id,
+                um.datetime,
+                um.team1_id,
+                um.team1_rank,
+                um.team2_id,
+                um.team2_rank,
+                um.event_id,
+                COALESCE(h2h.team1_wins, 0) as head_to_head_team1_wins,
+                COALESCE(h2h.team2_wins, 0) as head_to_head_team2_wins
+            FROM upcoming_match um
+            LEFT JOIN (
+                SELECT 
+                    team1_id,
+                    team2_id,
+                    COUNT(CASE WHEN team1_score > team2_score THEN 1 END) as team1_wins,
+                    COUNT(CASE WHEN team2_score > team1_score THEN 1 END) as team2_wins
+                FROM result_match
+                WHERE team1_score IS NOT NULL AND team2_score IS NOT NULL
+                GROUP BY team1_id, team2_id
+            ) h2h ON (um.team1_id = h2h.team1_id AND um.team2_id = h2h.team2_id)
+                OR (um.team1_id = h2h.team2_id AND um.team2_id = h2h.team1_id)
+            WHERE um.match_id = ?
             """
             df = pd.read_sql_query(query, conn, params=[match_id])
+            
+            # Логируем полученные данные
+            logger.info(f"Получены данные для матча {match_id}:")
+            logger.info(f"Колонки в DataFrame: {df.columns.tolist()}")
+            logger.info(f"Первая строка данных: {df.iloc[0].to_dict() if not df.empty else 'Нет данных'}")
         
         if df.empty:
             logger.error(f"Матч {match_id} не найден")
             return None
+            
+        # Проверяем наличие всех необходимых колонок
+        required_columns = ['match_id', 'datetime', 'team1_id', 'team1_rank', 
+                          'team2_id', 'team2_rank', 'event_id',
+                          'head_to_head_team1_wins', 'head_to_head_team2_wins']
+        
+        missing_columns = [col for col in required_columns if col not in df.columns]
+        if missing_columns:
+            logger.error(f"Отсутствуют необходимые колонки: {missing_columns}")
+            return None
         
         # Создаем признаки
-        df = self._create_base_features(df)
-        df = self._create_player_features(df)
-        df = self._create_recent_form_features(df)
-        
-        # Предсказываем
-        match_data = df[self.feature_columns]
-        
-        # Используем модель напрямую
         try:
+            # Создаем копию исходных данных для создания признаков
+            features_df = df.copy()
+            
+            # Создаем все необходимые признаки
+            features_df = self._create_base_features(features_df)
+            logger.info("Базовые признаки созданы успешно")
+            logger.info(f"Колонки после базовых признаков: {features_df.columns.tolist()}")
+            
+            features_df = self._create_player_features(features_df)
+            logger.info("Признаки игроков созданы успешно")
+            logger.info(f"Колонки после признаков игроков: {features_df.columns.tolist()}")
+            
+            features_df = self._create_recent_form_features(features_df)
+            logger.info("Признаки формы созданы успешно")
+            logger.info(f"Колонки после признаков формы: {features_df.columns.tolist()}")
+            
+            # Получаем список признаков, которые нужно использовать для предсказания
+            prediction_features = [
+                'rank_diff', 'rank_ratio', 'h2h_total', 'h2h_winrate_team1',
+                'hour', 'weekday', 'log_rank_team1', 'log_rank_team2',
+                'team1_avg_rating', 'team1_avg_kd', 'team1_avg_adr', 'team1_avg_kast',
+                'team1_max_rating', 'team1_min_rating', 'team2_avg_rating', 'team2_avg_kd',
+                'team2_avg_adr', 'team2_avg_kast', 'team2_max_rating', 'team2_min_rating',
+                'team1_avg_rating_2_1', 'team1_avg_firepower', 'team1_avg_opening',
+                'team1_avg_clutching', 'team1_avg_sniping', 'team2_avg_rating_2_1',
+                'team2_avg_firepower', 'team2_avg_opening', 'team2_avg_clutching',
+                'team2_avg_sniping', 'rating_diff', 'kd_diff', 'firepower_diff',
+                'team1_recent_winrate', 'team1_avg_score_for', 'team1_avg_score_against',
+                'team1_matches_played', 'team2_recent_winrate', 'team2_avg_score_for',
+                'team2_avg_score_against', 'team2_matches_played', 'winrate_diff',
+                'matches_played_diff'
+            ]
+            
+            # Проверяем наличие всех необходимых признаков для предсказания
+            missing_features = [col for col in prediction_features if col not in features_df.columns]
+            if missing_features:
+                logger.error(f"Отсутствуют необходимые признаки для предсказания: {missing_features}")
+                return None
+            
+            # Предсказываем
+            match_data = features_df[[
+                'rank_diff', 'rank_ratio', 'h2h_total', 'h2h_winrate_team1',
+                'hour', 'weekday', 'log_rank_team1', 'log_rank_team2',
+                'team1_avg_rating', 'team1_avg_kd', 'team1_avg_adr', 'team1_avg_kast',
+                'team1_max_rating', 'team1_min_rating', 'team2_avg_rating', 'team2_avg_kd',
+                'team2_avg_adr', 'team2_avg_kast', 'team2_max_rating', 'team2_min_rating',
+                'team1_avg_rating_2_1', 'team1_avg_firepower', 'team1_avg_opening',
+                'team1_avg_clutching', 'team1_avg_sniping', 'team2_avg_rating_2_1',
+                'team2_avg_firepower', 'team2_avg_opening', 'team2_avg_clutching',
+                'team2_avg_sniping', 'rating_diff', 'kd_diff', 'firepower_diff',
+                'team1_recent_winrate', 'team1_avg_score_for', 'team1_avg_score_against',
+                'team1_matches_played', 'team2_recent_winrate', 'team2_avg_score_for',
+                'team2_avg_score_against', 'team2_matches_played', 'winrate_diff',
+                'matches_played_diff'
+            ]]
+            
+            # Используем модель напрямую
             if hasattr(self.best_model, 'predict_proba'):
                 probabilities = self.best_model.predict_proba(match_data)
                 prob_team1_win = probabilities[0][1]
@@ -451,10 +579,12 @@ class CS2MatchPredictor:
                 # Если модель не поддерживает вероятности
                 prediction = self.best_model.predict(match_data)
                 prob_team1_win = float(prediction[0])
+                
         except Exception as e:
-            logger.error(f"Ошибка предсказания: {e}")
+            logger.error(f"Ошибка при создании признаков или предсказании: {str(e)}")
+            logger.error(f"Текущие колонки в DataFrame: {features_df.columns.tolist()}")
             return None
-        
+            
         prob_team2_win = 1 - prob_team1_win
         
         # Получаем предсказанный счёт
