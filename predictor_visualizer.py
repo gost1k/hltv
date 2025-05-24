@@ -549,24 +549,139 @@ def export_predict_table_html():
         else:
             return ''
 
-    # Стилизация таблицы
-    html_table = styled.style \
+    def highlight_row(row):
+        def parse_score(score):
+            if isinstance(score, str) and '-' in score:
+                parts = score.split('-')
+                try:
+                    return int(parts[0]), int(parts[1])
+                except:
+                    return None, None
+            if isinstance(score, str) and ':' in score:
+                parts = score.split(':')
+                try:
+                    return int(parts[0]), int(parts[1])
+                except:
+                    return None, None
+            return None, None
+
+        pred1, pred2 = parse_score(row['final_score'])
+        real1, real2 = parse_score(row['real_score'])
+
+        green = 'background-color: rgba(144,238,144,0.5);'
+        yellow = 'background-color: rgba(255,255,153,0.5);'
+        red = 'background-color: rgba(255,182,193,0.5);'
+
+        if pred1 is not None and pred2 is not None and real1 is not None and real2 is not None:
+            if pred1 == real1 and pred2 == real2:
+                return [green] * len(row)
+            pred_winner = 1 if pred1 > pred2 else 2 if pred2 > pred1 else 0
+            real_winner = 1 if real1 > real2 else 2 if real2 > real1 else 0
+            if pred_winner == real_winner and pred_winner != 0:
+                return [yellow] * len(row)
+            else:
+                return [red] * len(row)
+        else:
+            return [''] * len(row)
+
+    # --- Определяем, угадан ли победитель ---
+    def is_winner_guessed(row):
+        def parse_score(score):
+            if isinstance(score, str) and '-' in score:
+                parts = score.split('-')
+                try:
+                    return int(parts[0]), int(parts[1])
+                except:
+                    return None, None
+            if isinstance(score, str) and ':' in score:
+                parts = score.split(':')
+                try:
+                    return int(parts[0]), int(parts[1])
+                except:
+                    return None, None
+            return None, None
+        pred1, pred2 = parse_score(row['final_score'])
+        real1, real2 = parse_score(row['real_score'])
+        if None in (pred1, pred2, real1, real2):
+            return False
+        pred_winner = 1 if pred1 > pred2 else 2 if pred2 > pred1 else 0
+        real_winner = 1 if real1 > real2 else 2 if real2 > real1 else 0
+        return pred_winner == real_winner and pred_winner != 0
+
+    styled['winner_guessed'] = styled.apply(is_winner_guessed, axis=1)
+
+    # --- Разбиваем на две таблицы ---
+    df_correct = styled[styled['winner_guessed']].copy().reset_index(drop=True)
+    df_wrong = styled[~styled['winner_guessed']].copy().reset_index(drop=True)
+
+    # Добавляем счетчик строк
+    df_correct.insert(0, '№', df_correct.index + 1)
+    df_wrong.insert(0, '№', df_wrong.index + 1)
+
+    # Список столбцов для экспорта (добавляем '№' в начало)
+    export_columns = ['№'] + [col for col in columns if col in df_correct.columns]
+
+    # --- Стилизация и экспорт первой таблицы ---
+    html_table_correct = df_correct[export_columns].style \
+        .apply(highlight_row, axis=1) \
         .set_properties(**{'text-align': 'center'}, subset=center_cols) \
         .apply(highlight_score, axis=1, subset=['team1_score','team2_score']) \
         .map(highlight_data_level, subset=['team1_data_level','team2_data_level']) \
-        .set_caption('Таблица предсказаний матчей CS2') \
+        .set_caption(f'Таблица предсказаний матчей CS2 — Угадан победитель (всего: {len(df_correct)})') \
         .set_table_styles([
             {'selector': 'th', 'props': [('background-color', '#222'), ('color', 'white')]},
             {'selector': 'caption', 'props': [('caption-side', 'top'), ('font-size', '18px'), ('font-weight', 'bold')]}
         ]) \
         .hide(axis='index') \
         .format(na_rep='-')
+    html_correct = html_table_correct.to_html(encoding='utf-8')
 
-    # Сохраняем HTML-таблицу
+    # --- Стилизация и экспорт второй таблицы ---
+    html_table_wrong = df_wrong[export_columns].style \
+        .apply(highlight_row, axis=1) \
+        .set_properties(**{'text-align': 'center'}, subset=center_cols) \
+        .apply(highlight_score, axis=1, subset=['team1_score','team2_score']) \
+        .map(highlight_data_level, subset=['team1_data_level','team2_data_level']) \
+        .set_caption(f'Таблица предсказаний матчей CS2 — Не угадан победитель (всего: {len(df_wrong)})') \
+        .set_table_styles([
+            {'selector': 'th', 'props': [('background-color', '#222'), ('color', 'white')]},
+            {'selector': 'caption', 'props': [('caption-side', 'top'), ('font-size', '18px'), ('font-weight', 'bold')]}
+        ]) \
+        .hide(axis='index') \
+        .format(na_rep='-')
+    html_wrong = html_table_wrong.to_html(encoding='utf-8')
+
+    # --- Объединяем обе таблицы в один HTML-файл ---
+    full_html = f"""
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset=\"utf-8\">
+    <title>Таблица предсказаний матчей CS2</title>
+    <style>
+        body {{ background: #f5f5f5; font-family: Arial, sans-serif; }}
+        h2 {{ margin-top: 40px; }}
+        .table-container {{ margin-bottom: 40px; }}
+    </style>
+</head>
+<body>
+    <div class=\"table-container\">
+        <h2>Угадан победитель (всего: {len(df_correct)})</h2>
+        {html_correct}
+    </div>
+    <hr>
+    <div class=\"table-container\">
+        <h2>Не угадан победитель (всего: {len(df_wrong)})</h2>
+        {html_wrong}
+    </div>
+</body>
+</html>
+"""
     html_path = f"{OUTPUT_PATH}/predict_table.html"
-    html_table.to_html(html_path, encoding='utf-8')
-    print(f"HTML-таблица предсказаний сохранена: {html_path}")
-    
+    with open(html_path, "w", encoding="utf-8") as f:
+        f.write(full_html)
+    print(f"HTML-таблица предсказаний (две таблицы) сохранена: {html_path}")
+
     # График: распределение confidence и вероятностей
     plt.figure(figsize=(12,6))
     sns.histplot(df['confidence'].astype(float), bins=20, kde=True, color='royalblue', label='Уверенность (confidence)')
@@ -730,7 +845,9 @@ def export_upcoming_predict_table_html():
         else:
             return ''
 
-    # Стилизация таблицы
+    # --- Удаляем вычисление winner_guessed и is_winner_guessed для будущих матчей ---
+    # (В этой функции не должно быть строк вроде styled['winner_guessed'] = ... и не должно быть разбиения на df_correct/df_wrong)
+    # Оставляем только стилизацию и экспорт одной таблицы, как было раньше:
     html_table = styled.style \
         .set_properties(**{'text-align': 'center'}, subset=center_cols) \
         .apply(highlight_score, axis=1, subset=['team1_score','team2_score']) \
@@ -742,12 +859,10 @@ def export_upcoming_predict_table_html():
         ]) \
         .hide(axis='index') \
         .format(na_rep='-')
-
-    # Сохраняем HTML-таблицу
     html_path = f"{OUTPUT_PATH}/upcoming_predict_table.html"
     html_table.to_html(html_path, encoding='utf-8')
     print(f"HTML-таблица предсказаний будущих матчей сохранена: {html_path}")
-    
+
     # График: распределение confidence
     plt.figure(figsize=(12,6))
     sns.histplot(df['confidence'].astype(float), bins=20, kde=True, color='royalblue', label='Уверенность (confidence)')
