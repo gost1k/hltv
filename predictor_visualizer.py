@@ -425,8 +425,8 @@ def export_predict_table_html():
         p.confidence,
         p.model_version,
         p.last_updated,
-        p.team1_matches_played,
-        p.team2_matches_played,
+        r.team1_id,
+        r.team2_id,
         r.team1_name,
         r.team2_name,
         r.datetime,
@@ -438,6 +438,8 @@ def export_predict_table_html():
     ORDER BY r.datetime DESC
     '''
     df = pd.read_sql_query(query, conn)
+    # Загружаем всю таблицу result_match для подсчёта количества матчей
+    result_df = pd.read_sql_query('SELECT team1_id, team2_id FROM result_match', conn)
     conn.close()
     
     if df.empty:
@@ -455,7 +457,15 @@ def export_predict_table_html():
         else:
             return '-'
     df['real_score'] = df.apply(format_real_score, axis=1)
-    
+
+    # Считаем количество матчей для каждой команды
+    def count_matches(team_id):
+        if pd.isnull(team_id):
+            return 0
+        return ((result_df['team1_id'] == team_id) | (result_df['team2_id'] == team_id)).sum()
+    df['team1_matches_played'] = df['team1_id'].apply(count_matches)
+    df['team2_matches_played'] = df['team2_id'].apply(count_matches)
+
     # Добавляем индикаторы количества данных
     def data_level(val):
         if pd.isnull(val):
