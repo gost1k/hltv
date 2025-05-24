@@ -427,7 +427,9 @@ def export_predict_table_html():
         p.last_updated,
         r.team1_name,
         r.team2_name,
-        r.datetime
+        r.datetime,
+        r.team1_score as real_team1_score,
+        r.team2_score as real_team2_score
     FROM predict p
     LEFT JOIN result_match r ON p.match_id = r.match_id
     WHERE r.datetime IS NOT NULL
@@ -444,8 +446,16 @@ def export_predict_table_html():
     df['date'] = pd.to_datetime(df['datetime'], unit='s')
     df = df.sort_values('date', ascending=False)
     
-    # Формируем нужный порядок столбцов: дата первой, team1_score/team2_score по центру
-    columns = ['date','match_id','team1_name','team1_score','team2_score','team2_name','team1_score_final','team2_score_final','confidence','model_version','last_updated']
+    # Добавляем столбец с реальным счетом
+    def format_real_score(row):
+        if pd.notnull(row['real_team1_score']) and pd.notnull(row['real_team2_score']):
+            return f"{int(row['real_team1_score'])}:{int(row['real_team2_score'])}"
+        else:
+            return '-'
+    df['real_score'] = df.apply(format_real_score, axis=1)
+    
+    # Формируем нужный порядок столбцов: дата первой, team1_score/team2_score по центру, затем реальный счет
+    columns = ['date','match_id','team1_name','team1_score','team2_score','team2_name','team1_score_final','team2_score_final','real_score','confidence','model_version','last_updated']
     styled = df[columns].copy()
     styled['date'] = styled['date'].dt.strftime('%Y-%m-%d %H:%M')
     styled['confidence'] = styled['confidence'].map(lambda x: f"{x:.2f}")
