@@ -513,9 +513,9 @@ def export_predict_table_html():
     ]
     styled = df[columns].copy()
     styled['date'] = styled['date'].dt.strftime('%Y-%m-%d %H:%M')
-    styled['team1_score'] = styled['team1_score'].map(lambda x: f"{float(x)*100:.1f}%" if pd.notnull(x) else '-')
-    styled['team2_score'] = styled['team2_score'].map(lambda x: f"{float(x)*100:.1f}%" if pd.notnull(x) else '-')
-    styled['confidence'] = styled['confidence'].map(lambda x: f"{float(x)*100:.1f}%" if pd.notnull(x) else '-')
+    styled['team1_score'] = styled['team1_score'].map(lambda x: f"{x}%" if pd.notnull(x) else '-')
+    styled['team2_score'] = styled['team2_score'].map(lambda x: f"{x}%" if pd.notnull(x) else '-')
+    styled['confidence'] = styled['confidence'].map(lambda x: f"{x}%" if pd.notnull(x) else '-')
 
     # Центрирование нужных столбцов
     center_cols = ['team1_score','team2_score','confidence','final_score','real_score']
@@ -557,8 +557,12 @@ def export_predict_table_html():
             {'selector': 'caption', 'props': [('caption-side', 'top'), ('font-size', '18px'), ('font-weight', 'bold')]}
         ]) \
         .hide(axis='index') \
-        .format({'team1_score': '{:.1%}', 'team2_score': '{:.1%}', 'confidence': '{:.1%}'}, na_rep='-')
-    
+        .format(na_rep='-')
+    # Добавляем знак % к значениям (только для отображения)
+    styled['team1_score'] = styled['team1_score'].map(lambda x: f"{x}%" if pd.notnull(x) else '-')
+    styled['team2_score'] = styled['team2_score'].map(lambda x: f"{x}%" if pd.notnull(x) else '-')
+    styled['confidence'] = styled['confidence'].map(lambda x: f"{x}%" if pd.notnull(x) else '-')
+
     # Сохраняем HTML-таблицу
     html_path = f"{OUTPUT_PATH}/predict_table.html"
     html_table.to_html(html_path, encoding='utf-8')
@@ -691,9 +695,9 @@ def export_upcoming_predict_table_html():
     ]
     styled = df[columns].copy()
     styled['date'] = styled['date'].dt.strftime('%Y-%m-%d %H:%M')
-    styled['team1_score'] = styled['team1_score'].map(lambda x: f"{float(x)*100:.1f}%" if pd.notnull(x) else '-')
-    styled['team2_score'] = styled['team2_score'].map(lambda x: f"{float(x)*100:.1f}%" if pd.notnull(x) else '-')
-    styled['confidence'] = styled['confidence'].map(lambda x: f"{float(x)*100:.1f}%" if pd.notnull(x) else '-')
+    styled['team1_score'] = styled['team1_score'].map(lambda x: f"{x}%" if pd.notnull(x) else '-')
+    styled['team2_score'] = styled['team2_score'].map(lambda x: f"{x}%" if pd.notnull(x) else '-')
+    styled['confidence'] = styled['confidence'].map(lambda x: f"{x}%" if pd.notnull(x) else '-')
 
     # Центрирование нужных столбцов
     center_cols = ['team1_score','team2_score','confidence','final_score']
@@ -735,8 +739,11 @@ def export_upcoming_predict_table_html():
             {'selector': 'caption', 'props': [('caption-side', 'top'), ('font-size', '18px'), ('font-weight', 'bold')]}
         ]) \
         .hide(axis='index') \
-        .format({'team1_score': '{:.1%}', 'team2_score': '{:.1%}', 'confidence': '{:.1%}'}, na_rep='-')
-    
+        .format(na_rep='-')
+    styled['team1_score'] = styled['team1_score'].map(lambda x: f"{x}%" if pd.notnull(x) else '-')
+    styled['team2_score'] = styled['team2_score'].map(lambda x: f"{x}%" if pd.notnull(x) else '-')
+    styled['confidence'] = styled['confidence'].map(lambda x: f"{x}%" if pd.notnull(x) else '-')
+
     # Сохраняем HTML-таблицу
     html_path = f"{OUTPUT_PATH}/upcoming_predict_table.html"
     html_table.to_html(html_path, encoding='utf-8')
