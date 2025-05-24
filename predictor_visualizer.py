@@ -557,11 +557,7 @@ def export_predict_table_html():
             {'selector': 'caption', 'props': [('caption-side', 'top'), ('font-size', '18px'), ('font-weight', 'bold')]}
         ]) \
         .hide(axis='index') \
-        .format(na_rep='-')
-    # Добавляем знак % к значениям (только для отображения)
-    styled['team1_score'] = styled['team1_score'].map(lambda x: f"{x}%" if pd.notnull(x) else '-')
-    styled['team2_score'] = styled['team2_score'].map(lambda x: f"{x}%" if pd.notnull(x) else '-')
-    styled['confidence'] = styled['confidence'].map(lambda x: f"{x}%" if pd.notnull(x) else '-')
+        .format({'team1_score': '{:.1%}', 'team2_score': '{:.1%}', 'confidence': '{:.1%}'}, na_rep='-')
 
     # Сохраняем HTML-таблицу
     html_path = f"{OUTPUT_PATH}/predict_table.html"
@@ -739,10 +735,7 @@ def export_upcoming_predict_table_html():
             {'selector': 'caption', 'props': [('caption-side', 'top'), ('font-size', '18px'), ('font-weight', 'bold')]}
         ]) \
         .hide(axis='index') \
-        .format(na_rep='-')
-    styled['team1_score'] = styled['team1_score'].map(lambda x: f"{x}%" if pd.notnull(x) else '-')
-    styled['team2_score'] = styled['team2_score'].map(lambda x: f"{x}%" if pd.notnull(x) else '-')
-    styled['confidence'] = styled['confidence'].map(lambda x: f"{x}%" if pd.notnull(x) else '-')
+        .format({'team1_score': '{:.1%}', 'team2_score': '{:.1%}', 'confidence': '{:.1%}'}, na_rep='-')
 
     # Сохраняем HTML-таблицу
     html_path = f"{OUTPUT_PATH}/upcoming_predict_table.html"
