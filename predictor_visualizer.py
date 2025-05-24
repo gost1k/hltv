@@ -511,6 +511,9 @@ def export_predict_table_html():
         'team2_matches_played',
         'last_updated'
     ]
+    # Очистка: гарантируем, что только числа
+    for col in ['team1_score', 'team2_score', 'confidence']:
+        df[col] = pd.to_numeric(df[col], errors='coerce')
     styled = df[columns].copy()
     styled['date'] = styled['date'].dt.strftime('%Y-%m-%d %H:%M')
     styled['team1_score'] = styled['team1_score'].map(lambda x: f"{x}%" if pd.notnull(x) else '-')
@@ -689,6 +692,9 @@ def export_upcoming_predict_table_html():
         'team2_matches_played',
         'last_updated'
     ]
+    # Очистка: гарантируем, что только числа
+    for col in ['team1_score', 'team2_score', 'confidence']:
+        df[col] = pd.to_numeric(df[col], errors='coerce')
     styled = df[columns].copy()
     styled['date'] = styled['date'].dt.strftime('%Y-%m-%d %H:%M')
     styled['team1_score'] = styled['team1_score'].map(lambda x: f"{x}%" if pd.notnull(x) else '-')
