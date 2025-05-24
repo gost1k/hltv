@@ -517,9 +517,9 @@ def export_predict_table_html():
         df[col] = pd.to_numeric(df[col], errors='coerce')
     styled = df[columns].copy()
     styled['date'] = styled['date'].dt.strftime('%Y-%m-%d %H:%M')
-    styled['team1_score'] = styled['team1_score'].map(lambda x: f"{x}%" if pd.notnull(x) else '-')
-    styled['team2_score'] = styled['team2_score'].map(lambda x: f"{x}%" if pd.notnull(x) else '-')
-    styled['confidence'] = styled['confidence'].map(lambda x: f"{x}%" if pd.notnull(x) else '-')
+    styled['team1_score'] = styled['team1_score'].map(lambda x: f"{float(x)*100:.1f}%" if pd.notnull(x) else '-')
+    styled['team2_score'] = styled['team2_score'].map(lambda x: f"{float(x)*100:.1f}%" if pd.notnull(x) else '-')
+    styled['confidence'] = styled['confidence'].map(lambda x: f"{float(x)*100:.1f}%" if pd.notnull(x) else '-')
 
     # Центрирование нужных столбцов
     center_cols = ['team1_score','team2_score','confidence','final_score','real_score']
@@ -552,7 +552,6 @@ def export_predict_table_html():
     # Стилизация таблицы
     html_table = styled.style \
         .set_properties(**{'text-align': 'center'}, subset=center_cols) \
-        .background_gradient(subset=['confidence'], cmap='YlGnBu') \
         .apply(highlight_score, axis=1, subset=['team1_score','team2_score']) \
         .map(highlight_data_level, subset=['team1_data_level','team2_data_level']) \
         .set_caption('Таблица предсказаний матчей CS2') \
@@ -699,9 +698,9 @@ def export_upcoming_predict_table_html():
         df[col] = pd.to_numeric(df[col], errors='coerce')
     styled = df[columns].copy()
     styled['date'] = styled['date'].dt.strftime('%Y-%m-%d %H:%M')
-    styled['team1_score'] = styled['team1_score'].map(lambda x: f"{x}%" if pd.notnull(x) else '-')
-    styled['team2_score'] = styled['team2_score'].map(lambda x: f"{x}%" if pd.notnull(x) else '-')
-    styled['confidence'] = styled['confidence'].map(lambda x: f"{x}%" if pd.notnull(x) else '-')
+    styled['team1_score'] = styled['team1_score'].map(lambda x: f"{float(x)*100:.1f}%" if pd.notnull(x) else '-')
+    styled['team2_score'] = styled['team2_score'].map(lambda x: f"{float(x)*100:.1f}%" if pd.notnull(x) else '-')
+    styled['confidence'] = styled['confidence'].map(lambda x: f"{float(x)*100:.1f}%" if pd.notnull(x) else '-')
 
     # Центрирование нужных столбцов
     center_cols = ['team1_score','team2_score','confidence','final_score']
@@ -734,7 +733,6 @@ def export_upcoming_predict_table_html():
     # Стилизация таблицы
     html_table = styled.style \
         .set_properties(**{'text-align': 'center'}, subset=center_cols) \
-        .background_gradient(subset=['confidence'], cmap='YlGnBu') \
         .apply(highlight_score, axis=1, subset=['team1_score','team2_score']) \
         .map(highlight_data_level, subset=['team1_data_level','team2_data_level']) \
         .set_caption('Таблица предсказаний будущих матчей CS2') \
