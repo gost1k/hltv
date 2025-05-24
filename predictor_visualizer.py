@@ -511,8 +511,9 @@ def export_predict_table_html():
         'team2_matches_played',
         'last_updated'
     ]
-    # Очистка: гарантируем, что только числа
+    # Очистка: удаляем % и приводим к числу
     for col in ['team1_score', 'team2_score', 'confidence']:
+        df[col] = df[col].astype(str).str.replace('%', '', regex=False)
         df[col] = pd.to_numeric(df[col], errors='coerce')
     styled = df[columns].copy()
     styled['date'] = styled['date'].dt.strftime('%Y-%m-%d %H:%M')
@@ -692,8 +693,9 @@ def export_upcoming_predict_table_html():
         'team2_matches_played',
         'last_updated'
     ]
-    # Очистка: гарантируем, что только числа
+    # Очистка: удаляем % и приводим к числу
     for col in ['team1_score', 'team2_score', 'confidence']:
+        df[col] = df[col].astype(str).str.replace('%', '', regex=False)
         df[col] = pd.to_numeric(df[col], errors='coerce')
     styled = df[columns].copy()
     styled['date'] = styled['date'].dt.strftime('%Y-%m-%d %H:%M')
