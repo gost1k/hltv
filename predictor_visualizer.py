@@ -428,7 +428,9 @@ def export_predict_table_html():
         r.team1_id,
         r.team2_id,
         r.team1_name,
+        r.team1_rank,
         r.team2_name,
+        r.team2_rank,
         r.datetime,
         r.team1_score as real_team1_score,
         r.team2_score as real_team2_score
@@ -450,6 +452,15 @@ def export_predict_table_html():
     df['date'] = pd.to_datetime(df['datetime'], unit='s')
     df = df.sort_values('date', ascending=False)
     
+    # Объединяем ранг с названием
+    def name_with_rank(name, rank):
+        if pd.notnull(rank):
+            return f"#{int(rank)} {name}"
+        else:
+            return name
+    df['team1_name'] = df.apply(lambda row: name_with_rank(row['team1_name'], row['team1_rank']), axis=1)
+    df['team2_name'] = df.apply(lambda row: name_with_rank(row['team2_name'], row['team2_rank']), axis=1)
+
     # Добавляем столбец с реальным счетом
     def format_real_score(row):
         if pd.notnull(row['real_team1_score']) and pd.notnull(row['real_team2_score']):
@@ -536,10 +547,10 @@ def export_predict_table_html():
 
     # Стилизация таблицы
     html_table = styled.style \
-        .apply(center_style, subset=center_cols) \
+        .set_properties(**{'text-align': 'center'}, subset=center_cols) \
         .background_gradient(subset=['confidence'], cmap='YlGnBu') \
         .apply(highlight_score, axis=1, subset=['team1_score','team2_score']) \
-        .applymap(highlight_data_level, subset=['team1_data_level','team2_data_level']) \
+        .map(highlight_data_level, subset=['team1_data_level','team2_data_level']) \
         .set_caption('Таблица предсказаний матчей CS2') \
         .set_table_styles([
             {'selector': 'th', 'props': [('background-color', '#222'), ('color', 'white')]},
@@ -599,7 +610,9 @@ def export_upcoming_predict_table_html():
         u.team1_id,
         u.team2_id,
         u.team1_name,
+        u.team1_rank,
         u.team2_name,
+        u.team2_rank,
         u.datetime,
         p.team1_score,
         p.team2_score,
@@ -626,6 +639,15 @@ def export_upcoming_predict_table_html():
     df['date'] = pd.to_datetime(df['datetime'], unit='s')
     df = df.sort_values('date', ascending=True)
     
+    # Объединяем ранг с названием
+    def name_with_rank(name, rank):
+        if pd.notnull(rank):
+            return f"#{int(rank)} {name}"
+        else:
+            return name
+    df['team1_name'] = df.apply(lambda row: name_with_rank(row['team1_name'], row['team1_rank']), axis=1)
+    df['team2_name'] = df.apply(lambda row: name_with_rank(row['team2_name'], row['team2_rank']), axis=1)
+
     # Считаем количество матчей для каждой команды
     def count_matches(team_id):
         if pd.isnull(team_id):
@@ -703,10 +725,10 @@ def export_upcoming_predict_table_html():
 
     # Стилизация таблицы
     html_table = styled.style \
-        .apply(center_style, subset=center_cols) \
+        .set_properties(**{'text-align': 'center'}, subset=center_cols) \
         .background_gradient(subset=['confidence'], cmap='YlGnBu') \
         .apply(highlight_score, axis=1, subset=['team1_score','team2_score']) \
-        .applymap(highlight_data_level, subset=['team1_data_level','team2_data_level']) \
+        .map(highlight_data_level, subset=['team1_data_level','team2_data_level']) \
         .set_caption('Таблица предсказаний будущих матчей CS2') \
         .set_table_styles([
             {'selector': 'th', 'props': [('background-color', '#222'), ('color', 'white')]},
