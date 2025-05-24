@@ -98,8 +98,14 @@ class CS2MatchPredictor:
         df['weekday'] = pd.to_datetime(df['datetime'], unit='s').dt.weekday
         
         # Логарифмические преобразования рейтингов
+        df['team1_rank'] = df['team1_rank'].fillna(-1)
+        df['team2_rank'] = df['team2_rank'].fillna(-1)
         df['log_rank_team1'] = np.log1p(df['team1_rank'])
         df['log_rank_team2'] = np.log1p(df['team2_rank'])
+        df['log_rank_team1'].replace([np.inf, -np.inf], 0, inplace=True)
+        df['log_rank_team2'].replace([np.inf, -np.inf], 0, inplace=True)
+        df['log_rank_team1'] = df['log_rank_team1'].fillna(0)
+        df['log_rank_team2'] = df['log_rank_team2'].fillna(0)
         
         return df
     
@@ -238,18 +244,28 @@ class CS2MatchPredictor:
             GROUP BY team_id
             """
             recent_form = pd.read_sql_query(recent_matches_query, conn)
+            recent_form['team_id'] = pd.to_numeric(recent_form['team_id'], errors='coerce').astype('Int64')
+        
+        # Создаём датафреймы с префиксами для обеих команд
+        recent_form_team1 = recent_form.add_prefix('team1_')
+        recent_form_team2 = recent_form.add_prefix('team2_')
+        
+        # Приводим id к одному типу
+        df['team1_id'] = pd.to_numeric(df['team1_id'], errors='coerce').astype('Int64')
+        df['team2_id'] = pd.to_numeric(df['team2_id'], errors='coerce').astype('Int64')
+        recent_form_team1['team1_team_id'] = pd.to_numeric(recent_form_team1['team1_team_id'], errors='coerce').astype('Int64')
+        recent_form_team2['team2_team_id'] = pd.to_numeric(recent_form_team2['team2_team_id'], errors='coerce').astype('Int64')
         
         # Добавляем форму для каждой команды
         df = df.merge(
-            recent_form.add_prefix('team1_'),
+            recent_form_team1,
             left_on='team1_id',
             right_on='team1_team_id',
             how='left'
         )
-        
         df = df.merge(
-            recent_form.add_prefix('team2_'),
-            left_on='team2_id', 
+            recent_form_team2,
+            left_on='team2_id',
             right_on='team2_team_id',
             how='left'
         )
@@ -403,6 +419,7 @@ class CS2MatchPredictor:
         self._evaluate_model(test_df)
         
         logger.info("Обучение завершено успешно!")
+        self.predict_upcoming_matches()
         return True
     
     def _evaluate_model(self, test_df):
@@ -714,6 +731,7 @@ class CS2MatchPredictor:
             return False
         
         logger.info("Дообучение завершено успешно!")
+        self.predict_upcoming_matches()
         return True
 
 
