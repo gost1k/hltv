@@ -557,7 +557,7 @@ def export_predict_table_html():
             {'selector': 'caption', 'props': [('caption-side', 'top'), ('font-size', '18px'), ('font-weight', 'bold')]}
         ]) \
         .hide(axis='index') \
-        .format({'team1_score': '{:.1%}', 'team2_score': '{:.1%}', 'confidence': '{:.1%}'}, na_rep='-')
+        .format(na_rep='-')
 
     # Сохраняем HTML-таблицу
     html_path = f"{OUTPUT_PATH}/predict_table.html"
@@ -735,7 +735,7 @@ def export_upcoming_predict_table_html():
             {'selector': 'caption', 'props': [('caption-side', 'top'), ('font-size', '18px'), ('font-weight', 'bold')]}
         ]) \
         .hide(axis='index') \
-        .format({'team1_score': '{:.1%}', 'team2_score': '{:.1%}', 'confidence': '{:.1%}'}, na_rep='-')
+        .format(na_rep='-')
 
     # Сохраняем HTML-таблицу
     html_path = f"{OUTPUT_PATH}/upcoming_predict_table.html"
