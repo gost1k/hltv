@@ -666,12 +666,10 @@ def export_predict_table_html():
 </head>
 <body>
     <div class=\"table-container\">
-        <h2>Угадан победитель (всего: {len(df_correct)})</h2>
         {html_correct}
     </div>
     <hr>
     <div class=\"table-container\">
-        <h2>Не угадан победитель (всего: {len(df_wrong)})</h2>
         {html_wrong}
     </div>
 </body>
