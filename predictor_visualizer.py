@@ -480,22 +480,43 @@ def export_predict_table_html():
     df['team1_data_level'] = df['team1_matches_played'].apply(data_level)
     df['team2_data_level'] = df['team2_matches_played'].apply(data_level)
 
-    # Формируем нужный порядок столбцов: дата, команды, вероятности, финальный счет, количество матчей и индикаторы
+    # Объединяем финальный счет
+    df['final_score'] = df.apply(lambda row: f"{row['team1_score_final']}-{row['team2_score_final']}" if pd.notnull(row['team1_score_final']) and pd.notnull(row['team2_score_final']) else '-', axis=1)
+
+    # Формируем нужный порядок столбцов
     columns = [
-        'date','match_id','team1_name','team1_score','team2_score','team2_name',
-        'team1_score_final','team2_score_final','real_score',
-        'team1_matches_played','team1_data_level','team2_matches_played','team2_data_level',
-        'confidence','model_version','last_updated'
+        'date',
+        'match_id',
+        'team1_name',
+        'team2_name',
+        'team1_score',
+        'team2_score',
+        'confidence',
+        'final_score',
+        'real_score',
+        'team1_data_level',
+        'team2_data_level',
+        'team1_matches_played',
+        'team2_matches_played',
+        'last_updated'
     ]
     styled = df[columns].copy()
     styled['date'] = styled['date'].dt.strftime('%Y-%m-%d %H:%M')
-    styled['confidence'] = styled['confidence'].map(lambda x: f"{x:.2f}")
-    styled['team1_score'] = styled['team1_score'].map(lambda x: f"{x:.2f}")
-    styled['team2_score'] = styled['team2_score'].map(lambda x: f"{x:.2f}")
+    styled['team1_score'] = styled['team1_score'].map(lambda x: f"{float(x)*100:.1f}%" if pd.notnull(x) else '-')
+    styled['team2_score'] = styled['team2_score'].map(lambda x: f"{float(x)*100:.1f}%" if pd.notnull(x) else '-')
+    styled['confidence'] = styled['confidence'].map(lambda x: f"{float(x)*100:.1f}%" if pd.notnull(x) else '-')
+
+    # Центрирование нужных столбцов
+    center_cols = ['team1_score','team2_score','confidence','final_score','real_score']
+    def center_style(_):
+        return 'text-align: center;'
 
     def highlight_score(row):
-        t1 = float(row['team1_score'])
-        t2 = float(row['team2_score'])
+        try:
+            t1 = float(row['team1_score'].replace('%',''))
+            t2 = float(row['team2_score'].replace('%',''))
+        except:
+            return ['','']
         if t1 > t2:
             return ['background-color: #b6fcb6', 'background-color: #fcb6b6']
         elif t1 < t2:
@@ -515,6 +536,7 @@ def export_predict_table_html():
 
     # Стилизация таблицы
     html_table = styled.style \
+        .apply(center_style, subset=center_cols) \
         .background_gradient(subset=['confidence'], cmap='YlGnBu') \
         .apply(highlight_score, axis=1, subset=['team1_score','team2_score']) \
         .applymap(highlight_data_level, subset=['team1_data_level','team2_data_level']) \
@@ -574,6 +596,8 @@ def export_upcoming_predict_table_html():
     query = '''
     SELECT
         p.match_id,
+        u.team1_id,
+        u.team2_id,
         u.team1_name,
         u.team2_name,
         u.datetime,
@@ -590,6 +614,8 @@ def export_upcoming_predict_table_html():
     ORDER BY u.datetime ASC
     '''
     df = pd.read_sql_query(query, conn)
+    # Загружаем всю таблицу result_match для подсчёта количества матчей
+    result_df = pd.read_sql_query('SELECT team1_id, team2_id FROM result_match', conn)
     conn.close()
     
     if df.empty:
@@ -600,28 +626,87 @@ def export_upcoming_predict_table_html():
     df['date'] = pd.to_datetime(df['datetime'], unit='s')
     df = df.sort_values('date', ascending=True)
     
-    # Формируем нужный порядок столбцов: дата первой, team1_score/team2_score по центру
-    columns = ['date','match_id','team1_name','team1_score','team2_score','team2_name','team1_score_final','team2_score_final','confidence','model_version','last_updated']
+    # Считаем количество матчей для каждой команды
+    def count_matches(team_id):
+        if pd.isnull(team_id):
+            return 0
+        return ((result_df['team1_id'] == team_id) | (result_df['team2_id'] == team_id)).sum()
+    df['team1_matches_played'] = df['team1_id'].apply(count_matches)
+    df['team2_matches_played'] = df['team2_id'].apply(count_matches)
+
+    # Добавляем индикаторы количества данных
+    def data_level(val):
+        if pd.isnull(val):
+            return 'нет данных'
+        val = int(val)
+        if val < 10:
+            return 'мало'
+        elif val < 20:
+            return 'средне'
+        else:
+            return 'много'
+    df['team1_data_level'] = df['team1_matches_played'].apply(data_level)
+    df['team2_data_level'] = df['team2_matches_played'].apply(data_level)
+
+    # Объединяем финальный счет
+    df['final_score'] = df.apply(lambda row: f"{row['team1_score_final']}-{row['team2_score_final']}" if pd.notnull(row['team1_score_final']) and pd.notnull(row['team2_score_final']) else '-', axis=1)
+
+    # Формируем нужный порядок столбцов
+    columns = [
+        'date',
+        'match_id',
+        'team1_name',
+        'team2_name',
+        'team1_score',
+        'team2_score',
+        'confidence',
+        'final_score',
+        'team1_data_level',
+        'team2_data_level',
+        'team1_matches_played',
+        'team2_matches_played',
+        'last_updated'
+    ]
     styled = df[columns].copy()
     styled['date'] = styled['date'].dt.strftime('%Y-%m-%d %H:%M')
-    styled['confidence'] = styled['confidence'].map(lambda x: f"{x:.2f}")
-    styled['team1_score'] = styled['team1_score'].map(lambda x: f"{x:.2f}")
-    styled['team2_score'] = styled['team2_score'].map(lambda x: f"{x:.2f}")
-    
+    styled['team1_score'] = styled['team1_score'].map(lambda x: f"{float(x)*100:.1f}%" if pd.notnull(x) else '-')
+    styled['team2_score'] = styled['team2_score'].map(lambda x: f"{float(x)*100:.1f}%" if pd.notnull(x) else '-')
+    styled['confidence'] = styled['confidence'].map(lambda x: f"{float(x)*100:.1f}%" if pd.notnull(x) else '-')
+
+    # Центрирование нужных столбцов
+    center_cols = ['team1_score','team2_score','confidence','final_score']
+    def center_style(_):
+        return 'text-align: center;'
+
     def highlight_score(row):
-        t1 = float(row['team1_score'])
-        t2 = float(row['team2_score'])
+        try:
+            t1 = float(row['team1_score'].replace('%',''))
+            t2 = float(row['team2_score'].replace('%',''))
+        except:
+            return ['','']
         if t1 > t2:
             return ['background-color: #b6fcb6', 'background-color: #fcb6b6']
         elif t1 < t2:
             return ['background-color: #fcb6b6', 'background-color: #b6fcb6']
         else:
             return ['background-color: #fffcb6', 'background-color: #fffcb6']
-    
+
+    def highlight_data_level(val):
+        if val == 'мало':
+            return 'background-color: #ffcccc'
+        elif val == 'средне':
+            return 'background-color: #fff7cc'
+        elif val == 'много':
+            return 'background-color: #ccffcc'
+        else:
+            return ''
+
     # Стилизация таблицы
     html_table = styled.style \
+        .apply(center_style, subset=center_cols) \
         .background_gradient(subset=['confidence'], cmap='YlGnBu') \
         .apply(highlight_score, axis=1, subset=['team1_score','team2_score']) \
+        .applymap(highlight_data_level, subset=['team1_data_level','team2_data_level']) \
         .set_caption('Таблица предсказаний будущих матчей CS2') \
         .set_table_styles([
             {'selector': 'th', 'props': [('background-color', '#222'), ('color', 'white')]},
