@@ -425,6 +425,8 @@ def export_predict_table_html():
         p.confidence,
         p.model_version,
         p.last_updated,
+        p.team1_matches_played,
+        p.team2_matches_played,
         r.team1_name,
         r.team2_name,
         r.datetime,
@@ -454,14 +456,33 @@ def export_predict_table_html():
             return '-'
     df['real_score'] = df.apply(format_real_score, axis=1)
     
-    # Формируем нужный порядок столбцов: дата первой, team1_score/team2_score по центру, затем реальный счет
-    columns = ['date','match_id','team1_name','team1_score','team2_score','team2_name','team1_score_final','team2_score_final','real_score','confidence','model_version','last_updated']
+    # Добавляем индикаторы количества данных
+    def data_level(val):
+        if pd.isnull(val):
+            return 'нет данных'
+        val = int(val)
+        if val < 10:
+            return 'мало'
+        elif val < 20:
+            return 'средне'
+        else:
+            return 'много'
+    df['team1_data_level'] = df['team1_matches_played'].apply(data_level)
+    df['team2_data_level'] = df['team2_matches_played'].apply(data_level)
+
+    # Формируем нужный порядок столбцов: дата, команды, вероятности, финальный счет, количество матчей и индикаторы
+    columns = [
+        'date','match_id','team1_name','team1_score','team2_score','team2_name',
+        'team1_score_final','team2_score_final','real_score',
+        'team1_matches_played','team1_data_level','team2_matches_played','team2_data_level',
+        'confidence','model_version','last_updated'
+    ]
     styled = df[columns].copy()
     styled['date'] = styled['date'].dt.strftime('%Y-%m-%d %H:%M')
     styled['confidence'] = styled['confidence'].map(lambda x: f"{x:.2f}")
     styled['team1_score'] = styled['team1_score'].map(lambda x: f"{x:.2f}")
     styled['team2_score'] = styled['team2_score'].map(lambda x: f"{x:.2f}")
-    
+
     def highlight_score(row):
         t1 = float(row['team1_score'])
         t2 = float(row['team2_score'])
@@ -471,11 +492,22 @@ def export_predict_table_html():
             return ['background-color: #fcb6b6', 'background-color: #b6fcb6']
         else:
             return ['background-color: #fffcb6', 'background-color: #fffcb6']
-    
+
+    def highlight_data_level(val):
+        if val == 'мало':
+            return 'background-color: #ffcccc'
+        elif val == 'средне':
+            return 'background-color: #fff7cc'
+        elif val == 'много':
+            return 'background-color: #ccffcc'
+        else:
+            return ''
+
     # Стилизация таблицы
     html_table = styled.style \
         .background_gradient(subset=['confidence'], cmap='YlGnBu') \
         .apply(highlight_score, axis=1, subset=['team1_score','team2_score']) \
+        .applymap(highlight_data_level, subset=['team1_data_level','team2_data_level']) \
         .set_caption('Таблица предсказаний матчей CS2') \
         .set_table_styles([
             {'selector': 'th', 'props': [('background-color', '#222'), ('color', 'white')]},
