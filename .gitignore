@@ -6,8 +6,6 @@ __pycache__/
 *.so
 .Python
 
-# База
-*.db
 
 # Virtual Environment
 venv/
