@@ -494,7 +494,23 @@ def export_predict_table_html():
     # Объединяем финальный счет
     df['final_score'] = df.apply(lambda row: f"{row['team1_score_final']}-{row['team2_score_final']}" if pd.notnull(row['team1_score_final']) and pd.notnull(row['team2_score_final']) else '-', axis=1)
 
-    # Формируем нужный порядок столбцов
+    # --- Добавляем столбец со счетом по картам ---
+    maps_conn = sqlite3.connect(DB_PATH)
+    maps_df = pd.read_sql_query('SELECT match_id, map_name, team1_rounds, team2_rounds FROM result_match_maps', maps_conn)
+    maps_conn.close()
+    
+    def format_map_scores(match_id):
+        maps = maps_df[maps_df['match_id'] == match_id]
+        if maps.empty:
+            return '-'
+        # Формируем строку: dust2 (13-11) nuke (9-13)
+        return ' '.join([
+            f"{row['map_name']} ({row['team1_rounds']}-{row['team2_rounds']})"
+            for _, row in maps.iterrows()
+        ])
+    df['map_scores'] = df['match_id'].apply(format_map_scores)
+
+    # Формируем нужный порядок столбцов (заменяем last_updated на map_scores)
     columns = [
         'date',
         'match_id',
@@ -509,7 +525,7 @@ def export_predict_table_html():
         'team2_data_level',
         'team1_matches_played',
         'team2_matches_played',
-        'last_updated'
+        'map_scores'
     ]
     # Очистка: удаляем % и приводим к числу
     for col in ['team1_score', 'team2_score', 'confidence']:

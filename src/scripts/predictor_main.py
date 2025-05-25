@@ -530,6 +530,13 @@ class CS2MatchPredictor:
             logger.error(f"Отсутствуют необходимые колонки: {missing_columns}")
             return None
         
+        # Проверяем, что team1_id и team2_id определены
+        team1_id = df['team1_id'].iloc[0] if 'team1_id' in df.columns and not df.empty else None
+        team2_id = df['team2_id'].iloc[0] if 'team2_id' in df.columns and not df.empty else None
+        if pd.isnull(team1_id) or pd.isnull(team2_id):
+            logger.error(f"match_id={match_id}: team1_id или team2_id не определен, пропуск предсказания")
+            return None
+        
         # Создаем признаки
         try:
             # Создаем копию исходных данных для создания признаков
