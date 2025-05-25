@@ -580,12 +580,12 @@ def export_predict_table_html():
         'team2_score',
         'confidence',
         'final_score',
+        'real_score',
         'team1_data_level',
         'team1_stability_level',
         'team2_data_level',
         'team2_stability_level',
     ]
-    # Для прошедших матчей
     extra_columns = [col for col in df.columns if col not in base_columns]
     columns = base_columns + extra_columns
 
@@ -929,7 +929,6 @@ def export_upcoming_predict_table_html():
         'team2_data_level',
         'team2_stability_level',
     ]
-    # Для прошедших матчей
     extra_columns = [col for col in df.columns if col not in base_columns]
     columns = base_columns + extra_columns
     # Для upcoming аналогично
