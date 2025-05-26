@@ -563,11 +563,19 @@ def export_predict_table_html():
         else:
             return ''
 
+    # --- Объединяем data_level и matches_played ---
+    df['team1_data_info'] = df.apply(lambda row: f"{row['team1_data_level']} {row['team1_matches_played']}" if pd.notnull(row['team1_data_level']) and pd.notnull(row['team1_matches_played']) else '-', axis=1)
+    df['team2_data_info'] = df.apply(lambda row: f"{row['team2_data_level']} {row['team2_matches_played']}" if pd.notnull(row['team2_data_level']) and pd.notnull(row['team2_matches_played']) else '-', axis=1)
+    df['team1_stability_info'] = df.apply(lambda row: f"{row['team1_stability_level']} {row['team1_stability']:.2f}" if pd.notnull(row['team1_stability_level']) and pd.notnull(row['team1_stability']) else '-', axis=1)
+    df['team2_stability_info'] = df.apply(lambda row: f"{row['team2_stability_level']} {row['team2_stability']:.2f}" if pd.notnull(row['team2_stability_level']) and pd.notnull(row['team2_stability']) else '-', axis=1)
+
     # Удаляем лишние колонки для predict_table.html
     drop_cols = [
         'team1_score_final', 'team2_score_final', 'model_version', 'last_updated',
         'team1_id', 'team2_id', 'team1_rank', 'team2_rank', 'datetime',
-        'real_team1_score', 'real_team2_score'
+        'real_team1_score', 'real_team2_score',
+        'team1_data_level', 'team2_data_level', 'team1_matches_played', 'team2_matches_played',
+        'team1_stability_level', 'team2_stability_level', 'team1_stability', 'team2_stability'
     ]
     df = df.drop(columns=[col for col in drop_cols if col in df.columns])
 
@@ -581,10 +589,10 @@ def export_predict_table_html():
         'confidence',
         'final_score',
         'real_score',
-        'team1_data_level',
-        'team1_stability_level',
-        'team2_data_level',
-        'team2_stability_level',
+        'team1_data_info',
+        'team2_data_info',
+        'team1_stability_info',
+        'team2_stability_info',
     ]
     extra_columns = [col for col in df.columns if col not in base_columns]
     columns = base_columns + extra_columns
@@ -598,8 +606,6 @@ def export_predict_table_html():
     styled['team1_score'] = styled['team1_score'].map(lambda x: f"{float(x)*100:.1f}%" if pd.notnull(x) else '-')
     styled['team2_score'] = styled['team2_score'].map(lambda x: f"{float(x)*100:.1f}%" if pd.notnull(x) else '-')
     styled['confidence'] = styled['confidence'].map(lambda x: f"{float(x)*100:.1f}%" if pd.notnull(x) else '-')
-    styled['team1_stability'] = styled['team1_stability'].map(lambda x: f"{x:.2f}" if pd.notnull(x) else '-')
-    styled['team2_stability'] = styled['team2_stability'].map(lambda x: f"{x:.2f}" if pd.notnull(x) else '-')
 
     # Центрирование нужных столбцов
     center_cols = ['team1_score','team2_score','confidence','final_score']
@@ -619,15 +625,26 @@ def export_predict_table_html():
         else:
             return ['background-color: #fffcb6', 'background-color: #fffcb6']
 
-    def highlight_data_level(val):
-        if val == 'мало':
+    def highlight_data_info(val):
+        if isinstance(val, str) and val.startswith('мало'):
             return 'background-color: #ffcccc'
-        elif val == 'средне':
+        elif isinstance(val, str) and val.startswith('средне'):
             return 'background-color: #fff7cc'
-        elif val == 'много':
+        elif isinstance(val, str) and val.startswith('много'):
             return 'background-color: #ccffcc'
         else:
             return ''
+    def highlight_stability_info(val):
+        if isinstance(val, str):
+            if val.startswith('очень стабильная'):
+                return 'background-color: #ccffcc'
+            elif val.startswith('стабильная'):
+                return 'background-color: #ccffcc'
+            elif val.startswith('средняя'):
+                return 'background-color: #ffd9b3'
+            elif val.startswith('нестабильная'):
+                return 'background-color: #ffcccc'
+        return ''
 
     def highlight_row(row):
         def parse_score(score):
@@ -711,8 +728,8 @@ def export_predict_table_html():
         .apply(highlight_row, axis=1) \
         .set_properties(**{'text-align': 'center'}, subset=center_cols) \
         .apply(highlight_score, axis=1, subset=['team1_score','team2_score']) \
-        .applymap(highlight_data_level, subset=['team1_data_level','team2_data_level']) \
-        .applymap(highlight_stability_level, subset=['team1_stability_level','team2_stability_level']) \
+        .applymap(highlight_data_info, subset=['team1_data_info','team2_data_info']) \
+        .applymap(highlight_stability_info, subset=['team1_stability_info','team2_stability_info']) \
         .set_caption(f'Таблица предсказаний матчей CS2 — Угадан победитель (всего: {len(df_correct)})') \
         .set_table_styles([
             {'selector': 'th', 'props': [('background-color', '#222'), ('color', 'white')]},
@@ -728,8 +745,8 @@ def export_predict_table_html():
         .apply(highlight_row, axis=1) \
         .set_properties(**{'text-align': 'center'}, subset=center_cols) \
         .apply(highlight_score, axis=1, subset=['team1_score','team2_score']) \
-        .applymap(highlight_data_level, subset=['team1_data_level','team2_data_level']) \
-        .applymap(highlight_stability_level, subset=['team1_stability_level','team2_stability_level']) \
+        .applymap(highlight_data_info, subset=['team1_data_info','team2_data_info']) \
+        .applymap(highlight_stability_info, subset=['team1_stability_info','team2_stability_info']) \
         .set_caption(f'Таблица предсказаний матчей CS2 — Не угадан победитель (всего: {len(df_wrong)})') \
         .set_table_styles([
             {'selector': 'th', 'props': [('background-color', '#222'), ('color', 'white')]},
@@ -881,7 +898,6 @@ def export_upcoming_predict_table_html():
     df['team1_stability'] = df['team1_id'].apply(lambda tid: get_team_stability(tid, 20, DB_PATH))
     df['team2_stability'] = df['team2_id'].apply(lambda tid: get_team_stability(tid, 20, DB_PATH))
 
-    # ... после расчета team1_stability и team2_stability ...
     def stability_level(val):
         if pd.isnull(val):
             return 'нет данных'
@@ -896,22 +912,18 @@ def export_upcoming_predict_table_html():
     df['team1_stability_level'] = df['team1_stability'].apply(stability_level)
     df['team2_stability_level'] = df['team2_stability'].apply(stability_level)
 
-    def highlight_stability_level(val):
-        if val == 'очень стабильная':
-            return 'background-color: #ccffcc'  # светло-зеленый
-        elif val == 'стабильная':
-            return 'background-color: #ccffcc'  # теперь тоже светло-зеленый
-        elif val == 'средняя':
-            return 'background-color: #ffd9b3'  # светло-оранжевый
-        elif val == 'нестабильная':
-            return 'background-color: #ffcccc'  # светло-красный
-        else:
-            return ''
+    # --- Объединяем data_level и matches_played ---
+    df['team1_data_info'] = df.apply(lambda row: f"{row['team1_data_level']} {row['team1_matches_played']}" if pd.notnull(row['team1_data_level']) and pd.notnull(row['team1_matches_played']) else '-', axis=1)
+    df['team2_data_info'] = df.apply(lambda row: f"{row['team2_data_level']} {row['team2_matches_played']}" if pd.notnull(row['team2_data_level']) and pd.notnull(row['team2_matches_played']) else '-', axis=1)
+    df['team1_stability_info'] = df.apply(lambda row: f"{row['team1_stability_level']} {row['team1_stability']:.2f}" if pd.notnull(row['team1_stability_level']) and pd.notnull(row['team1_stability']) else '-', axis=1)
+    df['team2_stability_info'] = df.apply(lambda row: f"{row['team2_stability_level']} {row['team2_stability']:.2f}" if pd.notnull(row['team2_stability_level']) and pd.notnull(row['team2_stability']) else '-', axis=1)
 
     # Удаляем лишние колонки для upcoming_predict_table.html
     drop_cols = [
         'team1_id', 'team2_id', 'team1_rank', 'team2_rank', 'datetime',
-        'team1_score_final', 'team2_score_final', 'model_version', 'last_updated'
+        'team1_score_final', 'team2_score_final', 'model_version', 'last_updated',
+        'team1_data_level', 'team2_data_level', 'team1_matches_played', 'team2_matches_played',
+        'team1_stability_level', 'team2_stability_level', 'team1_stability', 'team2_stability'
     ]
     df = df.drop(columns=[col for col in drop_cols if col in df.columns])
 
@@ -924,16 +936,13 @@ def export_upcoming_predict_table_html():
         'team2_score',
         'confidence',
         'final_score',
-        'team1_data_level',
-        'team1_stability_level',
-        'team2_data_level',
-        'team2_stability_level',
+        'team1_data_info',
+        'team2_data_info',
+        'team1_stability_info',
+        'team2_stability_info',
     ]
     extra_columns = [col for col in df.columns if col not in base_columns]
     columns = base_columns + extra_columns
-    # Для upcoming аналогично
-    extra_columns_upcoming = [col for col in df.columns if col not in base_columns]
-    columns = base_columns + extra_columns_upcoming
 
     # Очистка: удаляем % и приводим к числу
     for col in ['team1_score', 'team2_score', 'confidence']:
@@ -944,14 +953,10 @@ def export_upcoming_predict_table_html():
     styled['team1_score'] = styled['team1_score'].map(lambda x: f"{float(x)*100:.1f}%" if pd.notnull(x) else '-')
     styled['team2_score'] = styled['team2_score'].map(lambda x: f"{float(x)*100:.1f}%" if pd.notnull(x) else '-')
     styled['confidence'] = styled['confidence'].map(lambda x: f"{float(x)*100:.1f}%" if pd.notnull(x) else '-')
-    styled['team1_stability'] = styled['team1_stability'].map(lambda x: f"{x:.2f}" if pd.notnull(x) else '-')
-    styled['team2_stability'] = styled['team2_stability'].map(lambda x: f"{x:.2f}" if pd.notnull(x) else '-')
 
-    # Центрирование нужных столбцов
     center_cols = ['team1_score','team2_score','confidence','final_score']
     def center_style(_):
         return 'text-align: center;'
-
     def highlight_score(row):
         try:
             t1 = float(row['team1_score'].replace('%',''))
@@ -964,28 +969,36 @@ def export_upcoming_predict_table_html():
             return ['background-color: #fcb6b6', 'background-color: #b6fcb6']
         else:
             return ['background-color: #fffcb6', 'background-color: #fffcb6']
-
-    def highlight_data_level(val):
-        if val == 'мало':
+    def highlight_data_info(val):
+        if isinstance(val, str) and val.startswith('мало'):
             return 'background-color: #ffcccc'
-        elif val == 'средне':
+        elif isinstance(val, str) and val.startswith('средне'):
             return 'background-color: #fff7cc'
-        elif val == 'много':
+        elif isinstance(val, str) and val.startswith('много'):
             return 'background-color: #ccffcc'
         else:
             return ''
-
+    def highlight_stability_info(val):
+        if isinstance(val, str):
+            if val.startswith('очень стабильная'):
+                return 'background-color: #ccffcc'
+            elif val.startswith('стабильная'):
+                return 'background-color: #ccffcc'
+            elif val.startswith('средняя'):
+                return 'background-color: #ffd9b3'
+            elif val.startswith('нестабильная'):
+                return 'background-color: #ffcccc'
+        return ''
     def zebra_striping(row):
         color = '#f5f5f5' if row.name % 2 else 'white'
         return [f'background-color: {color}'] * len(row)
 
-    # ...
-    html_table = styled.style \
+    html_table = styled[columns].style \
         .apply(zebra_striping, axis=1) \
         .set_properties(**{'text-align': 'center'}, subset=center_cols) \
         .apply(highlight_score, axis=1, subset=['team1_score','team2_score']) \
-        .applymap(highlight_data_level, subset=['team1_data_level','team2_data_level']) \
-        .applymap(highlight_stability_level, subset=['team1_stability_level','team2_stability_level']) \
+        .applymap(highlight_data_info, subset=['team1_data_info','team2_data_info']) \
+        .applymap(highlight_stability_info, subset=['team1_stability_info','team2_stability_info']) \
         .set_caption('Таблица предсказаний будущих матчей CS2') \
         .set_table_styles([
             {'selector': 'th', 'props': [('background-color', '#222'), ('color', 'white')]},
@@ -993,7 +1006,6 @@ def export_upcoming_predict_table_html():
         ]) \
         .hide(axis='index') \
         .format(na_rep='-')
-
     html_path = f"{OUTPUT_PATH}/upcoming_predict_table.html"
     html_table.to_html(html_path, encoding='utf-8')
     print(f"HTML-таблица предсказаний будущих матчей сохранена: {html_path}")
