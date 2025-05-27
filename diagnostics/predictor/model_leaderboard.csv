@@ -1,2 +1,2 @@
 Model,Accuracy,AUC,Recall,Prec.,F1,Kappa,MCC
-Random Forest Classifier,1.0,1.0,1.0,1.0,1.0,1.0,1.0
+Logistic Regression,0.9066,0.9775,0.9296,0.8992,0.9141,0.8119,0.8124

@@ -410,6 +410,190 @@ def create_summary_report():
             <img src="visualizations/{filename}" alt="{title}">
             """
     
+    # --- ДОБАВЛЯЕМ АНАЛИЗ ОШИБОК ПРЕДИКТОРА ---
+    html_content += "<h2>❌ Анализ неугаданных матчей</h2>"
+    # Загружаем predict + реальные результаты
+    conn = sqlite3.connect(DB_PATH)
+    query = '''
+    SELECT 
+        p.match_id,
+        p.team1_score,
+        p.team2_score,
+        p.team1_score_final,
+        p.team2_score_final,
+        p.confidence,
+        p.model_version,
+        p.last_updated,
+        r.team1_id,
+        r.team2_id,
+        r.team1_name,
+        r.team1_rank,
+        r.team2_name,
+        r.team2_rank,
+        r.datetime,
+        r.team1_score as real_team1_score,
+        r.team2_score as real_team2_score
+    FROM predict p
+    LEFT JOIN result_match r ON p.match_id = r.match_id
+    WHERE r.datetime IS NOT NULL
+    ORDER BY r.datetime DESC
+    '''
+    df = pd.read_sql_query(query, conn)
+    conn.close()
+    if df.empty:
+        html_content += "<p>Нет данных для анализа ошибок.</p>"
+    else:
+        df['date'] = pd.to_datetime(df['datetime'], unit='s')
+        df = df.sort_values('date', ascending=False)
+        def name_with_rank(name, rank):
+            if pd.notnull(rank):
+                return f"#{int(rank)} {name}"
+            else:
+                return name
+        df['team1_name'] = df.apply(lambda row: name_with_rank(row['team1_name'], row['team1_rank']), axis=1)
+        df['team2_name'] = df.apply(lambda row: name_with_rank(row['team2_name'], row['team2_rank']), axis=1)
+        def format_real_score(row):
+            if pd.notnull(row['real_team1_score']) and pd.notnull(row['real_team2_score']):
+                return f"{int(row['real_team1_score'])}:{int(row['real_team2_score'])}"
+            else:
+                return '-'
+        df['real_score'] = df.apply(format_real_score, axis=1)
+        df['final_score'] = df.apply(lambda row: f"{row['team1_score_final']}-{row['team2_score_final']}" if pd.notnull(row['team1_score_final']) and pd.notnull(row['team2_score_final']) else '-', axis=1)
+        # Уверенность и вероятности в числовой вид
+        for col in ['team1_score', 'team2_score', 'confidence']:
+            df[col] = pd.to_numeric(df[col], errors='coerce')
+        # --- Определяем, угадан ли победитель ---
+        def is_winner_guessed(row):
+            def parse_score(score):
+                if isinstance(score, str) and '-' in score:
+                    parts = score.split('-')
+                    try:
+                        return int(parts[0]), int(parts[1])
+                    except:
+                        return None, None
+                if isinstance(score, str) and ':' in score:
+                    parts = score.split(':')
+                    try:
+                        return int(parts[0]), int(parts[1])
+                    except:
+                        return None, None
+                return None, None
+            pred1, pred2 = parse_score(row['final_score'])
+            real1, real2 = parse_score(row['real_score'])
+            if None in (pred1, pred2, real1, real2):
+                return False
+            pred_winner = 1 if pred1 > pred2 else 2 if pred2 > pred1 else 0
+            real_winner = 1 if real1 > real2 else 2 if real2 > real1 else 0
+            return pred_winner == real_winner and pred_winner != 0
+        df['winner_guessed'] = df.apply(is_winner_guessed, axis=1)
+        df_wrong = df[df['winner_guessed'] == False].copy()
+        df_correct = df[df['winner_guessed'] == True].copy()
+        # --- Таблица неугаданных матчей (топ-10 по уверенности) ---
+        html_content += "<h3>Топ-10 неугаданных матчей по уверенности</h3>"
+        if not df_wrong.empty:
+            top_wrong = df_wrong.sort_values('confidence', ascending=False).head(10)
+            html_content += top_wrong[['date','team1_name','team2_name','team1_score','team2_score','confidence','final_score','real_score']].to_html(index=False, escape=False)
+        else:
+            html_content += "<p>Нет неугаданных матчей.</p>"
+        # --- Визуализации по неугаданным ---
+        # 1. Распределение confidence
+        plt.figure(figsize=(8,4))
+        sns.histplot(df_wrong['confidence'], bins=10, color='red', alpha=0.7)
+        plt.title('Распределение уверенности (неугаданные)')
+        plt.xlabel('Confidence')
+        plt.ylabel('Count')
+        fname1 = f'{OUTPUT_PATH}/wrong_confidence_dist.png'
+        plt.tight_layout(); plt.savefig(fname1); plt.close()
+        # 2. Boxplot по стабильности
+        if 'team1_stability_info' in df.columns and 'team2_stability_info' in df.columns:
+            def extract_stab(val):
+                try:
+                    return float(str(val).split()[-1])
+                except:
+                    return np.nan
+            df_wrong['team1_stab'] = df_wrong['team1_stability_info'].apply(extract_stab)
+            df_wrong['team2_stab'] = df_wrong['team2_stability_info'].apply(extract_stab)
+            plt.figure(figsize=(8,4))
+            sns.boxplot(data=df_wrong[['team1_stab','team2_stab']])
+            plt.title('Стабильность команд (неугаданные)')
+            plt.ylabel('Stability')
+            fname2 = f'{OUTPUT_PATH}/wrong_stability_boxplot.png'
+            plt.tight_layout(); plt.savefig(fname2); plt.close()
+        # 3. Гистограмма разницы рангов
+        if 'team1_rank' in df.columns and 'team2_rank' in df.columns:
+            df_wrong['rank_diff'] = pd.to_numeric(df_wrong['team1_rank'], errors='coerce') - pd.to_numeric(df_wrong['team2_rank'], errors='coerce')
+            plt.figure(figsize=(8,4))
+            sns.histplot(df_wrong['rank_diff'].dropna(), bins=10, color='purple', alpha=0.7)
+            plt.title('Разница рангов (team1 - team2) в неугаданных')
+            plt.xlabel('Rank diff')
+            fname3 = f'{OUTPUT_PATH}/wrong_rankdiff_hist.png'
+            plt.tight_layout(); plt.savefig(fname3); plt.close()
+        # 4. Heatmap корреляций признаков
+        plt.figure(figsize=(8,6))
+        corr = df_wrong[['confidence','team1_score','team2_score']]
+        if 'team1_stab' in df_wrong and 'team2_stab' in df_wrong:
+            corr = pd.concat([corr, df_wrong[['team1_stab','team2_stab']]], axis=1)
+        if 'rank_diff' in df_wrong:
+            corr = pd.concat([corr, df_wrong[['rank_diff']]], axis=1)
+        corr = corr.dropna(axis=1, how='all')
+        sns.heatmap(corr.corr(), annot=True, cmap='coolwarm', fmt='.2f')
+        plt.title('Корреляция признаков (неугаданные)')
+        fname4 = f'{OUTPUT_PATH}/wrong_corr_heatmap.png'
+        plt.tight_layout(); plt.savefig(fname4); plt.close()
+        # --- Вставляем графики ---
+        for fname, title in [
+            ('wrong_confidence_dist.png', 'Распределение уверенности (неугаданные)'),
+            ('wrong_stability_boxplot.png', 'Стабильность команд (неугаданные)'),
+            ('wrong_rankdiff_hist.png', 'Разница рангов (неугаданные)'),
+            ('wrong_corr_heatmap.png', 'Корреляция признаков (неугаданные)')
+        ]:
+            if Path(f'{OUTPUT_PATH}/{fname}').exists():
+                html_content += f"<h3>{title}</h3><img src=\"visualizations/{fname}\" alt=\"{title}\">"
+        # --- Автоматический текстовый анализ ---
+        html_content += "<h3>Автоматический анализ ошибок</h3>"
+        # Средние значения признаков
+        mean_wrong_conf = df_wrong['confidence'].mean()
+        mean_correct_conf = df_correct['confidence'].mean()
+        html_content += f"<p>Средняя уверенность (неугаданные): {mean_wrong_conf:.2f}%<br>"
+        html_content += f"Средняя уверенность (угаданные): {mean_correct_conf:.2f}%<br>"
+        # Стабильность
+        if 'team1_stab' in df_wrong and 'team1_stab' in df_correct:
+            html_content += f"Средняя стабильность team1 (неугаданные): {df_wrong['team1_stab'].mean():.2f}<br>"
+            html_content += f"Средняя стабильность team1 (угаданные): {df_correct['team1_stab'].mean():.2f}<br>"
+        # Разница рангов
+        if 'rank_diff' in df_wrong and 'rank_diff' in df_correct:
+            html_content += f"Средняя разница рангов (неугаданные): {df_wrong['rank_diff'].mean():.2f}<br>"
+            html_content += f"Средняя разница рангов (угаданные): {df_correct['rank_diff'].mean():.2f}<br>"
+        # --- Топ-5 отличий по средним значениям признаков ---
+        html_content += "<h4>Топ-5 отличий по средним значениям признаков</h4>"
+        num_cols_wrong = set(df_wrong.select_dtypes(include=[np.number]).columns)
+        num_cols_correct = set(df_correct.select_dtypes(include=[np.number]).columns)
+        common_num_cols = list(num_cols_wrong & num_cols_correct)
+        if common_num_cols:
+            diffs = (df_wrong[common_num_cols].mean() - df_correct[common_num_cols].mean()).abs().sort_values(ascending=False)
+            for col in diffs.head(5).index:
+                html_content += f"{col}: разница {diffs[col]:.2f}<br>"
+        else:
+            html_content += "<p>Нет общих числовых признаков для сравнения.</p>"
+        # --- Overconfident ошибки ---
+        html_content += "<h4>Ошибки с самой высокой уверенностью</h4>"
+        overconf = df_wrong.sort_values('confidence', ascending=False).head(5)
+        html_content += overconf[['date','team1_name','team2_name','team1_score','team2_score','confidence','final_score','real_score']].to_html(index=False, escape=False)
+        # --- Close-матчи с ошибкой ---
+        html_content += "<h4>Ошибки в close-матчах (40-60%)</h4>"
+        def is_close_match(row):
+            try:
+                t1 = float(row['team1_score'])
+                t2 = float(row['team2_score'])
+            except:
+                return False
+            return 40 <= t1 <= 60 and 40 <= t2 <= 60
+        close_wrong = df_wrong[df_wrong.apply(is_close_match, axis=1)]
+        if not close_wrong.empty:
+            html_content += close_wrong[['date','team1_name','team2_name','team1_score','team2_score','confidence','final_score','real_score']].to_html(index=False, escape=False)
+        else:
+            html_content += "<p>Нет ошибок в close-матчах.</p>"
+
     html_content += """
         </div>
     </body>
@@ -711,12 +895,33 @@ def export_predict_table_html():
     df_correct = styled[styled['winner_guessed']].copy().reset_index(drop=True)
     df_wrong = styled[~styled['winner_guessed']].copy().reset_index(drop=True)
 
+    # --- Добавляем третью таблицу: close matches (40-60%) ---
+    def is_close_match(row):
+        try:
+            t1 = float(row['team1_score'].replace('%',''))
+            t2 = float(row['team2_score'].replace('%',''))
+        except:
+            return False
+        return 40 <= t1 <= 60 and 40 <= t2 <= 60
+
+    # Собираем close-матчи из обеих таблиц
+    df_all = pd.concat([df_correct, df_wrong], ignore_index=True)
+    df_close = df_all[df_all.apply(is_close_match, axis=1)].copy().reset_index(drop=True)
+
+    # Удаляем close-матчи из первых двух таблиц
+    close_indices_correct = df_correct.apply(is_close_match, axis=1)
+    close_indices_wrong = df_wrong.apply(is_close_match, axis=1)
+    df_correct = df_correct[~close_indices_correct].reset_index(drop=True)
+    df_wrong = df_wrong[~close_indices_wrong].reset_index(drop=True)
+
     # Добавляем счетчик строк
     df_correct.insert(0, '№', df_correct.index + 1)
     df_wrong.insert(0, '№', df_wrong.index + 1)
+    df_close.insert(0, '№', df_close.index + 1)
 
     # Список столбцов для экспорта (добавляем '№' в начало)
     export_columns = ['№'] + [col for col in columns if col in df_correct.columns]
+    export_columns_close = ['№'] + [col for col in columns if col in df_close.columns]
 
     def zebra_striping(row):
         color = '#f5f5f5' if row.name % 2 else 'white'
@@ -756,7 +961,24 @@ def export_predict_table_html():
         .format(na_rep='-')
     html_wrong = html_table_wrong.to_html(encoding='utf-8')
 
-    # --- Объединяем обе таблицы в один HTML-файл ---
+    # --- Стилизация и экспорт третьей таблицы (close matches) ---
+    html_table_close = df_close[export_columns_close].style \
+        .apply(zebra_striping, axis=1) \
+        .apply(highlight_row, axis=1) \
+        .set_properties(**{'text-align': 'center'}, subset=center_cols) \
+        .apply(highlight_score, axis=1, subset=['team1_score','team2_score']) \
+        .applymap(highlight_data_info, subset=['team1_data_info','team2_data_info']) \
+        .applymap(highlight_stability_info, subset=['team1_stability_info','team2_stability_info']) \
+        .set_caption(f'Таблица матчей с близким соотношением сил (40-60%) (всего: {len(df_close)})') \
+        .set_table_styles([
+            {'selector': 'th', 'props': [('background-color', '#222'), ('color', 'white')]},
+            {'selector': 'caption', 'props': [('caption-side', 'top'), ('font-size', '18px'), ('font-weight', 'bold')]}
+        ]) \
+        .hide(axis='index') \
+        .format(na_rep='-')
+    html_close = html_table_close.to_html(encoding='utf-8')
+
+    # --- Объединяем три таблицы в один HTML-файл ---
     full_html = f"""
 <!DOCTYPE html>
 <html>
@@ -777,13 +999,17 @@ def export_predict_table_html():
     <div class=\"table-container\">
         {html_wrong}
     </div>
+    <hr>
+    <div class=\"table-container\">
+        {html_close}
+    </div>
 </body>
 </html>
 """
     html_path = f"{OUTPUT_PATH}/predict_table.html"
     with open(html_path, "w", encoding="utf-8") as f:
         f.write(full_html)
-    print(f"HTML-таблица предсказаний (две таблицы) сохранена: {html_path}")
+    print(f"HTML-таблица предсказаний (три таблицы) сохранена: {html_path}")
 
     # График: распределение confidence и вероятностей
     plt.figure(figsize=(12,6))
