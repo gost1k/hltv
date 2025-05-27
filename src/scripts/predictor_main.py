@@ -13,6 +13,8 @@ import json
 from pathlib import Path
 from loguru import logger
 import warnings
+import pickle
+from sklearn.calibration import CalibratedClassifierCV
 warnings.filterwarnings('ignore')
 
 # PyCaret imports
@@ -351,22 +353,21 @@ class CS2MatchPredictor:
         if df is None:
             return False
         
-        # Разделяем на обучающую и валидационную выборки по времени
-        split_date = end_date - timedelta(days=30)  # Последние 30 дней для валидации
-        split_timestamp = int(split_date.timestamp())
-        
-        train_df = df[df['datetime'] < split_timestamp].copy()
-        test_df = df[df['datetime'] >= split_timestamp].copy()
+        # Разделяем на обучающую и калибровочную выборки по времени
+        df = df.sort_values('datetime')
+        split_idx = int(len(df) * 0.8)
+        train_df = df.iloc[:split_idx].copy()
+        calib_df = df.iloc[split_idx:].copy()
         
         logger.info(f"Обучающая выборка: {len(train_df)} матчей")
-        logger.info(f"Тестовая выборка: {len(test_df)} матчей")
+        logger.info(f"Калибровочная выборка: {len(calib_df)} матчей")
         
         # Настройка PyCaret
         logger.info("Инициализация PyCaret...")
         
         # Выбираем только нужные колонки
         train_data = train_df[self.feature_columns + ['team1_won']]
-        test_data = test_df[self.feature_columns + ['team1_won']]
+        test_data = calib_df[self.feature_columns + ['team1_won']]
         
         # Настройка эксперимента
         clf1 = setup(
@@ -396,12 +397,36 @@ class CS2MatchPredictor:
             budget_time=time_limit  # Время в минутах на модель
         )
         
-        # Обучаем финальную модель на всех данных
+        # Обучаем финальную модель на train_df
         logger.info("Обучение финальной модели...")
         self.best_model = finalize_model(best_model)
         
         # Сохраняем модель
         save_model(self.best_model, f'{self.model_path}/cs2_predictor')
+        
+        # Калибровка вероятностей
+        X_calib = calib_df[self.feature_columns]
+        y_calib = calib_df['team1_won']
+        try:
+            calibrator = CalibratedClassifierCV(estimator=self.best_model, method='sigmoid', cv='prefit')
+            calibrator.fit(X_calib, y_calib)
+            self.calibrator = calibrator
+            with open(f'{self.model_path}/calibrator.pkl', 'wb') as f:
+                pickle.dump(calibrator, f)
+            # Сохраняем вероятности до/после калибровки для анализа
+            orig_probs = self.best_model.predict_proba(X_calib)[:,1] if hasattr(self.best_model, 'predict_proba') else self.best_model.predict(X_calib)
+            cal_probs = calibrator.predict_proba(X_calib)[:,1]
+            pd.DataFrame({'orig': orig_probs, 'calibrated': cal_probs, 'y': y_calib}).to_csv(f'{DIAGNOSTICS_PATH}/calib_probs.csv', index=False)
+            # Brier score
+            from sklearn.metrics import brier_score_loss
+            brier_orig = brier_score_loss(y_calib, orig_probs)
+            brier_cal = brier_score_loss(y_calib, cal_probs)
+            with open(f'{DIAGNOSTICS_PATH}/calibration_metrics.txt', 'w') as f:
+                f.write(f'Brier до калибровки: {brier_orig}\nBrier после калибровки: {brier_cal}\n')
+            logger.info(f'Brier до калибровки: {brier_orig:.4f}, после: {brier_cal:.4f}')
+        except Exception as e:
+            logger.warning(f'Ошибка калибровки: {e}')
+            self.calibrator = None
         
         # Получаем важность признаков
         try:
@@ -416,7 +441,7 @@ class CS2MatchPredictor:
             logger.warning("Не удалось получить важность признаков для данной модели")
         
         # Оцениваем качество
-        self._evaluate_model(test_df)
+        self._evaluate_model(calib_df)
         
         logger.info("Обучение завершено успешно!")
         self.predict_upcoming_matches()
@@ -475,6 +500,14 @@ class CS2MatchPredictor:
             # Выводим топ-20 важных признаков
             logger.info("Топ-20 важных признаков:")
             logger.info(f"\n{self.feature_importance.head(20)}")
+    
+    def load_calibrator(self):
+        try:
+            with open(f'{self.model_path}/calibrator.pkl', 'rb') as f:
+                self.calibrator = pickle.load(f)
+        except Exception as e:
+            self.calibrator = None
+            logger.warning(f'Не удалось загрузить calibrator: {e}')
     
     def predict_match(self, match_id):
         """Предсказание результата конкретного матча"""
@@ -579,28 +612,14 @@ class CS2MatchPredictor:
                 return None
             
             # Предсказываем
-            match_data = features_df[[
-                'rank_diff', 'rank_ratio', 'h2h_total', 'h2h_winrate_team1',
-                'hour', 'weekday', 'log_rank_team1', 'log_rank_team2',
-                'team1_avg_rating', 'team1_avg_kd', 'team1_avg_adr', 'team1_avg_kast',
-                'team1_max_rating', 'team1_min_rating', 'team2_avg_rating', 'team2_avg_kd',
-                'team2_avg_adr', 'team2_avg_kast', 'team2_max_rating', 'team2_min_rating',
-                'team1_avg_rating_2_1', 'team1_avg_firepower', 'team1_avg_opening',
-                'team1_avg_clutching', 'team1_avg_sniping', 'team2_avg_rating_2_1',
-                'team2_avg_firepower', 'team2_avg_opening', 'team2_avg_clutching',
-                'team2_avg_sniping', 'rating_diff', 'kd_diff', 'firepower_diff',
-                'team1_recent_winrate', 'team1_avg_score_for', 'team1_avg_score_against',
-                'team1_matches_played', 'team2_recent_winrate', 'team2_avg_score_for',
-                'team2_avg_score_against', 'team2_matches_played', 'winrate_diff',
-                'matches_played_diff'
-            ]]
-            
-            # Используем модель напрямую
-            if hasattr(self.best_model, 'predict_proba'):
+            match_data = features_df[self.feature_columns]
+            if hasattr(self, 'calibrator') and self.calibrator is not None:
+                probabilities = self.calibrator.predict_proba(match_data)
+                prob_team1_win = probabilities[0][1]
+            elif hasattr(self.best_model, 'predict_proba'):
                 probabilities = self.best_model.predict_proba(match_data)
                 prob_team1_win = probabilities[0][1]
             else:
-                # Если модель не поддерживает вероятности
                 prediction = self.best_model.predict(match_data)
                 prob_team1_win = float(prediction[0])
                 
@@ -643,27 +662,34 @@ class CS2MatchPredictor:
         logger.info(f"Предсказание для матча {match_id}: {result}")
         return result
     
-    def predict_upcoming_matches(self):
+    def predict_upcoming_matches(self, force_update_all=False):
         """Предсказание всех предстоящих матчей"""
         logger.info("Предсказание предстоящих матчей...")
-        
         with self._get_connection() as conn:
-            # Получаем непредсказанные матчи
-            query = """
-            SELECT DISTINCT um.match_id
-            FROM upcoming_match um
-            LEFT JOIN predict p ON um.match_id = p.match_id
-            WHERE p.match_id IS NULL
-                OR p.last_updated < datetime('now', '-1 day')
-            """
-            upcoming_matches = pd.read_sql_query(query, conn)
-        
+            if force_update_all:
+                # Обновляем все будущие матчи, для которых нет результата
+                query = """
+                SELECT um.match_id
+                FROM upcoming_match um
+                LEFT JOIN result_match r ON um.match_id = r.match_id
+                WHERE r.match_id IS NULL
+                """
+                upcoming_matches = pd.read_sql_query(query, conn)
+            else:
+                # Только те, у которых нет прогноза или он устарел
+                query = """
+                SELECT DISTINCT um.match_id
+                FROM upcoming_match um
+                LEFT JOIN predict p ON um.match_id = p.match_id
+                WHERE p.match_id IS NULL
+                    OR p.last_updated < datetime('now', '-1 day')
+                """
+                upcoming_matches = pd.read_sql_query(query, conn)
         if upcoming_matches.empty:
             logger.info("Нет матчей для предсказания")
             return
-        
         logger.info(f"Найдено {len(upcoming_matches)} матчей для предсказания")
-        
+        self.load_calibrator()
         predictions = []
         for match_id in upcoming_matches['match_id']:
             try:
@@ -672,7 +698,6 @@ class CS2MatchPredictor:
                     predictions.append(pred)
             except Exception as e:
                 logger.error(f"Ошибка при предсказании матча {match_id}: {e}")
-        
         # Сохраняем предсказания в БД
         if predictions:
             self._save_predictions(predictions)
@@ -718,7 +743,6 @@ class CS2MatchPredictor:
     def retrain(self):
         """Дообучение модели на новых данных"""
         logger.info("Дообучение модели на новых данных")
-        
         # Проверяем, есть ли существующая модель
         model_file = f"{self.model_path}/cs2_predictor.pkl"
         if os.path.exists(model_file):
@@ -726,19 +750,17 @@ class CS2MatchPredictor:
             backup_path = f"{model_file}.backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
             os.rename(model_file, backup_path)
             logger.info(f"Создан backup модели: {backup_path}")
-        
         # Обучаем новую модель
         success = self.train(time_limit=120, n_models=20)  # 2 часа, больше моделей
-        
         if not success:
             # Восстанавливаем старую модель если обучение не удалось
             if os.path.exists(backup_path):
                 os.rename(backup_path, model_file)
                 logger.error("Обучение не удалось, восстановлена предыдущая модель")
             return False
-        
         logger.info("Дообучение завершено успешно!")
-        self.predict_upcoming_matches()
+        # После retrain обновляем ВСЕ прогнозы для будущих матчей
+        self.predict_upcoming_matches(force_update_all=True)
         return True
 
 

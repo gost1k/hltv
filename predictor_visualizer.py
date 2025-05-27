@@ -11,6 +11,7 @@ import json
 from pathlib import Path
 from datetime import datetime
 import numpy as np
+import os
 
 # Настройка стиля графиков
 plt.style.use('seaborn-v0_8-darkgrid')
@@ -574,7 +575,21 @@ def create_summary_report():
             for col in diffs.head(5).index:
                 html_content += f"{col}: разница {diffs[col]:.2f}<br>"
         else:
-            html_content += "<p>Нет общих числовых признаков для сравнения.</p>"
+            html_content += "Нет общих числовых признаков для сравнения.<br>"
+        # --- Сравнение вероятностей до/после калибровки ---
+        if os.path.exists('diagnostics/predictor/calib_probs.csv'):
+            calib_df = pd.read_csv('diagnostics/predictor/calib_probs.csv')
+            plt.figure(figsize=(8,4))
+            plt.hist(calib_df['orig'], bins=20, alpha=0.5, label='До калибровки')
+            plt.hist(calib_df['calibrated'], bins=20, alpha=0.5, label='После калибровки')
+            plt.legend()
+            plt.title('Распределение вероятностей до и после калибровки')
+            plt.xlabel('Вероятность победы Team1')
+            plt.ylabel('Частота')
+            plt.tight_layout()
+            plt.savefig('predictor/visualizations/calibration_hist.png')
+            html_content += '<h4>Распределение вероятностей до и после калибровки</h4>'
+            html_content += '<img src="visualizations/calibration_hist.png" alt="Calibration histogram">'
         # --- Overconfident ошибки ---
         html_content += "<h4>Ошибки с самой высокой уверенностью</h4>"
         overconf = df_wrong.sort_values('confidence', ascending=False).head(5)
