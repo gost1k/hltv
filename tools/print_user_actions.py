@@ -1,5 +1,5 @@
 import json
-from datetime import datetime
+from datetime import datetime, date
 import os
 
 ACTIONS_PATH = os.path.join(os.path.dirname(__file__), '../storage/json/bot/user_actions.json')
@@ -15,12 +15,26 @@ def main():
     if not users:
         print("Нет данных о действиях пользователей.")
         return
+    today = date.today()
+    any_actions = False
     for user_id, user_data in users.items():
-        print(f"Пользователь: {user_id}")
-        print(f"  Всего действий: {user_data.get('total_actions', 0)}")
-        print(f"  Последнее действие: {user_data.get('last_action_time', '-')}")
-        print("  Действия:")
+        todays_actions = []
         for action in user_data.get('actions', []):
+            ts = action['timestamp']
+            try:
+                action_date = datetime.fromisoformat(ts).date()
+            except Exception:
+                continue
+            if action_date == today:
+                todays_actions.append(action)
+        if not todays_actions:
+            continue
+        any_actions = True
+        print(f"Пользователь: {user_id}")
+        print(f"  Всего действий сегодня: {len(todays_actions)}")
+        print(f"  Последнее действие сегодня: {todays_actions[-1]['timestamp']}")
+        print("  Действия:")
+        for action in todays_actions:
             ts = action['timestamp']
             try:
                 ts = datetime.fromisoformat(ts).strftime('%d.%m.%Y %H:%M:%S')
@@ -28,6 +42,8 @@ def main():
                 pass
             print(f"    [{ts}] {action['action']} -> {action['value']}")
         print('-' * 40)
+    if not any_actions:
+        print("Нет действий пользователей за сегодня.")
 
 if __name__ == "__main__":
     main() 
