@@ -71,11 +71,13 @@ class HLTVUserBot:
         self.MENU_UPCOMING_MATCHES = "Будущие матчи"
         self.MENU_COMPLETED_MATCHES = "Прошедшие матчи"
         self.MENU_LIVE_MATCHES = "Live матчи"
+        self.MENU_AI_PREDICTIONS = "AI прогнозы"
         self.MOSCOW_TIMEZONE = timezone(timedelta(hours=3))
         self.menu_keyboard = [
             [KeyboardButton(self.MENU_LIVE_MATCHES)],
             [KeyboardButton(self.MENU_UPCOMING_MATCHES)],
-            [KeyboardButton(self.MENU_COMPLETED_MATCHES)]
+            [KeyboardButton(self.MENU_COMPLETED_MATCHES)],
+            [KeyboardButton(self.MENU_AI_PREDICTIONS)]
         ]
         self.markup = ReplyKeyboardMarkup(self.menu_keyboard, resize_keyboard=True)
         self.live_keyboard = [[KeyboardButton("Назад")]]
@@ -127,7 +129,7 @@ class HLTVUserBot:
             "За сегодня", "За вчера", "За 3 дня",
             "На сегодня", "На завтра", "На 3 дня",
             "По событию", "Назад",
-            self.MENU_COMPLETED_MATCHES, self.MENU_UPCOMING_MATCHES, self.MENU_LIVE_MATCHES
+            self.MENU_COMPLETED_MATCHES, self.MENU_UPCOMING_MATCHES, self.MENU_LIVE_MATCHES, self.MENU_AI_PREDICTIONS
         ]
         if message_text not in period_buttons:
             self.logger.info(BOT_TEXTS['log']['message'].format(user_info=user_info, message_text=message_text))
@@ -175,6 +177,10 @@ class HLTVUserBot:
         elif message_text == self.MENU_LIVE_MATCHES:
             self.logger.info(BOT_TEXTS['log']['live_matches_request'].format(user_info=user_info))
             await self.show_live_matches(update, context)
+            return
+        elif message_text == self.MENU_AI_PREDICTIONS:
+            self.logger.info("AI прогнозы: пользователь запросил прогнозы на будущие матчи")
+            await self.show_ai_predictions(update, context)
             return
         elif message_text == "За сегодня":
             today = datetime.now(self.MOSCOW_TIMEZONE)
@@ -1199,6 +1205,124 @@ class HLTVUserBot:
         link = f' <a href="{match_url}">🌐</a>' if match_url else ''
         message = f"<b>{t1}</b> ({maps1}) {score1} - {score2} ({maps2}) <b>{t2}</b>\n"
         await update.message.reply_text(message, parse_mode="HTML", reply_markup=self.markup, disable_web_page_preview=True)
+
+    async def show_ai_predictions(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Показывает AI прогнозы на будущие матчи с вероятностями, стабильностью и объемом данных (только 10 ближайших, начиная с -1 часа от текущего времени)"""
+        import sqlite3
+        from datetime import datetime, timedelta
+        db_path = self.db_path
+        MOSCOW_TIMEZONE = self.MOSCOW_TIMEZONE
+        now = datetime.now(MOSCOW_TIMEZONE)
+        min_time = int((now - timedelta(hours=1)).timestamp())
+        conn = sqlite3.connect(db_path)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        # Получаем прогнозы для будущих матчей начиная с -1 часа
+        query = '''
+        SELECT
+            p.match_id,
+            u.team1_id,
+            u.team2_id,
+            u.team1_name,
+            u.team1_rank,
+            u.team2_name,
+            u.team2_rank,
+            u.datetime,
+            p.team1_score,
+            p.team2_score
+        FROM predict p
+        LEFT JOIN upcoming_match u ON p.match_id = u.match_id
+        WHERE u.match_id IS NOT NULL AND u.datetime >= ?
+        ORDER BY u.datetime ASC
+        LIMIT 20
+        '''
+        matches = cursor.execute(query, (min_time,)).fetchall()
+        # Для расчета объема данных
+        result_df = cursor.execute('SELECT team1_id, team2_id FROM result_match').fetchall()
+        # Вспомогательные функции
+        def count_matches(team_id):
+            if team_id is None:
+                return 0
+            return sum(1 for row in result_df if row['team1_id'] == team_id or row['team2_id'] == team_id)
+        def data_level(val):
+            if val is None:
+                return 'нет данных'
+            val = int(val)
+            if val < 10:
+                return 'мало'
+            elif val < 20:
+                return 'средне'
+            else:
+                return 'много'
+        def get_team_stability(team_id, n_matches=20):
+            q = '''SELECT team1_id, team2_id, team1_score, team2_score, datetime FROM result_match WHERE (team1_id = ? OR team2_id = ?) AND team1_score IS NOT NULL AND team2_score IS NOT NULL ORDER BY datetime DESC LIMIT ?'''
+            df = cursor.execute(q, (team_id, team_id, n_matches)).fetchall()
+            if not df:
+                return None
+            diffs = []
+            for row in df:
+                if row['team1_id'] == team_id:
+                    diffs.append(row['team1_score'] - row['team2_score'])
+                else:
+                    diffs.append(row['team2_score'] - row['team1_score'])
+            if len(diffs) > 1:
+                import numpy as np
+                return float(np.std(diffs))
+            else:
+                return None
+        def stability_level(val):
+            if val is None:
+                return 'нет данных'
+            if val <= 1:
+                return 'очень стабильная'
+            elif val <= 2:
+                return 'стабильная'
+            elif val <= 3:
+                return 'средняя'
+            else:
+                return 'нестабильная'
+        # Формируем сообщение
+        if not matches:
+            await update.message.reply_text("Нет данных о прогнозах на будущие матчи.", reply_markup=self.markup)
+            conn.close()
+            return
+        # Оставляем только 10 ближайших
+        matches = matches[:10]
+        msg = "<b>AI прогнозы на ближайшие матчи:</b>\n\n"
+        for match in matches:
+            dt = datetime.fromtimestamp(match['datetime'], tz=MOSCOW_TIMEZONE).strftime('%d.%m.%Y %H:%M')
+            t1 = match['team1_name']
+            t2 = match['team2_name']
+            p1 = match['team1_score']
+            p2 = match['team2_score']
+            p1_pct = f"{round(p1*100):.0f}%" if p1 is not None else "-"
+            p2_pct = f"{round(p2*100):.0f}%" if p2 is not None else "-"
+            t1_matches = count_matches(match['team1_id'])
+            t2_matches = count_matches(match['team2_id'])
+            t1_data = data_level(t1_matches)
+            t2_data = data_level(t2_matches)
+            t1_stab = get_team_stability(match['team1_id'])
+            t2_stab = get_team_stability(match['team2_id'])
+            t1_stab_level = stability_level(t1_stab)
+            t2_stab_level = stability_level(t2_stab)
+            t1_stab_str = f"{t1_stab_level} ({t1_stab:.2f})" if t1_stab is not None else "нет данных"
+            t2_stab_str = f"{t2_stab_level} ({t2_stab:.2f})" if t2_stab is not None else "нет данных"
+            msg += f"<b>{dt}</b>\n"
+            msg += f"{t1} {p1_pct} - {p2_pct} {t2}\n"
+            msg += f"{t1} - {t1_data} данных ({t1_matches})\n"
+            msg += f"{t1} - {t1_stab_str}\n"
+            msg += f"{t2} - {t2_data} данных ({t2_matches})\n"
+            msg += f"{t2} - {t2_stab_str}\n"
+            msg += "----\n"
+        await update.message.reply_text(msg, parse_mode="HTML", reply_markup=self.markup)
+        conn.close()
+        # Дисклеймер
+        disclaimer = (
+            "<b>Данные не предназначены для ставок!</b>\n"
+            "Используйте только для ознакомительных целей.\n"
+            "Администрация ответственности за точность данных и результаты не несет."
+        )
+        await update.message.reply_text(disclaimer, parse_mode="HTML", reply_markup=self.markup)
 
 if __name__ == "__main__":
     from src.bots.config import load_config
