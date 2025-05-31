@@ -12,6 +12,7 @@ from pathlib import Path
 from datetime import datetime
 import numpy as np
 import os
+from sklearn.calibration import calibration_curve
 
 # Настройка стиля графиков
 plt.style.use('seaborn-v0_8-darkgrid')
@@ -1004,20 +1005,62 @@ def export_predict_table_html():
         body {{ background: #f5f5f5; font-family: Arial, sans-serif; }}
         h2 {{ margin-top: 40px; }}
         .table-container {{ margin-bottom: 40px; }}
+        .filter-bar {{ margin: 20px 0; padding: 10px; background: #fff; border-radius: 8px; box-shadow: 0 2px 8px #0001; display: flex; align-items: center; gap: 10px; }}
+        .filter-bar label {{ font-weight: bold; }}
+        .filter-bar input[type=date] {{ padding: 4px 8px; }}
+        .filter-bar button {{ padding: 4px 12px; border-radius: 4px; border: 1px solid #ccc; background: #eee; cursor: pointer; }}
     </style>
 </head>
 <body>
-    <div class=\"table-container\">
-        {html_correct}
+    <div class=\"filter-bar\">
+        <label for=\"date-from\">Дата от:</label>
+        <input type=\"date\" id=\"date-from\" name=\"date-from\">
+        <label for=\"date-to\">до:</label>
+        <input type=\"date\" id=\"date-to\" name=\"date-to\">
+        <button onclick=\"resetFilter()\">Сбросить фильтр</button>
     </div>
+    <div class=\"table-container\">{html_correct}</div>
     <hr>
-    <div class=\"table-container\">
-        {html_wrong}
-    </div>
+    <div class=\"table-container\">{html_wrong}</div>
     <hr>
-    <div class=\"table-container\">
-        {html_close}
-    </div>
+    <div class=\"table-container\">{html_close}</div>
+    <script>
+function parseDate(str) {{
+    if (!str) return null;
+    let [d, t] = str.split(' ');
+    if (!d) return null;
+    return new Date(d);
+}}
+function filterTables() {{
+    let from = document.getElementById('date-from').value;
+    let to = document.getElementById('date-to').value;
+    let fromDate = from ? new Date(from) : null;
+    let toDate = to ? new Date(to) : null;
+    document.querySelectorAll('table').forEach(table => {{
+        // ищем индекс колонки "date"
+        let ths = Array.from(table.querySelectorAll('thead th'));
+        let dateIdx = ths.findIndex(th => th.textContent.trim().toLowerCase().includes('date'));
+        if (dateIdx === -1) return;
+        table.querySelectorAll('tbody tr').forEach(tr => {{
+            let tds = tr.querySelectorAll('td');
+            if (!tds[dateIdx]) return;
+            let dateStr = tds[dateIdx].textContent.trim();
+            let rowDate = parseDate(dateStr);
+            let show = true;
+            if (fromDate && rowDate < fromDate) show = false;
+            if (toDate && rowDate > toDate) show = false;
+            tr.style.display = show ? '' : 'none';
+        }});
+    }});
+}}
+document.getElementById('date-from').addEventListener('change', filterTables);
+document.getElementById('date-to').addEventListener('change', filterTables);
+function resetFilter() {{
+    document.getElementById('date-from').value = '';
+    document.getElementById('date-to').value = '';
+    filterTables();
+}}
+    </script>
 </body>
 </html>
 """
@@ -1276,6 +1319,50 @@ def export_upcoming_predict_table_html():
     plt.close()
     print(f"График вероятностей победы сохранен: {OUTPUT_PATH}/upcoming_win_prob_distribution.png")
 
+def feature_importance_barplot():
+    """Более наглядный barplot важности признаков"""
+    importance_file = 'diagnostics/predictor/feature_importance.csv'
+    output_file = 'predictor/visualizations/feature_importance_barplot.png'
+    if not Path(importance_file).exists():
+        print(f"{importance_file} не найден!")
+        return
+    df = pd.read_csv(importance_file)
+    df = df.sort_values('importance', ascending=False).head(20)
+    plt.figure(figsize=(12, 8))
+    sns.barplot(x='importance', y='feature', data=df, palette='viridis')
+    plt.title('Топ-20 важных признаков (barplot)')
+    plt.xlabel('Важность')
+    plt.ylabel('Признак')
+    plt.tight_layout()
+    plt.savefig(output_file, dpi=300)
+    plt.close()
+    print(f"Barplot важности признаков сохранен: {output_file}")
+
+def plot_calibration_curve():
+    """Calibration curve (reliability curve) для вероятностей победы Team1"""
+    pred_file = 'predictor/predict_table.html'
+    if not Path(pred_file).exists():
+        print(f"{pred_file} не найден!")
+        return
+    df = pd.read_html(pred_file)[0]
+    if 'team1_score' not in df or 'team1_score_final' not in df:
+        print('Нет нужных колонок в predict_table.html')
+        return
+    y_true = (df['team1_score_final'] > df['team2_score_final']).astype(int)
+    y_prob = df['team1_score']
+    prob_true, prob_pred = calibration_curve(y_true, y_prob, n_bins=10, strategy='uniform')
+    plt.figure(figsize=(8, 6))
+    plt.plot(prob_pred, prob_true, marker='o', label='Модель')
+    plt.plot([0, 1], [0, 1], linestyle='--', color='gray', label='Идеальная калибровка')
+    plt.xlabel('Предсказанная вероятность победы Team1')
+    plt.ylabel('Доля побед Team1')
+    plt.title('Calibration curve (reliability curve)')
+    plt.legend()
+    plt.tight_layout()
+    plt.savefig('predictor/visualizations/calibration_curve.png', dpi=300)
+    plt.close()
+    print('Calibration curve сохранена: predictor/visualizations/calibration_curve.png')
+
 def main():
     """Главная функция визуализации"""
     print("🎨 Создание визуализаций для CS2 Match Predictor...\n")
@@ -1287,6 +1374,8 @@ def main():
     export_predict_table_html()
     export_upcoming_predict_table_html()
     create_summary_report()
+    feature_importance_barplot()
+    plot_calibration_curve()
     
     print("\n✅ Все визуализации созданы успешно!")
 
