@@ -58,7 +58,10 @@ class CS2MatchPredictor:
             'team1_recent_winrate', 'team1_avg_score_for', 'team1_avg_score_against',
             'team1_matches_played', 'team2_recent_winrate', 'team2_avg_score_for',
             'team2_avg_score_against', 'team2_matches_played', 'winrate_diff',
-            'matches_played_diff'
+            'matches_played_diff',
+            # Новые признаки:
+            'team1_recent_sub', 'team2_recent_sub',
+            'is_lan', 'recent_patch', 'stage_group', 'stage_playoff', 'stage_final'
         ]
         
         logger.info("Инициализация CS2MatchPredictor с PyCaret")
@@ -68,7 +71,7 @@ class CS2MatchPredictor:
         return sqlite3.connect(self.db_path)
     
     def _create_base_features(self, df):
-        """Создание базовых признаков из сырых данных"""
+        """Создание базовых признаков из сырых данных + новых (LAN, патч, стадия)"""
         logger.info("Создание базовых признаков...")
         
         # Проверяем наличие необходимых колонок
@@ -108,6 +111,18 @@ class CS2MatchPredictor:
         df['log_rank_team2'].replace([np.inf, -np.inf], 0, inplace=True)
         df['log_rank_team1'] = df['log_rank_team1'].fillna(0)
         df['log_rank_team2'] = df['log_rank_team2'].fillna(0)
+        
+        # LAN/online
+        df['is_lan'] = df['event_name'].str.contains('LAN|LAN Finals|LAN Event|LAN-', case=False, na=False).astype(int)
+        # Признак патча (пример: вручную по дате, можно расширить)
+        PATCH_DATES = [1700000000, 1710000000]  # unix timestamps крупных патчей, заполнить актуальными
+        df['recent_patch'] = df['datetime'].apply(
+            lambda x: int(any(abs(int(x) - int(p)) < 7*24*3600 for p in PATCH_DATES))
+        )
+        # Стадия турнира (по event_name)
+        df['stage_group'] = df['event_name'].str.contains('Group', case=False, na=False).astype(int)
+        df['stage_playoff'] = df['event_name'].str.contains('Playoff|Bracket', case=False, na=False).astype(int)
+        df['stage_final'] = df['event_name'].str.contains('Final', case=False, na=False).astype(int)
         
         return df
     
@@ -206,8 +221,8 @@ class CS2MatchPredictor:
         return df
     
     def _create_recent_form_features(self, df):
-        """Создание признаков формы команд за последние матчи"""
-        logger.info("Вычисление формы команд...")
+        """Создание признаков формы команд за последние матчи + замены"""
+        logger.info("Вычисление формы команд и замен...")
         
         with self._get_connection() as conn:
             # Получаем результаты последних матчей для каждой команды
@@ -280,6 +295,31 @@ class CS2MatchPredictor:
         # Заполняем пропуски средними значениями
         numeric_columns = df.select_dtypes(include=[np.number]).columns
         df[numeric_columns] = df[numeric_columns].fillna(df[numeric_columns].mean())
+        
+        # Признак замены: если за последние 3 матча состав менялся
+        def recent_substitution(team_id, current_match_time, conn, n=3):
+            q = f"""
+            SELECT ps.player_id, ps.match_id, rm.datetime
+            FROM player_stats ps
+            JOIN result_match rm ON ps.match_id = rm.match_id
+            WHERE (rm.team1_id = ? OR rm.team2_id = ?) AND rm.datetime < ?
+            ORDER BY rm.datetime DESC LIMIT {n}
+            """
+            df_sub = pd.read_sql_query(q, conn, params=[team_id, team_id, current_match_time])
+            if df_sub.empty:
+                return 0
+            players_sets = []
+            for match_id in df_sub['match_id'].unique():
+                players = set(df_sub[df_sub['match_id'] == match_id]['player_id'])
+                players_sets.append(players)
+            # Если составы отличаются между матчами — была замена
+            for i in range(1, len(players_sets)):
+                if players_sets[i] != players_sets[i-1]:
+                    return 1
+            return 0
+        with self._get_connection() as conn:
+            df['team1_recent_sub'] = df.apply(lambda row: recent_substitution(row['team1_id'], row['datetime'], conn), axis=1)
+            df['team2_recent_sub'] = df.apply(lambda row: recent_substitution(row['team2_id'], row['datetime'], conn), axis=1)
         
         return df
     
@@ -526,6 +566,7 @@ class CS2MatchPredictor:
                 um.team2_id,
                 um.team2_rank,
                 um.event_id,
+                um.event_name,
                 COALESCE(h2h.team1_wins, 0) as head_to_head_team1_wins,
                 COALESCE(h2h.team2_wins, 0) as head_to_head_team2_wins
             FROM upcoming_match um
@@ -555,7 +596,7 @@ class CS2MatchPredictor:
             
         # Проверяем наличие всех необходимых колонок
         required_columns = ['match_id', 'datetime', 'team1_id', 'team1_rank', 
-                          'team2_id', 'team2_rank', 'event_id',
+                          'team2_id', 'team2_rank', 'event_id', 'event_name',
                           'head_to_head_team1_wins', 'head_to_head_team2_wins']
         
         missing_columns = [col for col in required_columns if col not in df.columns]
@@ -602,7 +643,9 @@ class CS2MatchPredictor:
                 'team1_recent_winrate', 'team1_avg_score_for', 'team1_avg_score_against',
                 'team1_matches_played', 'team2_recent_winrate', 'team2_avg_score_for',
                 'team2_avg_score_against', 'team2_matches_played', 'winrate_diff',
-                'matches_played_diff'
+                'matches_played_diff',
+                'team1_recent_sub', 'team2_recent_sub',
+                'is_lan', 'recent_patch', 'stage_group', 'stage_playoff', 'stage_final'
             ]
             
             # Проверяем наличие всех необходимых признаков для предсказания
