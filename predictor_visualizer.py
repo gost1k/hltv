@@ -1042,6 +1042,31 @@ def export_predict_table_html():
     html_close = html_table_close.to_html(encoding='utf-8')
 
     # --- Объединяем три таблицы в один HTML-файл ---
+    # Получаем уникальные значения для фильтров (только группы, без чисел)
+    def extract_group(values):
+        return sorted(set(str(v).split()[0] for v in values))
+    unique_team1_data = extract_group(styled['team1_data_info'].unique())
+    unique_team2_data = extract_group(styled['team2_data_info'].unique())
+    unique_team1_stab = extract_group(styled['team1_stability_info'].unique())
+    unique_team2_stab = extract_group(styled['team2_stability_info'].unique())
+
+    def make_multiselect(name, options):
+        return f'<select id="{name}" multiple size="4">' + ''.join(f'<option value="{o}">{o}</option>' for o in options) + '</select>'
+
+    filter_bar = f'''
+    <div class="filter-bar">
+        <label for="date-from">Дата от:</label>
+        <input type="date" id="date-from" name="date-from">
+        <label for="date-to">до:</label>
+        <input type="date" id="date-to" name="date-to">
+        <label>team1_data_info:</label>{make_multiselect('team1_data_info', unique_team1_data)}
+        <label>team2_data_info:</label>{make_multiselect('team2_data_info', unique_team2_data)}
+        <label>team1_stability_info:</label>{make_multiselect('team1_stability_info', unique_team1_stab)}
+        <label>team2_stability_info:</label>{make_multiselect('team2_stability_info', unique_team2_stab)}
+        <button onclick="resetFilter()">Сбросить фильтр</button>
+    </div>
+    '''
+
     full_html = f"""
 <!DOCTYPE html>
 <html>
@@ -1052,20 +1077,15 @@ def export_predict_table_html():
         body {{ background: #f5f5f5; font-family: Arial, sans-serif; }}
         h2 {{ margin-top: 40px; }}
         .table-container {{ margin-bottom: 40px; }}
-        .filter-bar {{ margin: 20px 0; padding: 10px; background: #fff; border-radius: 8px; box-shadow: 0 2px 8px #0001; display: flex; align-items: center; gap: 10px; }}
+        .filter-bar {{ margin: 20px 0; padding: 10px; background: #fff; border-radius: 8px; box-shadow: 0 2px 8px #0001; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }}
         .filter-bar label {{ font-weight: bold; }}
         .filter-bar input[type=date] {{ padding: 4px 8px; }}
+        .filter-bar select {{ min-width: 120px; }}
         .filter-bar button {{ padding: 4px 12px; border-radius: 4px; border: 1px solid #ccc; background: #eee; cursor: pointer; }}
     </style>
 </head>
 <body>
-    <div class=\"filter-bar\">
-        <label for=\"date-from\">Дата от:</label>
-        <input type=\"date\" id=\"date-from\" name=\"date-from\">
-        <label for=\"date-to\">до:</label>
-        <input type=\"date\" id=\"date-to\" name=\"date-to\">
-        <button onclick=\"resetFilter()\">Сбросить фильтр</button>
-    </div>
+    {filter_bar}
     <div class=\"table-container\">{html_correct}</div>
     <hr>
     <div class=\"table-container\">{html_wrong}</div>
@@ -1078,16 +1098,25 @@ function parseDate(str) {{
     if (!d) return null;
     return new Date(d);
 }}
+function getSelectedValues(sel) {{
+    return Array.from(sel.selectedOptions).map(opt => opt.value);
+}}
 function filterTables() {{
     let from = document.getElementById('date-from').value;
     let to = document.getElementById('date-to').value;
     let fromDate = from ? new Date(from) : null;
     let toDate = to ? new Date(to) : null;
+    let t1data = getSelectedValues(document.getElementById('team1_data_info'));
+    let t2data = getSelectedValues(document.getElementById('team2_data_info'));
+    let t1stab = getSelectedValues(document.getElementById('team1_stability_info'));
+    let t2stab = getSelectedValues(document.getElementById('team2_stability_info'));
     document.querySelectorAll('table').forEach(table => {{
-        // ищем индекс колонки "date"
         let ths = Array.from(table.querySelectorAll('thead th'));
         let dateIdx = ths.findIndex(th => th.textContent.trim().toLowerCase().includes('date'));
-        if (dateIdx === -1) return;
+        let t1dataIdx = ths.findIndex(th => th.textContent.trim().toLowerCase().includes('team1_data_info'));
+        let t2dataIdx = ths.findIndex(th => th.textContent.trim().toLowerCase().includes('team2_data_info'));
+        let t1stabIdx = ths.findIndex(th => th.textContent.trim().toLowerCase().includes('team1_stability_info'));
+        let t2stabIdx = ths.findIndex(th => th.textContent.trim().toLowerCase().includes('team2_stability_info'));
         table.querySelectorAll('tbody tr').forEach(tr => {{
             let tds = tr.querySelectorAll('td');
             if (!tds[dateIdx]) return;
@@ -1096,15 +1125,27 @@ function filterTables() {{
             let show = true;
             if (fromDate && rowDate < fromDate) show = false;
             if (toDate && rowDate > toDate) show = false;
+            if (t1data.length && !t1data.some(val => tds[t1dataIdx].textContent.trim().startsWith(val))) show = false;
+            if (t2data.length && !t2data.some(val => tds[t2dataIdx].textContent.trim().startsWith(val))) show = false;
+            if (t1stab.length && !t1stab.some(val => tds[t1stabIdx].textContent.trim().startsWith(val))) show = false;
+            if (t2stab.length && !t2stab.some(val => tds[t2stabIdx].textContent.trim().startsWith(val))) show = false;
             tr.style.display = show ? '' : 'none';
         }});
     }});
 }}
 document.getElementById('date-from').addEventListener('change', filterTables);
 document.getElementById('date-to').addEventListener('change', filterTables);
+document.getElementById('team1_data_info').addEventListener('change', filterTables);
+document.getElementById('team2_data_info').addEventListener('change', filterTables);
+document.getElementById('team1_stability_info').addEventListener('change', filterTables);
+document.getElementById('team2_stability_info').addEventListener('change', filterTables);
 function resetFilter() {{
     document.getElementById('date-from').value = '';
     document.getElementById('date-to').value = '';
+    document.getElementById('team1_data_info').selectedIndex = -1;
+    document.getElementById('team2_data_info').selectedIndex = -1;
+    document.getElementById('team1_stability_info').selectedIndex = -1;
+    document.getElementById('team2_stability_info').selectedIndex = -1;
     filterTables();
 }}
     </script>
