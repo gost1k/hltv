@@ -1291,7 +1291,12 @@ class HLTVUserBot:
             return
         # Оставляем только 10 ближайших
         matches = matches[:10]
-        msg = "<b>AI прогнозы на ближайшие матчи:</b>\n\n"
+        # Легенда
+        legend = (
+            "🟢 много данных  🟡 средне  🔴 мало  |  🟩 стабильная  🟨 средняя  🟥 нестабильная\n"
+            ""
+        )
+        msg = f"<b>AI прогнозы на ближайшие матчи:</b>\n\n{legend}"
         # Функции для эмодзи
         def data_emoji(val):
             if val is None:
@@ -1312,9 +1317,14 @@ class HLTVUserBot:
                 return '🟨'
             else:
                 return '🟥'
+        # Для выравнивания
+        def pad(s, n):
+            return s + ' ' * (n - len(s)) if len(s) < n else s
+        max_t1 = max(len(str(match['team1_name'])) for match in matches) if matches else 8
+        max_t2 = max(len(str(match['team2_name'])) for match in matches) if matches else 8
         for match in matches:
-            t1 = match['team1_name']
-            t2 = match['team2_name']
+            t1 = str(match['team1_name'])
+            t2 = str(match['team2_name'])
             p1 = match['team1_score']
             p2 = match['team2_score']
             p1_pct = f"{round(p1*100):.0f}%" if p1 is not None else "-"
@@ -1328,7 +1338,8 @@ class HLTVUserBot:
             t2_data_emoji = data_emoji(t2_matches)
             t1_stab_emoji = stability_emoji(t1_stab)
             t2_stab_emoji = stability_emoji(t2_stab)
-            msg += f"{t1} {t1_data_emoji}{t1_stab_emoji} {p1_pct} - {p2_pct} {t2_data_emoji}{t2_stab_emoji} {t2}\n"
+            # Формируем строку с выравниванием
+            msg += f"{pad(t1, max_t1)}  {t1_data_emoji}{t1_stab_emoji}  {p1_pct} - {p2_pct}  {t2_data_emoji}{t2_stab_emoji}  {pad(t2, max_t2)}\n"
         await update.message.reply_text(msg, parse_mode="HTML", reply_markup=self.markup)
         conn.close()
         # Дисклеймер
