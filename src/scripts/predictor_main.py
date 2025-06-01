@@ -61,7 +61,16 @@ class CS2MatchPredictor:
             'matches_played_diff',
             # Новые признаки:
             'team1_recent_sub', 'team2_recent_sub',
-            'is_lan', 'recent_patch', 'stage_group', 'stage_playoff', 'stage_final'
+            'is_lan', 'recent_patch', 'stage_group', 'stage_playoff', 'stage_final',
+            # Новые фичи:
+            'team1_rating_std', 'team2_rating_std',
+            'team1_kd_std', 'team2_kd_std',
+            'team1_adr_std', 'team2_adr_std',
+            'team1_kast_std', 'team2_kast_std',
+            'team1_carry_potential', 'team2_carry_potential',
+            'team1_close_map_rate', 'team2_close_map_rate',
+            'team1_ot_map_rate', 'team2_ot_map_rate',
+            'team1_comeback_rate', 'team2_comeback_rate'
         ]
         
         logger.info("Инициализация CS2MatchPredictor с PyCaret")
@@ -138,7 +147,13 @@ class CS2MatchPredictor:
             'team1_avg_rating_2_1', 'team1_avg_firepower', 'team1_avg_opening',
             'team1_avg_clutching', 'team1_avg_sniping', 'team2_avg_rating_2_1',
             'team2_avg_firepower', 'team2_avg_opening', 'team2_avg_clutching',
-            'team2_avg_sniping'
+            'team2_avg_sniping',
+            # Новые фичи:
+            'team1_rating_std', 'team2_rating_std',
+            'team1_kd_std', 'team2_kd_std',
+            'team1_adr_std', 'team2_adr_std',
+            'team1_kast_std', 'team2_kast_std',
+            'team1_carry_potential', 'team2_carry_potential'
         ]
         
         # Инициализируем все признаки нулями
@@ -146,6 +161,9 @@ class CS2MatchPredictor:
             df[feature] = 0.0
         
         with self._get_connection() as conn:
+            # Получаем статистику игроков для каждого матча и команды
+            player_stats_full = pd.read_sql_query("SELECT match_id, team_id, rating, kd_ratio, adr, kast FROM player_stats", conn)
+            
             # Получаем статистику игроков для каждого матча
             player_stats_query = """
             SELECT 
@@ -208,6 +226,41 @@ class CS2MatchPredictor:
             if not team2_players.empty:
                 for col in ['avg_rating_2_1', 'avg_firepower', 'avg_opening', 'avg_clutching', 'avg_sniping']:
                     match_df[f'team2_{col}'] = team2_players[col].iloc[0] if col in team2_players.columns else 0.0
+            
+            # --- STD и carry для team1 ---
+            t1_stats = player_stats_full[(player_stats_full['match_id'] == match_id) & (player_stats_full['team_id'] == team1_id)]
+            if not t1_stats.empty:
+                match_df['team1_rating_std'] = t1_stats['rating'].std(ddof=0) if 'rating' in t1_stats else 0.0
+                match_df['team1_kd_std'] = t1_stats['kd_ratio'].std(ddof=0) if 'kd_ratio' in t1_stats else 0.0
+                match_df['team1_adr_std'] = t1_stats['adr'].std(ddof=0) if 'adr' in t1_stats else 0.0
+                match_df['team1_kast_std'] = t1_stats['kast'].std(ddof=0) if 'kast' in t1_stats else 0.0
+                if 'rating' in t1_stats:
+                    match_df['team1_carry_potential'] = t1_stats['rating'].max() - t1_stats['rating'].median()
+                else:
+                    match_df['team1_carry_potential'] = 0.0
+            else:
+                match_df['team1_rating_std'] = 0.0
+                match_df['team1_kd_std'] = 0.0
+                match_df['team1_adr_std'] = 0.0
+                match_df['team1_kast_std'] = 0.0
+                match_df['team1_carry_potential'] = 0.0
+            # --- STD и carry для team2 ---
+            t2_stats = player_stats_full[(player_stats_full['match_id'] == match_id) & (player_stats_full['team_id'] == team2_id)]
+            if not t2_stats.empty:
+                match_df['team2_rating_std'] = t2_stats['rating'].std(ddof=0) if 'rating' in t2_stats else 0.0
+                match_df['team2_kd_std'] = t2_stats['kd_ratio'].std(ddof=0) if 'kd_ratio' in t2_stats else 0.0
+                match_df['team2_adr_std'] = t2_stats['adr'].std(ddof=0) if 'adr' in t2_stats else 0.0
+                match_df['team2_kast_std'] = t2_stats['kast'].std(ddof=0) if 'kast' in t2_stats else 0.0
+                if 'rating' in t2_stats:
+                    match_df['team2_carry_potential'] = t2_stats['rating'].max() - t2_stats['rating'].median()
+                else:
+                    match_df['team2_carry_potential'] = 0.0
+            else:
+                match_df['team2_rating_std'] = 0.0
+                match_df['team2_kd_std'] = 0.0
+                match_df['team2_adr_std'] = 0.0
+                match_df['team2_kast_std'] = 0.0
+                match_df['team2_carry_potential'] = 0.0
             
             result_dfs.append(match_df)
         
@@ -323,6 +376,62 @@ class CS2MatchPredictor:
         
         return df
     
+    def _create_map_and_clutch_features(self, df):
+        # Для каждой команды: доля close-карт, доля овертаймов, доля камбеков
+        # close = счет 13-10, 10-13, 13-11, 11-13
+        # OT = обе команды >12 раундов (>=13-13)
+        # comeback: разрыв в первой половине >=6 раундов, но проигравшая половину команда выиграла карту или ушла в OT
+        with self._get_connection() as conn:
+            maps = pd.read_sql_query("SELECT match_id, map_name, team1_rounds, team2_rounds, half1_team1, half1_team2, half2_team1, half2_team2, ot_rounds_team1, ot_rounds_team2 FROM result_match_maps", conn)
+        def calc_features(match_id, team1_id, team2_id):
+            maps_match = maps[maps['match_id'] == match_id]
+            t1_close, t2_close = 0, 0
+            t1_ot, t2_ot = 0, 0
+            t1_cb, t2_cb = 0, 0
+            total = len(maps_match)
+            for _, row in maps_match.iterrows():
+                s1, s2 = row['team1_rounds'], row['team2_rounds']
+                # close: разница 2 или 3 и одна из команд набрала 13
+                if (s1 == 13 and s2 in [10,11]) or (s2 == 13 and s1 in [10,11]):
+                    t1_close += int(s1 == 13)
+                    t2_close += int(s2 == 13)
+                # OT: если ot_rounds_team1+ot_rounds_team2 > 0
+                ot1 = row.get('ot_rounds_team1', 0) or 0
+                ot2 = row.get('ot_rounds_team2', 0) or 0
+                if ot1 + ot2 > 0:
+                    t1_ot += 1
+                    t2_ot += 1
+                # comeback: проиграл первую половину >=6, но выиграл карту или ушел в OT
+                h1t1 = row.get('half1_team1')
+                h1t2 = row.get('half1_team2')
+                if h1t1 is not None and h1t2 is not None:
+                    diff1 = h1t1 - h1t2
+                    diff2 = h1t2 - h1t1
+                    # t1 comeback
+                    if diff1 <= -6 and (s1 > s2 or (ot1 + ot2 > 0)):
+                        t1_cb += 1
+                    # t2 comeback
+                    if diff2 <= -6 and (s2 > s1 or (ot1 + ot2 > 0)):
+                        t2_cb += 1
+            if total == 0:
+                return 0,0,0,0,0,0
+            return t1_close/total, t2_close/total, t1_ot/total, t2_ot/total, t1_cb/total, t2_cb/total
+        df['team1_close_map_rate'] = 0.0
+        df['team2_close_map_rate'] = 0.0
+        df['team1_ot_map_rate'] = 0.0
+        df['team2_ot_map_rate'] = 0.0
+        df['team1_comeback_rate'] = 0.0
+        df['team2_comeback_rate'] = 0.0
+        for idx, row in df.iterrows():
+            t1c, t2c, t1ot, t2ot, t1cb, t2cb = calc_features(row['match_id'], row.get('team1_id'), row.get('team2_id'))
+            df.at[idx, 'team1_close_map_rate'] = t1c
+            df.at[idx, 'team2_close_map_rate'] = t2c
+            df.at[idx, 'team1_ot_map_rate'] = t1ot
+            df.at[idx, 'team2_ot_map_rate'] = t2ot
+            df.at[idx, 'team1_comeback_rate'] = t1cb
+            df.at[idx, 'team2_comeback_rate'] = t2cb
+        return df
+    
     def prepare_training_data(self, start_date=None, end_date=None):
         """Подготовка данных для обучения"""
         logger.info("Подготовка данных для обучения...")
@@ -361,6 +470,7 @@ class CS2MatchPredictor:
         df = self._create_base_features(df)
         df = self._create_player_features(df)
         df = self._create_recent_form_features(df)
+        df = self._create_map_and_clutch_features(df)
         
         # Сохраняем список признаков
         feature_cols = [col for col in df.columns if col not in [
@@ -620,14 +730,15 @@ class CS2MatchPredictor:
             features_df = self._create_base_features(features_df)
             logger.info("Базовые признаки созданы успешно")
             logger.info(f"Колонки после базовых признаков: {features_df.columns.tolist()}")
-            
             features_df = self._create_player_features(features_df)
             logger.info("Признаки игроков созданы успешно")
             logger.info(f"Колонки после признаков игроков: {features_df.columns.tolist()}")
-            
             features_df = self._create_recent_form_features(features_df)
             logger.info("Признаки формы созданы успешно")
             logger.info(f"Колонки после признаков формы: {features_df.columns.tolist()}")
+            features_df = self._create_map_and_clutch_features(features_df)
+            logger.info("Фичи по картам и клатчам созданы успешно")
+            logger.info(f"Колонки после фичей по картам: {features_df.columns.tolist()}")
             
             # Получаем список признаков, которые нужно использовать для предсказания
             prediction_features = [
@@ -645,7 +756,15 @@ class CS2MatchPredictor:
                 'team2_avg_score_against', 'team2_matches_played', 'winrate_diff',
                 'matches_played_diff',
                 'team1_recent_sub', 'team2_recent_sub',
-                'is_lan', 'recent_patch', 'stage_group', 'stage_playoff', 'stage_final'
+                'is_lan', 'recent_patch', 'stage_group', 'stage_playoff', 'stage_final',
+                'team1_rating_std', 'team2_rating_std',
+                'team1_kd_std', 'team2_kd_std',
+                'team1_adr_std', 'team2_adr_std',
+                'team1_kast_std', 'team2_kast_std',
+                'team1_carry_potential', 'team2_carry_potential',
+                'team1_close_map_rate', 'team2_close_map_rate',
+                'team1_ot_map_rate', 'team2_ot_map_rate',
+                'team1_comeback_rate', 'team2_comeback_rate'
             ]
             
             # Проверяем наличие всех необходимых признаков для предсказания
