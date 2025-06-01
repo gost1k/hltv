@@ -1054,7 +1054,83 @@ class HLTVUserBot:
             maps1 = match['maps_won'][0] if match['maps_won'] else '0'
             maps2 = match['maps_won'][1] if len(match['maps_won']) > 1 else '0'
             match_id = match['match_id']
-            match_text = f"<b>{t1}</b> ({maps1}) {score1} - {score2} ({maps2}) <b>{t2}</b>"
+
+            # Новый формат: счет + AI-строки
+            # Получаем данные из predict и upcoming_match
+            conn = sqlite3.connect(self.db_path)
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            cursor.execute('''
+                SELECT u.team1_id, u.team2_id, u.team1_rank, u.team2_rank, u.team1_name, u.team2_name, 
+                       p.team1_score, p.team2_score
+                FROM upcoming_match u
+                LEFT JOIN predict p ON u.match_id = p.match_id
+                WHERE u.match_id = ?
+            ''', (match_id,))
+            row = cursor.fetchone()
+            # Для объема данных и стабильности
+            result_df = cursor.execute('SELECT team1_id, team2_id FROM result_match').fetchall()
+            def count_matches(team_id):
+                if team_id is None:
+                    return 0
+                return sum(1 for r in result_df if r['team1_id'] == team_id or r['team2_id'] == team_id)
+            def data_emoji(val):
+                if val is None:
+                    return '⚪'
+                val = int(val)
+                if val < 10:
+                    return '🔴'
+                elif val < 20:
+                    return '🟡'
+                else:
+                    return '🟢'
+            def get_team_stability(team_id, n_matches=20):
+                q = '''SELECT team1_id, team2_id, team1_score, team2_score, datetime FROM result_match WHERE (team1_id = ? OR team2_id = ?) AND team1_score IS NOT NULL AND team2_score IS NOT NULL ORDER BY datetime DESC LIMIT ?'''
+                df = cursor.execute(q, (team_id, team_id, n_matches)).fetchall()
+                if not df:
+                    return None
+                diffs = []
+                for r in df:
+                    if r['team1_id'] == team_id:
+                        diffs.append(r['team1_score'] - r['team2_score'])
+                    else:
+                        diffs.append(r['team2_score'] - r['team1_score'])
+                if len(diffs) > 1:
+                    import numpy as np
+                    return float(np.std(diffs))
+                else:
+                    return None
+            def stability_emoji(val):
+                if val is None:
+                    return '⬜'
+                if val <= 2:
+                    return '🟩'
+                elif val <= 3:
+                    return '🟨'
+                else:
+                    return '🟥'
+            # Данные по командам
+            t1_id = row['team1_id'] if row else None
+            t2_id = row['team2_id'] if row else None
+            t1_rank = f"#{row['team1_rank']}" if row and row['team1_rank'] else "—"
+            t2_rank = f"#{row['team2_rank']}" if row and row['team2_rank'] else "—"
+            p1 = row['team1_score'] if row else None
+            p2 = row['team2_score'] if row else None
+            p1_pct = f"{round(p1*100):.0f}%" if p1 is not None else "-"
+            p2_pct = f"{round(p2*100):.0f}%" if p2 is not None else "-"
+            t1_matches = count_matches(t1_id)
+            t2_matches = count_matches(t2_id)
+            t1_stab = get_team_stability(t1_id)
+            t2_stab = get_team_stability(t2_id)
+            t1_data_emoji = data_emoji(t1_matches)
+            t2_data_emoji = data_emoji(t2_matches)
+            t1_stab_emoji = stability_emoji(t1_stab)
+            t2_stab_emoji = stability_emoji(t2_stab)
+            # Формируем сообщение
+            match_text = f"<b>{t1}</b> ({maps1}) {score1} - {score2} ({maps2}) <b>{t2}</b>\n"
+            match_text += f"{t1_data_emoji}{t1_stab_emoji} {t1_rank} {t1} - вероятность победы = {p1_pct}\n"
+            match_text += f"{t2_data_emoji}{t2_stab_emoji} {t2_rank} {t2} - вероятность победы = {p2_pct}"
+            conn.close()
             user_sub = next((s for s in subs_data['live'].get(str(match_id), []) if s['id'] == user_id), None)
             if user_sub:
                 btn_text = f"Отписаться от {t1} vs {t2} ({self._type_to_text(user_sub['type'])})"
@@ -1214,7 +1290,7 @@ class HLTVUserBot:
         MOSCOW_TIMEZONE = self.MOSCOW_TIMEZONE
         # Исправлено: вычисляем min_time в UTC, чтобы фильтрация работала корректно по московскому времени
         now = datetime.now(MOSCOW_TIMEZONE)
-        min_time = int((now - timedelta(hours=1)).timestamp())
+        min_time = int((now - timedelta(hours=2)).timestamp())
         conn = sqlite3.connect(db_path)
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
