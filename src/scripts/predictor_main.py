@@ -46,31 +46,20 @@ class CS2MatchPredictor:
         
         # Инициализируем список признаков
         self.feature_columns = [
-            'rank_diff', 'rank_ratio', 'h2h_total', 'h2h_winrate_team1',
-            'hour', 'weekday', 'log_rank_team1', 'log_rank_team2',
-            'team1_avg_rating', 'team1_avg_kd', 'team1_avg_adr', 'team1_avg_kast',
-            'team1_max_rating', 'team1_min_rating', 'team2_avg_rating', 'team2_avg_kd',
-            'team2_avg_adr', 'team2_avg_kast', 'team2_max_rating', 'team2_min_rating',
-            'team1_avg_rating_2_1', 'team1_avg_firepower', 'team1_avg_opening',
-            'team1_avg_clutching', 'team1_avg_sniping', 'team2_avg_rating_2_1',
-            'team2_avg_firepower', 'team2_avg_opening', 'team2_avg_clutching',
-            'team2_avg_sniping', 'rating_diff', 'kd_diff', 'firepower_diff',
-            'team1_recent_winrate', 'team1_avg_score_for', 'team1_avg_score_against',
-            'team1_matches_played', 'team2_recent_winrate', 'team2_avg_score_for',
-            'team2_avg_score_against', 'team2_matches_played', 'winrate_diff',
-            'matches_played_diff',
-            # Новые признаки:
-            'team1_recent_sub', 'team2_recent_sub',
-            'is_lan', 'recent_patch', 'stage_group', 'stage_playoff', 'stage_final',
-            # Новые фичи:
-            'team1_rating_std', 'team2_rating_std',
-            'team1_kd_std', 'team2_kd_std',
-            'team1_adr_std', 'team2_adr_std',
-            'team1_kast_std', 'team2_kast_std',
-            'team1_carry_potential', 'team2_carry_potential',
-            'team1_close_map_rate', 'team2_close_map_rate',
-            'team1_ot_map_rate', 'team2_ot_map_rate',
-            'team1_comeback_rate', 'team2_comeback_rate'
+            'rating_diff', 'kd_diff', 'team1_avg_kd', 'team2_avg_kd',
+            'winrate_diff', 'team2_avg_rating', 'team1_avg_rating',
+            'team1_min_rating', 'team2_min_rating', 'team1_max_rating', 'team2_max_rating',
+            'team1_recent_winrate', 'team2_recent_winrate', 'team1_kd_std',
+            'team2_close_map_rate', 'team2_avg_kast', 'team1_close_map_rate',
+            'team2_avg_adr', 'team1_avg_kast', 'team2_kd_std', 'team1_avg_adr',
+            'rank_diff', 'rank_ratio', 'firepower_diff', 'matches_played_diff',
+            'team1_rating_std', 'team1_avg_score_against', 'team2_rating_std',
+            'team2_avg_score_against', 'h2h_winrate_team1', 'team2_avg_firepower',
+            'team2_kast_std', 'team1_kast_std', 'team1_carry_potential',
+            'team1_adr_std', 'team2_avg_opening', 'team2_avg_rating_2_1',
+            'team2_adr_std', 'team2_matches_played', 'team2_carry_potential',
+            'team2_avg_clutching', 'team1_avg_firepower', 'team2_avg_sniping',
+            'team1_avg_opening', 'team1_avg_rating_2_1', 'log_rank_team1'
         ]
         
         logger.info("Инициализация CS2MatchPredictor с PyCaret")
@@ -742,29 +731,20 @@ class CS2MatchPredictor:
             
             # Получаем список признаков, которые нужно использовать для предсказания
             prediction_features = [
-                'rank_diff', 'rank_ratio', 'h2h_total', 'h2h_winrate_team1',
-                'hour', 'weekday', 'log_rank_team1', 'log_rank_team2',
-                'team1_avg_rating', 'team1_avg_kd', 'team1_avg_adr', 'team1_avg_kast',
-                'team1_max_rating', 'team1_min_rating', 'team2_avg_rating', 'team2_avg_kd',
-                'team2_avg_adr', 'team2_avg_kast', 'team2_max_rating', 'team2_min_rating',
-                'team1_avg_rating_2_1', 'team1_avg_firepower', 'team1_avg_opening',
-                'team1_avg_clutching', 'team1_avg_sniping', 'team2_avg_rating_2_1',
-                'team2_avg_firepower', 'team2_avg_opening', 'team2_avg_clutching',
-                'team2_avg_sniping', 'rating_diff', 'kd_diff', 'firepower_diff',
-                'team1_recent_winrate', 'team1_avg_score_for', 'team1_avg_score_against',
-                'team1_matches_played', 'team2_recent_winrate', 'team2_avg_score_for',
-                'team2_avg_score_against', 'team2_matches_played', 'winrate_diff',
-                'matches_played_diff',
-                'team1_recent_sub', 'team2_recent_sub',
-                'is_lan', 'recent_patch', 'stage_group', 'stage_playoff', 'stage_final',
-                'team1_rating_std', 'team2_rating_std',
-                'team1_kd_std', 'team2_kd_std',
-                'team1_adr_std', 'team2_adr_std',
-                'team1_kast_std', 'team2_kast_std',
-                'team1_carry_potential', 'team2_carry_potential',
-                'team1_close_map_rate', 'team2_close_map_rate',
-                'team1_ot_map_rate', 'team2_ot_map_rate',
-                'team1_comeback_rate', 'team2_comeback_rate'
+                'rating_diff', 'kd_diff', 'team1_avg_kd', 'team2_avg_kd',
+                'winrate_diff', 'team2_avg_rating', 'team1_avg_rating',
+                'team1_min_rating', 'team2_min_rating', 'team1_max_rating', 'team2_max_rating',
+                'team1_recent_winrate', 'team2_recent_winrate', 'team1_kd_std',
+                'team2_close_map_rate', 'team2_avg_kast', 'team1_close_map_rate',
+                'team2_avg_adr', 'team1_avg_kast', 'team2_kd_std', 'team1_avg_adr',
+                'rank_diff', 'rank_ratio', 'firepower_diff', 'matches_played_diff',
+                'team1_rating_std', 'team1_avg_score_against', 'team2_rating_std',
+                'team2_avg_score_against', 'h2h_winrate_team1', 'team2_avg_firepower',
+                'team2_kast_std', 'team1_kast_std', 'team1_carry_potential',
+                'team1_adr_std', 'team2_avg_opening', 'team2_avg_rating_2_1',
+                'team2_adr_std', 'team2_matches_played', 'team2_carry_potential',
+                'team2_avg_clutching', 'team1_avg_firepower', 'team2_avg_sniping',
+                'team1_avg_opening', 'team1_avg_rating_2_1', 'log_rank_team1'
             ]
             
             # Проверяем наличие всех необходимых признаков для предсказания
