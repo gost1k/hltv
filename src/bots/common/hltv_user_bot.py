@@ -68,10 +68,10 @@ class HLTVUserBot:
         self.logger.info(BOT_TEXTS['log']['init'].format(config_name=config_name))
 
         # Кнопки меню
+        self.MENU_AI_PREDICTIONS = "AI прогнозы"
         self.MENU_UPCOMING_MATCHES = "Будущие матчи"
         self.MENU_COMPLETED_MATCHES = "Прошедшие матчи"
         self.MENU_LIVE_MATCHES = "Live матчи"
-        self.MENU_AI_PREDICTIONS = "AI прогнозы"
         self.MOSCOW_TIMEZONE = timezone(timedelta(hours=3))
         self.menu_keyboard = [
             [KeyboardButton(self.MENU_LIVE_MATCHES)],
