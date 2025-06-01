@@ -179,30 +179,39 @@ class CS2MatchPredictor:
             """
             player_stats = pd.read_sql_query(player_stats_query, conn)
             
-            # Получаем дополнительную информацию об игроках
+            # Получаем дополнительную информацию об игроках (без агрегатов)
             players_query = """
             SELECT 
                 ps.match_id,
                 ps.team_id,
-                AVG(p.rating_2_1) as avg_rating_2_1,
-                AVG(p.firepower) as avg_firepower,
-                AVG(p.opening) as avg_opening,
-                AVG(p.clutching) as avg_clutching,
-                AVG(p.sniping) as avg_sniping,
-                MEDIAN(p.sniping) as sniping_median,
-                MEDIAN(p.majors_played) as majors_played_median,
-                MAX(p.majors_played) as majors_played_max,
-                MIN(p.majors_played) as majors_played_min,
-                MEDIAN(p.age) as age_median,
-                MIN(p.age) as age_min,
-                MAX(p.age) as age_max,
-                MAX(p.firepower) as firepower_max,
-                MIN(p.utility) as utility_min
+                p.rating_2_1,
+                p.firepower,
+                p.opening,
+                p.clutching,
+                p.sniping,
+                p.majors_played,
+                p.age,
+                p.utility
             FROM player_stats ps
             JOIN players p ON ps.player_id = p.player_id
-            GROUP BY ps.match_id, ps.team_id
             """
-            players_info = pd.read_sql_query(players_query, conn)
+            players_info_full = pd.read_sql_query(players_query, conn)
+        
+        # Для каждого матча и команды считаем агрегаты по pandas
+        def get_player_agg(match_id, team_id, col, func):
+            vals = players_info_full[(players_info_full['match_id'] == match_id) & (players_info_full['team_id'] == team_id)][col].dropna()
+            if vals.empty:
+                return 0.0
+            if func == 'median':
+                return float(np.median(vals))
+            elif func == 'min':
+                return float(np.min(vals))
+            elif func == 'max':
+                return float(np.max(vals))
+            elif func == 'avg':
+                return float(np.mean(vals))
+            else:
+                return 0.0
         
         # Обрабатываем для каждого матча отдельно
         result_dfs = []
@@ -212,32 +221,30 @@ class CS2MatchPredictor:
             # Статистика для команды 1
             team1_id = match_df['team1_id'].iloc[0]
             team1_stats = player_stats[(player_stats['match_id'] == match_id) & (player_stats['team_id'] == team1_id)]
-            team1_players = players_info[(players_info['match_id'] == match_id) & (players_info['team_id'] == team1_id)]
+            team1_players = players_info_full[(players_info_full['match_id'] == match_id) & (players_info_full['team_id'] == team1_id)]
             
             if not team1_stats.empty:
                 for col in ['avg_rating', 'avg_kd', 'avg_adr', 'avg_kast', 'max_rating', 'min_rating']:
                     match_df[f'team1_{col}'] = team1_stats[col].iloc[0] if col in team1_stats.columns else 0.0
             
             if not team1_players.empty:
-                for col in ['avg_rating_2_1', 'avg_firepower', 'avg_opening', 'avg_clutching', 'avg_sniping',
-                            'sniping_median', 'majors_played_median', 'majors_played_max', 'majors_played_min',
-                            'age_median', 'age_min', 'age_max', 'firepower_max', 'utility_min']:
-                    match_df[f'team1_{col}'] = team1_players[col].iloc[0] if col in team1_players.columns else 0.0
+                for col in ['rating_2_1', 'firepower', 'opening', 'clutching', 'sniping',
+                            'majors_played', 'age', 'utility']:
+                    match_df[f'team1_{col}'] = get_player_agg(match_id, team1_id, col, 'avg')
             
             # Статистика для команды 2
             team2_id = match_df['team2_id'].iloc[0]
             team2_stats = player_stats[(player_stats['match_id'] == match_id) & (player_stats['team_id'] == team2_id)]
-            team2_players = players_info[(players_info['match_id'] == match_id) & (players_info['team_id'] == team2_id)]
+            team2_players = players_info_full[(players_info_full['match_id'] == match_id) & (players_info_full['team_id'] == team2_id)]
             
             if not team2_stats.empty:
                 for col in ['avg_rating', 'avg_kd', 'avg_adr', 'avg_kast', 'max_rating', 'min_rating']:
                     match_df[f'team2_{col}'] = team2_stats[col].iloc[0] if col in team2_stats.columns else 0.0
             
             if not team2_players.empty:
-                for col in ['avg_rating_2_1', 'avg_firepower', 'avg_opening', 'avg_clutching', 'avg_sniping',
-                            'sniping_median', 'majors_played_median', 'majors_played_max', 'majors_played_min',
-                            'age_median', 'age_min', 'age_max', 'firepower_max', 'utility_min']:
-                    match_df[f'team2_{col}'] = team2_players[col].iloc[0] if col in team2_players.columns else 0.0
+                for col in ['rating_2_1', 'firepower', 'opening', 'clutching', 'sniping',
+                            'majors_played', 'age', 'utility']:
+                    match_df[f'team2_{col}'] = get_player_agg(match_id, team2_id, col, 'avg')
             
             # --- STD и carry для team1 ---
             t1_stats = player_stats_full[(player_stats_full['match_id'] == match_id) & (player_stats_full['team_id'] == team1_id)]
@@ -274,6 +281,19 @@ class CS2MatchPredictor:
                 match_df['team2_kast_std'] = 0.0
                 match_df['team2_carry_potential'] = 0.0
             
+            # Новые признаки для team1
+            match_df['team1_sniping_median'] = get_player_agg(match_id, team1_id, 'sniping', 'median')
+            match_df['team1_majors_played_median'] = get_player_agg(match_id, team1_id, 'majors_played', 'median')
+            match_df['team1_majors_played_max'] = get_player_agg(match_id, team1_id, 'majors_played', 'max')
+            match_df['team1_age_median'] = get_player_agg(match_id, team1_id, 'age', 'median')
+            match_df['team1_age_min'] = get_player_agg(match_id, team1_id, 'age', 'min')
+            match_df['team1_firepower_max'] = get_player_agg(match_id, team1_id, 'firepower', 'max')
+            match_df['team1_utility_min'] = get_player_agg(match_id, team1_id, 'utility', 'min')
+            # Новые признаки для team2
+            match_df['team2_sniping_median'] = get_player_agg(match_id, team2_id, 'sniping', 'median')
+            match_df['team2_majors_played_min'] = get_player_agg(match_id, team2_id, 'majors_played', 'min')
+            match_df['team2_age_min'] = get_player_agg(match_id, team2_id, 'age', 'min')
+            
             result_dfs.append(match_df)
         
         df = pd.concat(result_dfs, ignore_index=True)
@@ -284,12 +304,8 @@ class CS2MatchPredictor:
         df['firepower_diff'] = df['team1_avg_firepower'] - df['team2_avg_firepower']
         
         self.feature_columns += [
-            'team1_sniping_median',
-            'team1_majors_played_median',
-            'team2_age_min',
-            'team1_age_min',
             'team1_majors_played_max',
-            'team1_age_median',
+            'team1_majors_played_min',
             'team2_majors_played_min',
             'team1_firepower_max',
             'team1_utility_min',
