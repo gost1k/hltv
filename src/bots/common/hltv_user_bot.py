@@ -1212,8 +1212,11 @@ class HLTVUserBot:
         from datetime import datetime, timedelta
         db_path = self.db_path
         MOSCOW_TIMEZONE = self.MOSCOW_TIMEZONE
+        # Исправлено: вычисляем min_time в UTC, чтобы фильтрация работала корректно по московскому времени
         now = datetime.now(MOSCOW_TIMEZONE)
-        min_time = int((now - timedelta(hours=1)).timestamp())
+        # Получаем текущее время в Москве, затем переводим в UTC
+        now_utc = now.astimezone(timezone.utc)
+        min_time = int((now_utc - timedelta(hours=1)).timestamp())
         conn = sqlite3.connect(db_path)
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
