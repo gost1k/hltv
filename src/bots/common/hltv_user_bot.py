@@ -74,10 +74,10 @@ class HLTVUserBot:
         self.MENU_LIVE_MATCHES = "Live матчи"
         self.MOSCOW_TIMEZONE = timezone(timedelta(hours=3))
         self.menu_keyboard = [
+            [KeyboardButton(self.MENU_AI_PREDICTIONS)],
             [KeyboardButton(self.MENU_LIVE_MATCHES)],
             [KeyboardButton(self.MENU_UPCOMING_MATCHES)],
-            [KeyboardButton(self.MENU_COMPLETED_MATCHES)],
-            [KeyboardButton(self.MENU_AI_PREDICTIONS)]
+            [KeyboardButton(self.MENU_COMPLETED_MATCHES)]
         ]
         self.markup = ReplyKeyboardMarkup(self.menu_keyboard, resize_keyboard=True)
         self.live_keyboard = [[KeyboardButton("Назад")]]
@@ -1342,8 +1342,16 @@ class HLTVUserBot:
             t2_data_emoji = data_emoji(t2_matches)
             t1_stab_emoji = stability_emoji(t1_stab)
             t2_stab_emoji = stability_emoji(t2_stab)
-            # Формируем строку с выравниванием
-            msg += f"{pad(t1, max_t1)}  {t1_data_emoji}{t1_stab_emoji}  {p1_pct} - {p2_pct}  {t2_data_emoji}{t2_stab_emoji}  {pad(t2, max_t2)}\n"
+            # Ранги
+            t1_rank = f"#{match['team1_rank']}" if match['team1_rank'] else "—"
+            t2_rank = f"#{match['team2_rank']}" if match['team2_rank'] else "—"
+            # Дата и время
+            match_dt = datetime.fromtimestamp(match['datetime'], tz=MOSCOW_TIMEZONE).strftime('%d.%m.%Y %H:%M') if match['datetime'] else ''
+            # Новый формат: разделитель, дата-время, команда1, команда2, разделитель
+            msg += f"{'-'*32}\n"
+            msg += f"{match_dt}\n"
+            msg += f"{t1_data_emoji}{t1_stab_emoji} {t1_rank} {t1} {p1_pct}\n"
+            msg += f"{t2_data_emoji}{t2_stab_emoji} {t2_rank} {t2} {p2_pct}\n"
         await update.message.reply_text(f"<pre>{msg}</pre>", parse_mode="HTML", reply_markup=self.markup)
         conn.close()
         # Дисклеймер
