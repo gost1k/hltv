@@ -1296,7 +1296,7 @@ class HLTVUserBot:
             "🟢 много данных  🟡 средне  🔴 мало  |  🟩 стабильная  🟨 средняя  🟥 нестабильная\n"
             ""
         )
-        msg = f"<b>AI прогнозы на ближайшие матчи:</b>\n\n{legend}"
+        msg = f"AI прогнозы на ближайшие матчи:\n\n{legend}"
         # Функции для эмодзи
         def data_emoji(val):
             if val is None:
@@ -1340,7 +1340,7 @@ class HLTVUserBot:
             t2_stab_emoji = stability_emoji(t2_stab)
             # Формируем строку с выравниванием
             msg += f"{pad(t1, max_t1)}  {t1_data_emoji}{t1_stab_emoji}  {p1_pct} - {p2_pct}  {t2_data_emoji}{t2_stab_emoji}  {pad(t2, max_t2)}\n"
-        await update.message.reply_text(msg, parse_mode="HTML", reply_markup=self.markup)
+        await update.message.reply_text(f"<code>{msg}</code>", parse_mode="HTML", reply_markup=self.markup)
         conn.close()
         # Дисклеймер
         disclaimer = (
