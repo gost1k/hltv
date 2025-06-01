@@ -1041,7 +1041,7 @@ class HLTVUserBot:
         reply_markup_kb = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
         # Новое: сообщение 'Live матчи' перед списком live-матчей
         if matches:
-            await update.message.reply_text("Live матчи.\nВыберите тип уведления, чтоб получать уведомления о матче.", reply_markup=reply_markup_kb)
+            await update.message.reply_text("Live матчи.\nВыберите тип уведомления, чтоб получать уведомления о матче.", reply_markup=reply_markup_kb)
         else:
             await update.message.reply_text("В текущий момент live матчей нет.", reply_markup=reply_markup_kb)
         # --- Inline-кнопки для live-матчей ---
