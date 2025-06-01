@@ -1128,8 +1128,10 @@ class HLTVUserBot:
             t2_stab_emoji = stability_emoji(t2_stab)
             # Формируем сообщение
             match_text = f"<b>{t1}</b> ({maps1}) {score1} - {score2} ({maps2}) <b>{t2}</b>\n"
-            match_text += f"{t1_data_emoji}{t1_stab_emoji} {t1_rank} {t1} - вероятность победы = {p1_pct}\n"
-            match_text += f"{t2_data_emoji}{t2_stab_emoji} {t2_rank} {t2} - вероятность победы = {p2_pct}"
+            # Только если есть хотя бы один прогноз, выводим вероятности и эмодзи
+            if (p1 is not None) or (p2 is not None):
+                match_text += f"{t1_data_emoji}{t1_stab_emoji} {t1_rank} {t1} - вероятность победы = {p1_pct}\n"
+                match_text += f"{t2_data_emoji}{t2_stab_emoji} {t2_rank} {t2} - вероятность победы = {p2_pct}"
             conn.close()
             user_sub = next((s for s in subs_data['live'].get(str(match_id), []) if s['id'] == user_id), None)
             if user_sub:
