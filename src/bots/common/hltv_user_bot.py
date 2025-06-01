@@ -1292,8 +1292,27 @@ class HLTVUserBot:
         # Оставляем только 10 ближайших
         matches = matches[:10]
         msg = "<b>AI прогнозы на ближайшие матчи:</b>\n\n"
+        # Функции для эмодзи
+        def data_emoji(val):
+            if val is None:
+                return '⚪'  # нет данных
+            val = int(val)
+            if val < 10:
+                return '🔴'
+            elif val < 20:
+                return '🟡'
+            else:
+                return '🟢'
+        def stability_emoji(val):
+            if val is None:
+                return '⬜'  # нет данных
+            if val <= 2:
+                return '🟩'
+            elif val <= 3:
+                return '🟨'
+            else:
+                return '🟥'
         for match in matches:
-            dt = datetime.fromtimestamp(match['datetime'], tz=MOSCOW_TIMEZONE).strftime('%d.%m.%Y %H:%M')
             t1 = match['team1_name']
             t2 = match['team2_name']
             p1 = match['team1_score']
@@ -1302,21 +1321,14 @@ class HLTVUserBot:
             p2_pct = f"{round(p2*100):.0f}%" if p2 is not None else "-"
             t1_matches = count_matches(match['team1_id'])
             t2_matches = count_matches(match['team2_id'])
-            t1_data = data_level(t1_matches)
-            t2_data = data_level(t2_matches)
             t1_stab = get_team_stability(match['team1_id'])
             t2_stab = get_team_stability(match['team2_id'])
-            t1_stab_level = stability_level(t1_stab)
-            t2_stab_level = stability_level(t2_stab)
-            t1_stab_str = f"{t1_stab_level} ({t1_stab:.2f})" if t1_stab is not None else "нет данных"
-            t2_stab_str = f"{t2_stab_level} ({t2_stab:.2f})" if t2_stab is not None else "нет данных"
-            msg += f"<b>{dt}</b>\n"
-            msg += f"{t1} {p1_pct} - {p2_pct} {t2}\n"
-            msg += f"{t1} - {t1_data} данных ({t1_matches})\n"
-            msg += f"{t1} - {t1_stab_str}\n"
-            msg += f"{t2} - {t2_data} данных ({t2_matches})\n"
-            msg += f"{t2} - {t2_stab_str}\n"
-            msg += "----\n"
+            # Эмодзи
+            t1_data_emoji = data_emoji(t1_matches)
+            t2_data_emoji = data_emoji(t2_matches)
+            t1_stab_emoji = stability_emoji(t1_stab)
+            t2_stab_emoji = stability_emoji(t2_stab)
+            msg += f"{t1} {t1_data_emoji}{t1_stab_emoji} {p1_pct} - {p2_pct} {t2_data_emoji}{t2_stab_emoji} {t2}\n"
         await update.message.reply_text(msg, parse_mode="HTML", reply_markup=self.markup)
         conn.close()
         # Дисклеймер
