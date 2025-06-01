@@ -720,7 +720,6 @@ def export_predict_table_html():
     maps_conn = sqlite3.connect(DB_PATH)
     maps_df = pd.read_sql_query('SELECT match_id, map_name, team1_rounds, team2_rounds FROM result_match_maps', maps_conn)
     maps_conn.close()
-    
     def format_map_scores(match_id):
         maps = maps_df[maps_df['match_id'] == match_id]
         if maps.empty:
@@ -731,6 +730,13 @@ def export_predict_table_html():
             for _, row in maps.iterrows()
         ])
     df['map_scores'] = df['match_id'].apply(format_map_scores)
+
+    # --- Исключаем технические поражения (Default (0-1) или Default (1-0)) ---
+    def is_tech_defeat(map_scores):
+        if not isinstance(map_scores, str):
+            return False
+        return 'Default (0-1)' in map_scores or 'Default (1-0)' in map_scores
+    df = df[~df['map_scores'].apply(is_tech_defeat)].copy()
 
     # --- Добавляем стабильность команд ---
     df['team1_stability'] = df['team1_id'].apply(lambda tid: get_team_stability(tid, 20, DB_PATH))
@@ -802,10 +808,29 @@ def export_predict_table_html():
         df[col] = df[col].astype(str).str.replace('%', '', regex=False)
         df[col] = pd.to_numeric(df[col], errors='coerce')
     styled = df[columns].copy()
-    styled['date'] = styled['date'].dt.strftime('%Y-%m-%d %H:%M')
+    styled['date'] = pd.to_datetime(styled['date']) if not pd.api.types.is_datetime64_any_dtype(styled['date']) else styled['date']
     styled['team1_score'] = styled['team1_score'].map(lambda x: f"{float(x)*100:.1f}%" if pd.notnull(x) else '-')
     styled['team2_score'] = styled['team2_score'].map(lambda x: f"{float(x)*100:.1f}%" if pd.notnull(x) else '-')
     styled['confidence'] = styled['confidence'].map(lambda x: f"{float(x)*100:.1f}%" if pd.notnull(x) else '-')
+
+    # --- Группировка по объему данных для сортировки ---
+    def get_data_group(row):
+        t1 = str(row['team1_data_info']).split()[0]
+        t2 = str(row['team2_data_info']).split()[0]
+        if t1 == 'много' and t2 == 'много':
+            return 1
+        if (t1 == 'много' and t2 == 'средне') or (t1 == 'средне' and t2 == 'много'):
+            return 2
+        if t1 == 'средне' and t2 == 'средне':
+            return 3
+        if (t1 == 'мало' and t2 == 'средне') or (t1 == 'средне' and t2 == 'мало'):
+            return 4
+        if t1 == 'мало' and t2 == 'мало':
+            return 5
+        return 6
+    styled['data_group'] = styled.apply(get_data_group, axis=1)
+    styled = styled.sort_values(['data_group', 'date'], ascending=[True, True]).reset_index(drop=True)
+    styled['date'] = styled['date'].dt.strftime('%Y-%m-%d %H:%M')
 
     # Центрирование нужных столбцов
     center_cols = ['team1_score','team2_score','confidence','final_score']
@@ -907,9 +932,23 @@ def export_predict_table_html():
 
     styled['winner_guessed'] = styled.apply(is_winner_guessed, axis=1)
 
+    # --- Добавляем data_group в styled до фильтрации и сортировки ---
+    if 'data_group' not in styled.columns and 'data_group' in df.columns:
+        styled['data_group'] = df['data_group'].values
+    elif 'data_group' not in styled.columns:
+        styled['data_group'] = 6  # fallback если нет данных
+    styled['winner_guessed'] = styled.apply(is_winner_guessed, axis=1)
+    # Сортировка по data_group и дате
+    styled = styled.sort_values(['data_group', 'date'], ascending=[True, True]).reset_index(drop=True)
+
     # --- Разбиваем на две таблицы ---
     df_correct = styled[styled['winner_guessed']].copy().reset_index(drop=True)
     df_wrong = styled[~styled['winner_guessed']].copy().reset_index(drop=True)
+    # Удаляем data_group перед экспортом, если есть
+    if 'data_group' in df_correct.columns:
+        df_correct = df_correct.drop(columns=['data_group'])
+    if 'data_group' in df_wrong.columns:
+        df_wrong = df_wrong.drop(columns=['data_group'])
 
     # --- Добавляем третью таблицу: close matches (40-60%) ---
     def is_close_match(row):
@@ -922,7 +961,15 @@ def export_predict_table_html():
 
     # Собираем close-матчи из обеих таблиц
     df_all = pd.concat([df_correct, df_wrong], ignore_index=True)
-    df_close = df_all[df_all.apply(is_close_match, axis=1)].copy().reset_index(drop=True)
+    df_close = df_all[df_all.apply(is_close_match, axis=1)].copy()
+    # Сортировка по data_group и дате, если есть
+    if 'data_group' in df_all.columns:
+        df_close['data_group'] = df_all.loc[df_close.index, 'data_group']
+        df_close = df_close.sort_values(['data_group', 'date'], ascending=[True, True]).reset_index(drop=True)
+    else:
+        df_close = df_close.sort_values(['date'], ascending=[True]).reset_index(drop=True)
+    if 'data_group' in df_close.columns:
+        df_close = df_close.drop(columns=['data_group'])
 
     # Удаляем close-матчи из первых двух таблиц
     close_indices_correct = df_correct.apply(is_close_match, axis=1)
@@ -1233,7 +1280,7 @@ def export_upcoming_predict_table_html():
         df[col] = df[col].astype(str).str.replace('%', '', regex=False)
         df[col] = pd.to_numeric(df[col], errors='coerce')
     styled = df[columns].copy()
-    styled['date'] = styled['date'].dt.strftime('%Y-%m-%d %H:%M')
+    styled['date'] = pd.to_datetime(styled['date']) if not pd.api.types.is_datetime64_any_dtype(styled['date']) else styled['date']
     styled['team1_score'] = styled['team1_score'].map(lambda x: f"{float(x)*100:.1f}%" if pd.notnull(x) else '-')
     styled['team2_score'] = styled['team2_score'].map(lambda x: f"{float(x)*100:.1f}%" if pd.notnull(x) else '-')
     styled['confidence'] = styled['confidence'].map(lambda x: f"{float(x)*100:.1f}%" if pd.notnull(x) else '-')
