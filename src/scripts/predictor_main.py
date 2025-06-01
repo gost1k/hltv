@@ -59,7 +59,17 @@ class CS2MatchPredictor:
             'team1_adr_std', 'team2_avg_opening', 'team2_avg_rating_2_1',
             'team2_adr_std', 'team2_matches_played', 'team2_carry_potential',
             'team2_avg_clutching', 'team1_avg_firepower', 'team2_avg_sniping',
-            'team1_avg_opening', 'team1_avg_rating_2_1', 'log_rank_team1'
+            'team1_avg_opening', 'team1_avg_rating_2_1', 'log_rank_team1',
+            'team1_sniping_median',
+            'team1_majors_played_median',
+            'team2_age_min',
+            'team1_age_min',
+            'team1_majors_played_max',
+            'team1_age_median',
+            'team2_majors_played_min',
+            'team1_firepower_max',
+            'team1_utility_min',
+            'team2_sniping_median'
         ]
         
         logger.info("Инициализация CS2MatchPredictor с PyCaret")
@@ -178,7 +188,16 @@ class CS2MatchPredictor:
                 AVG(p.firepower) as avg_firepower,
                 AVG(p.opening) as avg_opening,
                 AVG(p.clutching) as avg_clutching,
-                AVG(p.sniping) as avg_sniping
+                AVG(p.sniping) as avg_sniping,
+                MEDIAN(p.sniping) as sniping_median,
+                MEDIAN(p.majors_played) as majors_played_median,
+                MAX(p.majors_played) as majors_played_max,
+                MIN(p.majors_played) as majors_played_min,
+                MEDIAN(p.age) as age_median,
+                MIN(p.age) as age_min,
+                MAX(p.age) as age_max,
+                MAX(p.firepower) as firepower_max,
+                MIN(p.utility) as utility_min
             FROM player_stats ps
             JOIN players p ON ps.player_id = p.player_id
             GROUP BY ps.match_id, ps.team_id
@@ -200,7 +219,9 @@ class CS2MatchPredictor:
                     match_df[f'team1_{col}'] = team1_stats[col].iloc[0] if col in team1_stats.columns else 0.0
             
             if not team1_players.empty:
-                for col in ['avg_rating_2_1', 'avg_firepower', 'avg_opening', 'avg_clutching', 'avg_sniping']:
+                for col in ['avg_rating_2_1', 'avg_firepower', 'avg_opening', 'avg_clutching', 'avg_sniping',
+                            'sniping_median', 'majors_played_median', 'majors_played_max', 'majors_played_min',
+                            'age_median', 'age_min', 'age_max', 'firepower_max', 'utility_min']:
                     match_df[f'team1_{col}'] = team1_players[col].iloc[0] if col in team1_players.columns else 0.0
             
             # Статистика для команды 2
@@ -213,7 +234,9 @@ class CS2MatchPredictor:
                     match_df[f'team2_{col}'] = team2_stats[col].iloc[0] if col in team2_stats.columns else 0.0
             
             if not team2_players.empty:
-                for col in ['avg_rating_2_1', 'avg_firepower', 'avg_opening', 'avg_clutching', 'avg_sniping']:
+                for col in ['avg_rating_2_1', 'avg_firepower', 'avg_opening', 'avg_clutching', 'avg_sniping',
+                            'sniping_median', 'majors_played_median', 'majors_played_max', 'majors_played_min',
+                            'age_median', 'age_min', 'age_max', 'firepower_max', 'utility_min']:
                     match_df[f'team2_{col}'] = team2_players[col].iloc[0] if col in team2_players.columns else 0.0
             
             # --- STD и carry для team1 ---
@@ -259,6 +282,19 @@ class CS2MatchPredictor:
         df['rating_diff'] = df['team1_avg_rating'] - df['team2_avg_rating']
         df['kd_diff'] = df['team1_avg_kd'] - df['team2_avg_kd']
         df['firepower_diff'] = df['team1_avg_firepower'] - df['team2_avg_firepower']
+        
+        self.feature_columns += [
+            'team1_sniping_median',
+            'team1_majors_played_median',
+            'team2_age_min',
+            'team1_age_min',
+            'team1_majors_played_max',
+            'team1_age_median',
+            'team2_majors_played_min',
+            'team1_firepower_max',
+            'team1_utility_min',
+            'team2_sniping_median'
+        ]
         
         return df
     
@@ -744,7 +780,17 @@ class CS2MatchPredictor:
                 'team1_adr_std', 'team2_avg_opening', 'team2_avg_rating_2_1',
                 'team2_adr_std', 'team2_matches_played', 'team2_carry_potential',
                 'team2_avg_clutching', 'team1_avg_firepower', 'team2_avg_sniping',
-                'team1_avg_opening', 'team1_avg_rating_2_1', 'log_rank_team1'
+                'team1_avg_opening', 'team1_avg_rating_2_1', 'log_rank_team1',
+                'team1_sniping_median',
+                'team1_majors_played_median',
+                'team2_age_min',
+                'team1_age_min',
+                'team1_majors_played_max',
+                'team1_age_median',
+                'team2_majors_played_min',
+                'team1_firepower_max',
+                'team1_utility_min',
+                'team2_sniping_median'
             ]
             
             # Проверяем наличие всех необходимых признаков для предсказания
