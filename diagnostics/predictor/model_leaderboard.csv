@@ -1,2 +1,2 @@
 Model,Accuracy,AUC,Recall,Prec.,F1,Kappa,MCC
-Ridge Classifier,0.9456,0.9444,0.9758,0.9237,0.949,0.8908,0.8924
+Logistic Regression,0.9121,0.983,0.9355,0.8992,0.917,0.8237,0.8245

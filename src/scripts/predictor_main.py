@@ -44,49 +44,29 @@ class CS2MatchPredictor:
         Path(model_path).mkdir(parents=True, exist_ok=True)
         Path(DIAGNOSTICS_PATH).mkdir(parents=True, exist_ok=True)
         
-        # Инициализируем список признаков
-        self.feature_columns = [
-            'rating_diff', 'kd_diff', 'firepower_diff',
-            'winrate_diff', 'matches_played_diff',
-            'team1_avg_rating', 'team2_avg_rating',
-            'team1_avg_kd', 'team2_avg_kd',
-            'team1_avg_adr', 'team2_avg_adr',
-            'team1_avg_kast', 'team2_avg_kast',
-            'team1_max_rating', 'team2_max_rating',
-            'team1_min_rating', 'team2_min_rating',
-            'team2_min_rating',
-            'team1_rating_std', 'team2_rating_std',
-            'team1_kd_std', 'team2_kd_std',
-            'team1_adr_std', 'team2_adr_std',
-            'team1_kast_std', 'team2_kast_std',
-            'team1_carry_potential', 'team2_carry_potential',
-            'team1_sniping_median', 'team2_sniping_median',
-            'team1_majors_played_median', 'team1_majors_played_max', 'team1_majors_played_min',
-            'team2_majors_played_min',
-            'team1_age_median', 'team1_age_min', 'team2_age_min',
-            'team1_firepower_max', 'team1_utility_min', 'team2_utility_min',
-            'team1_avg_rating_2_1', 'team2_avg_rating_2_1',
-            'team1_avg_firepower', 'team2_avg_firepower',
-            'team1_avg_opening', 'team2_avg_opening',
-            'team1_avg_clutching', 'team2_avg_clutching',
-            'team1_avg_sniping', 'team2_avg_sniping',
-            'team1_recent_winrate', 'team2_recent_winrate',
-            'team1_avg_score_for', 'team1_avg_score_against',
-            'team2_avg_score_for', 'team2_avg_score_against',
-            'team1_matches_played', 'team2_matches_played',
-            'team1_recent_sub', 'team2_recent_sub',
-            'team1_close_map_rate', 'team2_close_map_rate',
-            'team1_ot_map_rate', 'team2_ot_map_rate',
-            'team1_comeback_rate', 'team2_comeback_rate',
-            'rank_diff', 'rank_ratio', 'h2h_winrate_team1',
-            'hour', 'weekday', 'log_rank_team1', 'log_rank_team2',
-            'is_lan', 'recent_patch', 'stage_group', 'stage_playoff', 'stage_final',
-            'team1_avg_score_against', 'team2_avg_score_against',
-            'team2_matches_played', 'team2_carry_potential',
-            'team2_avg_clutching', 'log_rank_team1',
-        ]
-        
         logger.info("Инициализация CS2MatchPredictor с PyCaret")
+        
+        # Фиксированный список признаков из predictor_features.md (блок 'Используемые признаки')
+        self.feature_columns = [
+            'rating_diff', 'kd_diff', 'team1_avg_kd', 'team2_avg_kd',
+            'winrate_diff', 'team2_avg_rating', 'team1_avg_rating',
+            'team1_min_rating', 'team2_min_rating', 'team1_max_rating', 'team2_max_rating',
+            'team1_recent_winrate', 'team2_recent_winrate', 'team1_kd_std',
+            'team2_close_map_rate', 'team2_avg_kast', 'team1_close_map_rate',
+            'team2_avg_adr', 'team1_avg_kast', 'team2_kd_std', 'team1_avg_adr',
+            'rank_diff', 'rank_ratio', 'firepower_diff', 'matches_played_diff',
+            'team1_rating_std', 'team1_avg_score_against', 'team2_rating_std',
+            'team2_avg_score_against', 'h2h_winrate_team1', 'team2_avg_firepower',
+            'team2_kast_std', 'team1_kast_std', 'team1_carry_potential',
+            'team1_adr_std', 'team2_avg_opening', 'team2_avg_rating_2_1',
+            'team2_adr_std', 'team2_matches_played', 'team2_carry_potential',
+            'team2_avg_clutching', 'team1_avg_firepower', 'team2_avg_sniping',
+            'team1_avg_opening', 'team1_avg_rating_2_1', 'log_rank_team1',
+            'team1_sniping_median', 'team1_majors_played_median', 'team2_age_min',
+            'team1_age_min', 'team1_majors_played_max', 'team1_age_median',
+            'team2_majors_played_min', 'team1_firepower_max', 'team1_utility_min',
+            'team2_sniping_median'
+        ]
         
     def _get_connection(self):
         """Получение соединения с БД"""
@@ -317,15 +297,6 @@ class CS2MatchPredictor:
         df['kd_diff'] = df['team1_avg_kd'] - df['team2_avg_kd']
         df['firepower_diff'] = df['team1_avg_firepower'] - df['team2_avg_firepower']
         
-        self.feature_columns += [
-            'team1_majors_played_max',
-            'team1_majors_played_min',
-            'team2_majors_played_min',
-            'team1_firepower_max',
-            'team1_utility_min',
-            'team2_sniping_median'
-        ]
-        
         return df
     
     def _create_recent_form_features(self, df):
@@ -527,17 +498,12 @@ class CS2MatchPredictor:
         df = self._create_recent_form_features(df)
         df = self._create_map_and_clutch_features(df)
         
-        # Сохраняем список признаков
-        feature_cols = [col for col in df.columns if col not in [
-            'match_id', 'url', 'team1_won', 'team1_score', 'team2_score',
-            'team1_name', 'team2_name', 'event_name', 'parsed_at',
-            'team1_team_id', 'team2_team_id',
-            'datetime', 'team1_id', 'team1_rank', 'team2_id', 'team2_rank', 'event_id', 'demo_id', 'head_to_head_team1_wins', 'head_to_head_team2_wins'
-        ]]
-        
-        self.feature_columns = feature_cols
-        logger.info(f"Создано {len(feature_cols)} признаков")
-        
+        # --- Удаляем автогенерацию признаков ---
+        # feature_cols = [col for col in df.columns if col not in [...]]
+        # self.feature_columns = feature_cols
+        # logger.info(f"Создано {len(feature_cols)} признаков")
+        # --- Используем только фиксированный список из __init__ ---
+        logger.info(f"Используется фиксированный набор признаков: {self.feature_columns}")
         return df
     
     def train(self, time_limit=60, n_models=15):
@@ -794,6 +760,8 @@ class CS2MatchPredictor:
             features_df = self._create_map_and_clutch_features(features_df)
             logger.info("Фичи по картам и клатчам созданы успешно")
             logger.info(f"Колонки после фичей по картам: {features_df.columns.tolist()}")
+
+            # self.feature_columns больше не формируется автоматически по DataFrame
             
             # Получаем список признаков, которые нужно использовать для предсказания
             prediction_features = self.feature_columns
